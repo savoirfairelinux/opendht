@@ -333,7 +333,7 @@ jobs:
           mkdir build_python && cd build_python && \
           cmake .. -DCMAKE_INSTALL_PREFIX=/usr \
                    -DCMAKE_BUILD_TYPE=Release \
-                   -DOPENDHT_STATIC=Off \
+                   -DBUILD_SHARED_LIBS=On \
                    -DOPENDHT_PYTHON=On \
                    -DOPENDHT_C=Off \
                    -DOPENDHT_PEER_DISCOVERY=On \
