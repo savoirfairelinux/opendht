@@ -20,7 +20,11 @@
       "generator": "Ninja",
       "inherits": "default",
       "cacheVariables": {
-        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "CMAKE_BUILD_TYPE": "Debug",
+        "OPENDHT_PROXY_CLIENT": true,
+        "OPENDHT_PROXY_SERVER": true,
+        "OPENDHT_C": true
       }
     },
     {
