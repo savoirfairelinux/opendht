@@ -308,7 +308,7 @@ else () # MSVC
     get_target_property(MSGPACK_INCLUDEDIR msgpack-cxx INTERFACE_INCLUDE_DIRECTORIES)
     include_directories(${MSGPACK_INCLUDEDIR})
     
-    find_package(jsoncpp REQUIRED)
+    find_package(jsoncpp CONFIG REQUIRED)
     set(JSONCPP_FOUND TRUE)
     include_directories(${JSONCPP_INCLUDE_DIRS})
     
@@ -569,7 +569,7 @@ if (MSVC)
     if (OPENDHT_TOOLS)
         target_link_libraries(opendht PUBLIC unofficial::readline-win32::readline)
     endif()
-    target_link_libraries(opendht PUBLIC msgpack-cxx jsoncpp_lib fmt::fmt)
+    target_link_libraries(opendht PUBLIC msgpack-cxx JsonCpp::JsonCpp fmt::fmt)
     if (OPENDHT_HTTP)
         target_link_libraries(opendht
             PUBLIC restinio::restinio
