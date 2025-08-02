@@ -11,6 +11,7 @@ env:
   VCPKG_INSTALLATION_ROOT: "C:\\vcpkg"
   VCPKG_DISABLE_METRICS: "1"
   VCPKG_INSTALLED_DIR: ${{ github.workspace }}\vcpkg_installed
+  VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}\vcpkg_binary_cache
 
 jobs:
   prepare-dependencies:
@@ -33,23 +34,26 @@ jobs:
         id: generate_cache_key
         shell: pwsh
         run: |
-          $key_value = "${{ runner.os }}-vcpkg-${{ env.VCPKG_VERSION }}-${{ matrix.arch }}-${{ hashFiles('**/vcpkg.json', '**/vcpkg-configuration.json') }}-${{ hashFiles('.github/workflow/windows-build.yml') }}"
+          $key_value = "${{ runner.os }}-vcpkg-${{ env.VCPKG_VERSION }}-${{ matrix.arch }}-shared-${{ hashFiles('**/vcpkg.json', '**/vcpkg-configuration.json') }}-${{ hashFiles('.github/workflows/windows-build.yml') }}"
           echo "key=$key_value" >> $env:GITHUB_OUTPUT
 
       - name: Cache vcpkg installed packages
         id: cache-vcpkg
         uses: actions/cache@v4
         with:
-          path: ${{ env.VCPKG_INSTALLED_DIR }}
+          path: |
+            ${{ env.VCPKG_INSTALLED_DIR }}
+            ${{ env.VCPKG_DEFAULT_BINARY_CACHE }}
           key: ${{ steps.generate_cache_key.outputs.key }}
           restore-keys: |
-            ${{ runner.os }}-vcpkg-${{ env.VCPKG_VERSION }}-${{ matrix.arch }}-${{ hashFiles('**/vcpkg.json', '**/vcpkg-configuration.json') }}
-            ${{ runner.os }}-vcpkg-${{ env.VCPKG_VERSION }}-${{ matrix.arch }}-
+            ${{ runner.os }}-vcpkg-${{ env.VCPKG_VERSION }}-${{ matrix.arch }}-shared-${{ hashFiles('**/vcpkg.json', '**/vcpkg-configuration.json') }}
+            ${{ runner.os }}-vcpkg-${{ env.VCPKG_VERSION }}-${{ matrix.arch }}-shared-
 
       - name: Setup vcpkg and install dependencies
         if: steps.cache-vcpkg.outputs.cache-hit != 'true'
         run: |
           New-Item -Path "${{ env.VCPKG_INSTALLED_DIR }}" -ItemType Directory -Force
+          New-Item -Path "${{ env.VCPKG_DEFAULT_BINARY_CACHE }}" -ItemType Directory -Force
           vcpkg install `
             --recurse `
             --clean-after-build `
@@ -85,7 +89,9 @@ jobs:
         id: cache-vcpkg-static
         uses: actions/cache@v4
         with:
-          path: ${{ env.VCPKG_INSTALLED_DIR }}
+          path: |
+            ${{ env.VCPKG_INSTALLED_DIR }}
+            ${{ env.VCPKG_DEFAULT_BINARY_CACHE }}
           key: ${{ steps.generate_static_cache_key.outputs.key }}
           restore-keys: |
             ${{ runner.os }}-vcpkg-${{ env.VCPKG_VERSION }}-${{ matrix.arch }}-static-${{ hashFiles('**/vcpkg.json', '**/vcpkg-configuration.json') }}
@@ -96,6 +102,7 @@ jobs:
         shell: pwsh
         run: |
           New-Item -Path "${{ env.VCPKG_INSTALLED_DIR }}" -ItemType Directory -Force
+          New-Item -Path "${{ env.VCPKG_DEFAULT_BINARY_CACHE }}" -ItemType Directory -Force
           vcpkg install `
             --recurse `
             --clean-after-build `
@@ -124,11 +131,13 @@ jobs:
         id: cache-vcpkg-restore
         uses: actions/cache/restore@v4
         with:
-          path: ${{ env.VCPKG_INSTALLED_DIR }}
+          path: |
+            ${{ env.VCPKG_INSTALLED_DIR }}
+            ${{ env.VCPKG_DEFAULT_BINARY_CACHE }}
           key: ${{ needs.prepare-dependencies.outputs.vcpkg_cache_key }}
           restore-keys: |
-            ${{ runner.os }}-vcpkg-${{ env.VCPKG_VERSION }}-${{ matrix.arch }}-${{ hashFiles('**/vcpkg.json', '**/vcpkg-configuration.json') }}
-            ${{ runner.os }}-vcpkg-${{ env.VCPKG_VERSION }}-${{ matrix.arch }}-
+            ${{ runner.os }}-vcpkg-${{ env.VCPKG_VERSION }}-${{ matrix.arch }}-shared-${{ hashFiles('**/vcpkg.json', '**/vcpkg-configuration.json') }}
+            ${{ runner.os }}-vcpkg-${{ env.VCPKG_VERSION }}-${{ matrix.arch }}-shared-
 
       - name: Configure CMake
         shell: pwsh
@@ -195,7 +204,9 @@ jobs:
         id: cache-vcpkg-static-restore
         uses: actions/cache/restore@v4
         with:
-          path: ${{ env.VCPKG_INSTALLED_DIR }}
+          path: |
+            ${{ env.VCPKG_INSTALLED_DIR }}
+            ${{ env.VCPKG_DEFAULT_BINARY_CACHE }}
           key: ${{ needs.prepare-static-dependencies.outputs.vcpkg_static_cache_key }}
           restore-keys: |
             ${{ runner.os }}-vcpkg-${{ env.VCPKG_VERSION }}-${{ matrix.arch }}-static-${{ hashFiles('**/vcpkg.json', '**/vcpkg-configuration.json') }}
