@@ -50,6 +50,14 @@
       }
     },
     {
+      "name": "vcpkg_manifest_static",
+      "inherits": "vcpkg_manifest",
+      "cacheVariables": {
+        "BUILD_SHARED_LIBS": "Off",
+        "VCPKG_TARGET_TRIPLET": "x64-windows-static"
+      }
+    },
+    {
       "name": "vcpkg_local",
       "inherits": "msvc",
       "cacheVariables": {
