@@ -257,9 +257,11 @@ jobs:
     runs-on: windows-latest
     env:
       VCPKG_VERSION: "2025.07.25"
+      VCPKG_INSTALLATION_ROOT: "C:\\vcpkg"
       VCPKG_DISABLE_METRICS: "1"
       VCPKG_DEFAULT_TRIPLET: x64-windows
-      VCPKG_ROOT: "C:\\vcpkg"
+      VCPKG_INSTALLED_DIR: ${{ github.workspace }}\vcpkg_installed
+      VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}\vcpkg_binary_cache
     permissions:
       contents: read
     steps:
@@ -271,13 +273,36 @@ jobs:
       - name: Set up MSVC developer environment
         uses: microsoft/setup-msbuild@v2
 
+      - name: Cache vcpkg installed packages
+        id: cache-vcpkg
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ env.VCPKG_INSTALLED_DIR }}
+            ${{ env.VCPKG_DEFAULT_BINARY_CACHE }}
+          key: ${{ runner.os }}-vcpkg-${{ env.VCPKG_VERSION }}-x64-shared-${{ hashFiles('**/vcpkg.json', '**/vcpkg-configuration.json') }}-${{ hashFiles('.github/workflows/windows-build.yml') }}
+
+      - name: Setup vcpkg and install dependencies
+        if: steps.cache-vcpkg.outputs.cache-hit != 'true'
+        run: |
+          vcpkg install `
+            --recurse `
+            --clean-after-build `
+            --triplet=x64-windows `
+            --x-install-root=${{ env.VCPKG_INSTALLED_DIR }} `
+            --x-feature=test
+        shell: pwsh
+
       - name: Configure CMake for MSI
         shell: pwsh
         run: |
           mkdir build -ErrorAction SilentlyContinue
           cmake -B build `
             -S . `
-            -DCMAKE_TOOLCHAIN_FILE=${{ env.VCPKG_ROOT }}/scripts/buildsystems/vcpkg.cmake `
+            -DCMAKE_TOOLCHAIN_FILE=${{ env.VCPKG_INSTALLATION_ROOT }}/scripts/buildsystems/vcpkg.cmake `
+            -DVCPKG_TARGET_TRIPLET=x64-windows `
+            -DVCPKG_INSTALLED_DIR=${{ env.VCPKG_INSTALLED_DIR }} `
+            -DVCPKG_MANIFEST_FEATURES=test `
             -DCMAKE_BUILD_TYPE=Release `
             -DOPENDHT_C=On `
             -DOPENDHT_TOOLS=On `
@@ -293,6 +318,9 @@ jobs:
         shell: pwsh
         run: |
           cmake --build build --config Release --parallel $([System.Environment]::ProcessorCount)
+          # Copy vcpkg installed libraries to the build directory
+          Copy-Item -Path "${{ env.VCPKG_INSTALLED_DIR }}\x64-windows\lib\*.lib" -Destination "build" -Force
+          Copy-Item -Path "${{ env.VCPKG_INSTALLED_DIR }}\x64-windows\bin\*.dll" -Destination "build" -Force
 
       - name: Package MSI with CPack
         shell: pwsh
