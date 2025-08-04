@@ -314,6 +314,7 @@ jobs:
             -DOPENDHT_PROXY_CLIENT=On `
             -DOPENDHT_HTTP=On `
             -DBUILD_TESTING=Off `
+            -DOPENDHT_CPACK=On `
             -A x64
 
       - name: Build with MSVC
