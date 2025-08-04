@@ -378,10 +378,90 @@ jobs:
           path: build_python/python/dist/*.whl
           retention-days: 7
 
+  build-windows-dhtnode:
+    name: Build Windows Static dhtnode.exe
+    runs-on: windows-latest
+    env:
+      VCPKG_VERSION: "2025.07.25"
+      VCPKG_INSTALLATION_ROOT: "C:\\vcpkg"
+      VCPKG_DISABLE_METRICS: "1"
+      VCPKG_DEFAULT_TRIPLET: x64-windows-static-release
+      VCPKG_INSTALLED_DIR: ${{ github.workspace }}\vcpkg_installed
+      VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}\vcpkg_binary_cache
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Set up MSVC developer environment
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Cache vcpkg static installed packages
+        id: cache-vcpkg-static
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ env.VCPKG_INSTALLED_DIR }}
+            ${{ env.VCPKG_DEFAULT_BINARY_CACHE }}
+          key: ${{ runner.os }}-vcpkg-${{ env.VCPKG_VERSION }}-x64-static-${{ hashFiles('**/vcpkg.json', '**/vcpkg-configuration.json') }}-${{ hashFiles('.github/workflows/windows-build.yml') }}
+          restore-keys: |
+            ${{ runner.os }}-vcpkg-${{ env.VCPKG_VERSION }}-x64-static-${{ hashFiles('**/vcpkg.json', '**/vcpkg-configuration.json') }}
+            ${{ runner.os }}-vcpkg-${{ env.VCPKG_VERSION }}-x64-static-
+
+      - name: Setup vcpkg and install static dependencies
+        if: steps.cache-vcpkg-static.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: |
+          New-Item -Path "${{ env.VCPKG_INSTALLED_DIR }}" -ItemType Directory -Force
+          New-Item -Path "${{ env.VCPKG_DEFAULT_BINARY_CACHE }}" -ItemType Directory -Force
+          vcpkg install `
+            --recurse `
+            --clean-after-build `
+            --triplet=x64-windows-static-release `
+            --x-install-root=${{ env.VCPKG_INSTALLED_DIR }} `
+            --x-feature=test
+
+      - name: Configure CMake for Static Build
+        shell: pwsh
+        run: |
+          mkdir build_static -ErrorAction SilentlyContinue
+          cmake -B build_static `
+            -S . `
+            -DCMAKE_TOOLCHAIN_FILE=${{ env.VCPKG_INSTALLATION_ROOT }}/scripts/buildsystems/vcpkg.cmake `
+            -DVCPKG_TARGET_TRIPLET=x64-windows-static-release `
+            -DVCPKG_INSTALLED_DIR=${{ env.VCPKG_INSTALLED_DIR }} `
+            -DVCPKG_MANIFEST_FEATURES=test `
+            -DCMAKE_BUILD_TYPE=Release `
+            -DBUILD_SHARED_LIBS=OFF `
+            -DOPENDHT_PROXY_CLIENT=ON `
+            -DOPENDHT_PROXY_SERVER=ON `
+            -DOPENDHT_C=ON `
+            -DOPENDHT_TOOLS=ON `
+            -DOPENDHT_PYTHON=OFF `
+            -DOPENDHT_PEER_DISCOVERY=ON `
+            -DOPENDHT_HTTP=ON `
+            -A x64
+
+      - name: Build Static dhtnode
+        shell: pwsh
+        run: |
+          cmake --build build_static --config Release --parallel $([System.Environment]::ProcessorCount)
+
+      - name: Upload Static dhtnode Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: opendht-windows-dhtnode
+          path: |
+            build_static/**/*dhtnode.exe
+          retention-days: 7
+
   create-github-release:
     name: Create GitHub Release
     runs-on: ubuntu-latest
-    needs: [build-windows-msi, build-python-wheels]
+    needs: [build-windows-msi, build-python-wheels, build-windows-dhtnode]
     permissions:
       contents: write
 
@@ -394,6 +474,12 @@ jobs:
         with:
           name: opendht-windows-msi
           path: downloaded_artifacts/windows_msi
+
+      - name: Download Static dhtnode artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: opendht-windows-dhtnode
+          path: downloaded_artifacts/static_dhtnode
 
       - name: Download Linux Wheels artifact
         uses: actions/download-artifact@v4
@@ -409,3 +495,4 @@ jobs:
           files: |
             downloaded_artifacts/linux_wheels/*.whl
             downloaded_artifacts/windows_msi/*.msi
+            downloaded_artifacts/static_dhtnode/**/*dhtnode.exe
