@@ -82,25 +82,21 @@
     },
     {
       "name": "vcpkg_release_full",
-      "inherits": "vcpkg_manifest",
+      "inherits": "vcpkg_release",
       "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Release",
-        "VCPKG_TARGET_TRIPLET": "x64-windows-release",
-        "VCPKG_OVERLAY_TRIPLETS": "x64-windows-release;x64-windows-rel;x64-windows",
         "BUILD_TESTING": false,
         "OPENDHT_PROXY_CLIENT": true,
         "OPENDHT_PROXY_SERVER": true,
+        "OPENDHT_C": true,
         "OPENDHT_CPACK": true
       }
     },
     {
       "name": "vcpkg_release_static",
-      "inherits": "vcpkg_manifest",
+      "inherits": "vcpkg_manifest_static",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
-        "BUILD_SHARED_LIBS": "Off",
         "VCPKG_TARGET_TRIPLET": "x64-windows-static-release",
-        "VCPKG_OVERLAY_TRIPLETS": "x64-windows-static-release;x64-windows-static-rel;x64-windows-static",
         "BUILD_TESTING": false,
         "OPENDHT_CPACK": true,
         "OPENDHT_C": false
@@ -108,12 +104,10 @@
     },
     {
       "name": "vcpkg_release_static_full",
-      "inherits": "vcpkg_manifest",
+      "inherits": "vcpkg_manifest_static",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
-        "BUILD_SHARED_LIBS": "Off",
         "VCPKG_TARGET_TRIPLET": "x64-windows-static-release",
-        "VCPKG_OVERLAY_TRIPLETS": "x64-windows-static-release;x64-windows-static-rel;x64-windows-static",
         "BUILD_TESTING": false,
         "OPENDHT_PROXY_CLIENT": true,
         "OPENDHT_PROXY_SERVER": true,
@@ -171,6 +165,39 @@
         "OPENDHT_PROXY_SERVER": true,
         "OPENDHT_CPACK": true
       }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "default",
+      "configurePreset": "default",
+      "hidden": true
+    },
+    {
+      "name": "unix-make",
+      "inherits": "default",
+      "configurePreset": "unix-make"
+    },
+    {
+      "name": "ninja",
+      "inherits": "default",
+      "configurePreset": "ninja"
+    },
+    {
+      "name": "msvc",
+      "inherits": "default",
+      "configurePreset": "msvc"
+    },
+    {
+      "name": "vcpkg-dev",
+      "inherits": "default",
+      "configurePreset": "vcpkg_manifest"
+    },
+    {
+      "name": "vcpkg-release-static",
+      "inherits": "default",
+      "configurePreset": "vcpkg_release_static_full",
+      "configuration": "Release"
     }
   ]
 }
