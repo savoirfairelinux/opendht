@@ -52,7 +52,7 @@ option (OPENDHT_INDEX "Build DHT indexing feature" OFF)
 option (OPENDHT_TESTS_NETWORK "Enable unit tests that require network access" ON)
 option (OPENDHT_C "Build C bindings" OFF)
 option (OPENDHT_CPACK "Add CPack support" OFF)
-option (OPENDHT_DOWNLOAD_DEPS "Fetch automatically the dependency libraries from the network" OFF)
+option (OPENDHT_DOWNLOAD_DEPS "Fetch automatically the missing dependency libraries from the network" ON)
 
 find_package(Doxygen QUIET)
 if (DOXYGEN_FOUND)
