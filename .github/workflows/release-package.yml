@@ -285,6 +285,8 @@ jobs:
       - name: Setup vcpkg and install dependencies
         if: steps.cache-vcpkg.outputs.cache-hit != 'true'
         run: |
+          New-Item -Path "${{ env.VCPKG_INSTALLED_DIR }}" -ItemType Directory -Force
+          New-Item -Path "${{ env.VCPKG_DEFAULT_BINARY_CACHE }}" -ItemType Directory -Force
           vcpkg install `
             --recurse `
             --clean-after-build `
@@ -346,40 +348,8 @@ jobs:
           path: build/${{ steps.cpack_msi.outputs.msi_path }} # Path to the MSI in the build directory
           retention-days: 7
 
-  build-python-wheels:
-    name: Build Python Wheels
-    runs-on: ubuntu-latest
-    container: ghcr.io/savoirfairelinux/opendht/opendht-deps:latest
-    permissions:
-      contents: read
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: cmake (for Python wheel)
-        run: |
-          mkdir build_python && cd build_python && \
-          cmake .. -DCMAKE_INSTALL_PREFIX=/usr \
-                   -DCMAKE_BUILD_TYPE=Release \
-                   -DBUILD_SHARED_LIBS=On \
-                   -DOPENDHT_PYTHON=On \
-                   -DOPENDHT_C=Off \
-                   -DOPENDHT_PEER_DISCOVERY=On \
-                   -DOPENDHT_TOOLS=Off \
-                   -DOPENDHT_PROXY_SERVER=On \
-                   -DOPENDHT_PROXY_CLIENT=On
-
-      - name: build (for Python wheel)
-        run: cd build_python && make dist
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: opendht-wheels-linux
-          path: build_python/python/dist/*.whl
-          retention-days: 7
-
   build-windows-dhtnode:
-    name: Build Windows Static dhtnode.exe
+    name: Build Windows dhtnode
     runs-on: windows-latest
     env:
       VCPKG_VERSION: "2025.07.25"
@@ -456,6 +426,38 @@ jobs:
           name: opendht-windows-dhtnode
           path: |
             build_static/**/*dhtnode.exe
+          retention-days: 7
+
+  build-python-wheels:
+    name: Build Python Wheels
+    runs-on: ubuntu-latest
+    container: ghcr.io/savoirfairelinux/opendht/opendht-deps:latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: cmake (for Python wheel)
+        run: |
+          mkdir build_python && cd build_python && \
+          cmake .. -DCMAKE_INSTALL_PREFIX=/usr \
+                   -DCMAKE_BUILD_TYPE=Release \
+                   -DBUILD_SHARED_LIBS=On \
+                   -DOPENDHT_PYTHON=On \
+                   -DOPENDHT_C=Off \
+                   -DOPENDHT_PEER_DISCOVERY=On \
+                   -DOPENDHT_TOOLS=Off \
+                   -DOPENDHT_PROXY_SERVER=On \
+                   -DOPENDHT_PROXY_CLIENT=On
+
+      - name: build (for Python wheel)
+        run: cd build_python && make dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: opendht-wheels-linux
+          path: build_python/python/dist/*.whl
           retention-days: 7
 
   create-github-release:
