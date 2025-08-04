@@ -10,7 +10,7 @@ if(NOT CMAKE_VERSION VERSION_LESS 3.30 AND NOT POLICY CMP0167)
 endif()
 
 set (opendht_VERSION_MAJOR 3)
-set (opendht_VERSION_MINOR 4.0)
+set (opendht_VERSION_MINOR 5.0)
 set (opendht_VERSION ${opendht_VERSION_MAJOR}.${opendht_VERSION_MINOR})
 set (PACKAGE_VERSION ${opendht_VERSION})
 set (VERSION "${opendht_VERSION}")
