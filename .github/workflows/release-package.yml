@@ -256,7 +256,7 @@ jobs:
     name: Build Windows MSI Installer
     runs-on: windows-latest
     env:
-      VCPKG_VERSION: "2025.04.09"
+      VCPKG_VERSION: "2025.07.25"
       VCPKG_DISABLE_METRICS: "1"
       VCPKG_DEFAULT_TRIPLET: x64-windows
       VCPKG_ROOT: "C:\\vcpkg"

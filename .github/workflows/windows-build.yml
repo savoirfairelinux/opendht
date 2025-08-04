@@ -7,7 +7,7 @@ on:
     branches: [ main, master ]
 
 env:
-  VCPKG_VERSION: "2025.04.09"
+  VCPKG_VERSION: "2025.07.25"
   VCPKG_INSTALLATION_ROOT: "C:\\vcpkg"
   VCPKG_DISABLE_METRICS: "1"
   VCPKG_INSTALLED_DIR: ${{ github.workspace }}\vcpkg_installed
