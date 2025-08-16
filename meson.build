@@ -1,5 +1,6 @@
 project('opendht', 'c', 'cpp', 'cython',
     version: '3.5.0',
+    meson_version: '>=1.1.0',
     default_options: [
         'cpp_std=c++17',
         'warning_level=3'
@@ -13,7 +14,7 @@ openssl = dependency('openssl', required: get_option('proxy_client'))
 jsoncpp = dependency('jsoncpp', required: get_option('proxy_client'))
 fmt = dependency('fmt')
 llhttp = dependency('llhttp', 'libllhttp', required: get_option('proxy_client'))
-io_uring = dependency('liburing', required: false)
+io_uring = host_machine.system() == 'linux' ? dependency('liburing', required: false) : disabler()
 
 deps = [fmt, gnutls, nettle, msgpack, argon2, openssl, jsoncpp, llhttp, io_uring]
 conf_data = configuration_data()
