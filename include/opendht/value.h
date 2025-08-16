@@ -90,18 +90,19 @@ using StorePolicy = std::function<bool(InfoHash key, std::shared_ptr<Value>& val
 using EditPolicy = std::function<bool(InfoHash key, const std::shared_ptr<Value>& old_val, std::shared_ptr<Value>& new_val, const InfoHash& from, const SockAddr& addr)>;
 
 static constexpr const size_t MAX_VALUE_SIZE {1024 * 64};
+static constexpr const duration DEFAULT_VALUE_EXPIRATION {std::chrono::minutes(10)};
 
 struct ValueType {
     typedef uint16_t Id;
 
-    static bool DEFAULT_STORE_POLICY(InfoHash, const std::shared_ptr<Value>& v, const InfoHash&, const SockAddr&);
-    static bool DEFAULT_EDIT_POLICY(InfoHash, const std::shared_ptr<Value>&, std::shared_ptr<Value>&, const InfoHash&, const SockAddr&) {
+    OPENDHT_PUBLIC static bool DEFAULT_STORE_POLICY(InfoHash, const std::shared_ptr<Value>& v, const InfoHash&, const SockAddr&);
+    static inline bool DEFAULT_EDIT_POLICY(InfoHash, const std::shared_ptr<Value>&, std::shared_ptr<Value>&, const InfoHash&, const SockAddr&) {
         return false;
     }
 
     ValueType () {}
 
-    ValueType (Id id, std::string name, duration e = std::chrono::minutes(10))
+    ValueType (Id id, std::string name, duration e = DEFAULT_VALUE_EXPIRATION)
     : id(id), name(name), expiration(e) {}
 
     ValueType (Id id, std::string name, duration e, StorePolicy sp, EditPolicy ep = DEFAULT_EDIT_POLICY)
@@ -119,7 +120,7 @@ struct ValueType {
 
     Id id {0};
     std::string name {};
-    duration expiration {std::chrono::minutes(10)};
+    duration expiration {DEFAULT_VALUE_EXPIRATION};
     StorePolicy storePolicy {DEFAULT_STORE_POLICY};
     EditPolicy editPolicy {DEFAULT_EDIT_POLICY};
 };
