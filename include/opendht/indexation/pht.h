@@ -266,7 +266,7 @@ private:
 
 using Value = std::pair<InfoHash, dht::Value::Id>;
 struct OPENDHT_PUBLIC IndexEntry : public dht::Value::Serializable<IndexEntry> {
-    static const ValueType TYPE;
+    OPENDHT_PUBLIC static const ValueType TYPE;
 
     virtual void unpackValue(const dht::Value& v) {
         Serializable<IndexEntry>::unpackValue(v);
