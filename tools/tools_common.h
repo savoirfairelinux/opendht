@@ -34,21 +34,21 @@
 
 #include <fmt/ranges.h>
 
-#if !defined(WIN32) && !defined(_WIN32) && !defined(__WIN32__) && !defined(__NT__)
-    #pragma message "Building on UNIX-like platform, linking system getopt"
+#ifndef _WIN32
     #include <getopt.h>
     #include <readline/readline.h>
     #include <readline/history.h>
-#endif
-#ifdef _MSC_VER
-    #pragma message("Building on WIN32 platform using MSVC, linking wingetopt")
-    #include "wingetopt.h"
-#endif
-#if defined(__MINGW32__) || defined (__MINGW64__)
-    #pragma message "Building on MinGW, linking system-wide getopt"
-    #include <getopt.h>
-    #include <readline/readline.h>
-    #include <readline/history.h>
+#else
+    #ifdef _MSC_VER
+        #pragma message("Building on WIN32 platform using MSVC, linking wingetopt")
+        #include "wingetopt.h"
+    #endif
+    #if defined(__MINGW32__) || defined (__MINGW64__)
+        #pragma message "Building on MinGW, linking system-wide getopt"
+        #include <getopt.h>
+        #include <readline/readline.h>
+        #include <readline/history.h>
+    #endif
 #endif
 
 #if defined(_MSC_VER) || defined(__MINGW32__) || defined (__MINGW64__)
