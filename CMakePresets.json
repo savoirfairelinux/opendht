@@ -12,7 +12,34 @@
       "generator": "Unix Makefiles",
       "inherits": "default",
       "cacheVariables": {
-        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+        "CMAKE_EXPORT_COMPILE_COMMANDS": true
+      }
+    },
+    {
+      "name": "unix-make-full",
+      "description": "Unix Makefiles (Full build)",
+      "inherits": "unix-make",
+      "cacheVariables": {
+        "OPENDHT_C": true,
+        "OPENDHT_PROXY_CLIENT": true,
+        "OPENDHT_PROXY_SERVER": true,
+        "OPENDHT_PUSH_NOTIFICATIONS": true,
+        "OPENDHT_PYTHON": true,
+        "OPENDHT_INDEX": true,
+        "BUILD_TESTING": true,
+        "OPENDHT_EXAMPLES": true
+      }
+    },
+    {
+      "name": "unix-make-release",
+      "description": "Unix Makefiles (Release build)",
+      "inherits": "unix-make-full",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "BUILD_SHARED_LIBS": true,
+        "BUILD_TESTING": false,
+        "OPENDHT_SANITIZE": false,
+        "OPENDHT_EXAMPLES": false
       }
     },
     {
@@ -20,11 +47,21 @@
       "generator": "Ninja",
       "inherits": "default",
       "cacheVariables": {
-        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
-        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": true
+      }
+    },
+    {
+      "name": "ninja-release",
+      "inherits": "ninja",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "BUILD_SHARED_LIBS": true,
+        "BUILD_TESTING": false,
+        "OPENDHT_SANITIZE": false,
+        "OPENDHT_CPACK": true,
+        "OPENDHT_C": true,
         "OPENDHT_PROXY_CLIENT": true,
-        "OPENDHT_PROXY_SERVER": true,
-        "OPENDHT_C": true
+        "OPENDHT_PROXY_SERVER": true
       }
     },
     {
@@ -44,7 +81,7 @@
       "inherits": "msvc",
       "cacheVariables": {
         "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
-        "BUILD_SHARED_LIBS": "On",
+        "BUILD_SHARED_LIBS": true,
         "CMAKE_BUILD_TYPE": "Debug",
         "VCPKG_MANIFEST_MODE": true
       }
@@ -53,7 +90,7 @@
       "name": "vcpkg_manifest_static",
       "inherits": "vcpkg_manifest",
       "cacheVariables": {
-        "BUILD_SHARED_LIBS": "Off",
+        "BUILD_SHARED_LIBS": false,
         "VCPKG_TARGET_TRIPLET": "x64-windows-static"
       }
     },
@@ -62,7 +99,7 @@
       "inherits": "msvc",
       "cacheVariables": {
         "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
-        "BUILD_SHARED_LIBS": "On",
+        "BUILD_SHARED_LIBS": true,
         "CMAKE_BUILD_TYPE": "Debug",
         "BUILD_TESTING": true,
         "VCPKG_MANIFEST_MODE": false
@@ -144,7 +181,7 @@
       "inherits": "vcpkg_local",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
-        "BUILD_SHARED_LIBS": "Off",
+        "BUILD_SHARED_LIBS": false,
         "VCPKG_TARGET_TRIPLET": "x64-windows-static-release",
         "VCPKG_OVERLAY_TRIPLETS": "x64-windows-static-release;x64-windows-static-rel;x64-windows-static",
         "BUILD_TESTING": false,
@@ -157,7 +194,7 @@
       "inherits": "vcpkg_local",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
-        "BUILD_SHARED_LIBS": "Off",
+        "BUILD_SHARED_LIBS": false,
         "VCPKG_TARGET_TRIPLET": "x64-windows-static-release",
         "VCPKG_OVERLAY_TRIPLETS": "x64-windows-static-release;x64-windows-static-rel;x64-windows-static",
         "BUILD_TESTING": false,
