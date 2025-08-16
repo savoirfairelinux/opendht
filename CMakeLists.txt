@@ -470,7 +470,7 @@ if (OPENDHT_PEER_DISCOVERY)
     add_definitions(-DOPENDHT_PEER_DISCOVERY)
 endif()
 
-if (OPENDHT_PYTHON)
+if (OPENDHT_PYTHON AND NOT OPENDHT_INDEX)
     message("Indexation enabled since it is required for Python support")
     set(OPENDHT_INDEX ON)
 endif()
