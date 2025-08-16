@@ -6,7 +6,7 @@ configure_file(setup.py.in setup.py)
 configure_file(pyproject.toml pyproject.toml COPYONLY)
 
 add_custom_target(python ALL
-    COMMAND python3 setup.py build
+    COMMAND python3 setup.py build_ext --inplace
     DEPENDS opendht opendht_cpp.pxd opendht.pyx pyproject.toml)
 
 add_custom_target(dist
