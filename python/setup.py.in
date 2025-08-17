@@ -1,9 +1,6 @@
 # Copyright (C) 2014-2025 Savoir-faire Linux Inc.
-# Author: Guillaume Roguez <guillaume.roguez@savoirfairelinux.com>
-# Author: Adrien Béraud <adrien.beraud@savoirfairelinux.com>
 #
 # A Python3 wrapper to access to OpenDHT API
-# This wrapper is written for Cython 0.22
 #
 # This file is part of OpenDHT Python Wrapper.
 #
@@ -36,7 +33,7 @@ setup(name="opendht",
           'Intended Audience :: Developers',
           'Topic :: Software Development :: Libraries :: Python Modules',
           'Topic :: System :: Distributed Computing',
-          'Topic :: System :: Networking'
+          'Topic :: System :: Networking',
           'License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)',
           'Programming Language :: Python :: 3',
           'Programming Language :: Python :: 3.7',
