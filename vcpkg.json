@@ -1,6 +1,6 @@
 {
   "name": "opendht",
-  "version-string": "3.5.0",
+  "version-string": "3.5.1",
   "port-version": 1,
   "description": "OpenDHT is a distributed hash table (DHT) implementation that provides a decentralized and fault-tolerant way to store and retrieve data across a network of nodes.",
   "homepage": "https://opendht.net",
