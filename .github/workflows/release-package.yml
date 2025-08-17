@@ -41,7 +41,7 @@ jobs:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_DEPS }}
 
       - name: Build and push Docker image
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: .
           file: docker/DockerfileDeps
@@ -75,7 +75,7 @@ jobs:
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
 
       - name: Build and push Docker image
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: .
           file: docker/Dockerfile
@@ -108,7 +108,7 @@ jobs:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_DEPS_LLVM }}
 
       - name: Build and push Docker image
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: .
           file: docker/DockerfileDepsLlvm
@@ -142,7 +142,7 @@ jobs:
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_LLVM }}
 
       - name: Build and push Docker image
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: .
           file: docker/DockerfileLlvm
@@ -176,7 +176,7 @@ jobs:
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_DHTNODE }}
 
       - name: Build and push Docker image
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: .
           file: docker/DockerfileDhtnode
@@ -210,7 +210,7 @@ jobs:
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_ALPINE_DEPS }}
 
       - name: Build and push Docker image
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: .
           file: docker/DockerfileDepsAlpine
@@ -244,7 +244,7 @@ jobs:
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_ALPINE }}
 
       - name: Build and push Docker image
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: .
           file: docker/DockerfileAlpine
