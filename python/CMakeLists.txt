@@ -1,19 +1,25 @@
-
 set(CURRENT_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR})
 set(CURRENT_BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR})
 
 configure_file(setup.py.in setup.py)
 configure_file(pyproject.toml pyproject.toml COPYONLY)
 
-add_custom_target(python ALL
-    COMMAND python3 setup.py build_ext --inplace
+find_package(Python3 REQUIRED COMPONENTS Interpreter)
+
+add_custom_target(python
+    COMMAND ${Python3_EXECUTABLE} -m build .
     DEPENDS opendht opendht_cpp.pxd opendht.pyx pyproject.toml)
 
-add_custom_target(dist
-    COMMAND python3 -m build
-    DEPENDS opendht opendht_cpp.pxd opendht.pyx pyproject.toml)
-
-install(CODE "execute_process(COMMAND python3 setup.py install --root=\$ENV{DESTDIR}/ WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})")
+install(CODE [[
+    execute_process(
+        COMMAND "${Python3_EXECUTABLE}" -m pip install --no-deps .
+        WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+        RESULT_VARIABLE _pip_result
+        OUTPUT_FILE "toto"    )
+    if(NOT _pip_result EQUAL 0)
+        message(FATAL_ERROR "pip install failed with code ${_pip_result}")
+    endif()
+]])
 if (OPENDHT_TOOLS)
 	install(PROGRAMS tools/dhtcluster.py DESTINATION ${CMAKE_INSTALL_BINDIR} RENAME dhtcluster)
 endif()

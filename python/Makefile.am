@@ -8,7 +8,7 @@ noinst_HEADERS = \
 PYTHON_INSTALL_RECORD = $(builddir)/install_record.txt
 
 pybuild.stamp:
-	LDFLAGS="-L$(top_srcdir)/src/.libs" $(PYTHON) setup.py build_ext --inplace
+	LDFLAGS="-L$(top_srcdir)/src/.libs" $(PYTHON) -m build .
 	echo stamp > pybuild.stamp
 
 CLEANFILES = pybuild.stamp
@@ -18,7 +18,8 @@ clean-local:
 	rm -rf $(builddir)/build $(builddir)/*.so $(PYTHON_INSTALL_RECORD)
 
 install-exec-local:
-	$(PYTHON) setup.py install --root=$(DESTDIR)/ --record $(PYTHON_INSTALL_RECORD)
+	$(PYTHON) -m pip install --no-deps --no-build-isolation . \
+		--root=$(DESTDIR)/ --prefix=$(prefix)
 	rm -rf $(builddir)/build
 
 if HAVE_PIP
@@ -27,4 +28,3 @@ uninstall-local:
 endif
 
 endif
-
