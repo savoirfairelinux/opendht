@@ -1,4 +1,6 @@
 name: Windows Build
+permissions:
+  contents: read
 
 on: 
   push:
