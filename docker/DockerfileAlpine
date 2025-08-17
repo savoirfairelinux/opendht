@@ -1,11 +1,11 @@
 FROM ghcr.io/savoirfairelinux/opendht/opendht-deps-alpine:latest AS build
 LABEL maintainer="Adrien Béraud <adrien.beraud@savoirfairelinux.com>"
-LABEL org.opencontainers.image.source https://github.com/savoirfairelinux/opendht
+LABEL org.opencontainers.image.source=https://github.com/savoirfairelinux/opendht
 
 COPY . opendht
 
 RUN mkdir /install
-ENV DESTDIR /install
+ENV DESTDIR=/install
 
 RUN cd opendht && mkdir build && cd build \
 	&& cmake .. -DCMAKE_INSTALL_PREFIX=/usr \

@@ -1,6 +1,6 @@
 FROM ubuntu:20.04
 LABEL maintainer="Adrien Béraud <adrien.beraud@savoirfairelinux.com>"
-LABEL org.opencontainers.image.source https://github.com/savoirfairelinux/opendht
+LABEL org.opencontainers.image.source=https://github.com/savoirfairelinux/opendht
 
 RUN apt-get update && apt-get install -y \
         dialog apt-utils \

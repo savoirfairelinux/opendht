@@ -1,6 +1,6 @@
 FROM alpine:3.22
 LABEL maintainer="Adrien Béraud <adrien.beraud@savoirfairelinux.com>"
-LABEL org.opencontainers.image.source https://github.com/savoirfairelinux/opendht
+LABEL org.opencontainers.image.source=https://github.com/savoirfairelinux/opendht
 
 RUN apk add --no-cache \
         build-base cmake ninja git wget \
