@@ -293,7 +293,10 @@ else () # MSVC
     include_directories(src/compat/msvc)
     include_directories(src/compat/win32)
     
-    find_package(unofficial-argon2 CONFIG REQUIRED)
+    find_package(argon2 CONFIG QUIET)
+    if (NOT argon2_FOUND)
+        find_package(unofficial-argon2 CONFIG REQUIRED)
+    endif()
     include_directories(${ARGON2_INCLUDEDIR})
     set(argon2_lib ", libargon2")
 
