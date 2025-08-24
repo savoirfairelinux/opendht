@@ -4,10 +4,10 @@ build-backend = "setuptools.build_meta"
 
 [tool.cibuildwheel]
 build = [
-  'cp3{9,10,11,12}-manylinux_x86_64',
-  'cp3{10,11,12}-manylinux_aarch64',
-  'cp3{11,12}-macosx_x86_64',
-  'cp3{11,12}-macosx_arm64',
+  'cp3{9,10,11,12,13}-manylinux_x86_64',
+  'cp3{10,11,12,13}-manylinux_aarch64',
+  'cp3{11,12,13}-macosx_x86_64',
+  'cp3{11,12,13}-macosx_arm64',
 ]
 
 [tool.cibuildwheel.linux]
