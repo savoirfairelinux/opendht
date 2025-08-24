@@ -1,3 +1,40 @@
 [build-system]
 requires = ["setuptools", "wheel", "Cython"]
 build-backend = "setuptools.build_meta"
+
+[tool.cibuildwheel]
+build = [
+  'cp3{9,10,11,12}-manylinux_x86_64',
+  'cp3{10,11,12}-manylinux_aarch64',
+  'cp3{11,12}-macosx_x86_64',
+  'cp3{11,12}-macosx_arm64',
+]
+
+[tool.cibuildwheel.linux]
+manylinux-x86_64-image = 'manylinux_2_34'
+manylinux-aarch64-image = 'manylinux_2_34'
+before-all = [
+  'dnf install -y epel-release',
+  'dnf install -y gnutls-devel msgpack-devel readline-devel libargon2-devel asio-devel fmt-devel',
+]
+before-build = [
+  'pip install cython',
+  'cmake -DOPENDHT_PYTHON=ON -DOPENDHT_TOOLS=OFF -DBUILD_TESTING=OFF -DCMAKE_BUILD_TYPE=Release .',
+  'cmake --build .',
+]
+# Point auditwheel to libopendht.so.* in the current dir when repairing
+repair-wheel-command = 'LD_LIBRARY_PATH=$PWD auditwheel repair -w {dest_dir} {wheel}'
+
+[tool.cibuildwheel.macos]
+environment = { MACOSX_DEPLOYMENT_TARGET = "15.0" }
+before-all = [
+  'brew update',
+  'brew install gnutls msgpack-cxx readline argon2 asio fmt',
+]
+before-build = [
+  'pip install cython delocate',
+  'cmake -DOPENDHT_PYTHON=ON -DOPENDHT_TOOLS=OFF -DBUILD_TESTING=OFF -DCMAKE_BUILD_TYPE=Release .',
+  'cmake --build .',
+]
+# Bundle dependent dylibs into the wheel; ensure local libopendht.dylib is found
+repair-wheel-command = 'DYLD_LIBRARY_PATH=$PWD delocate-wheel -w {dest_dir} {wheel}'
