@@ -14,13 +14,19 @@
 # along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 from setuptools import setup, Extension
-from Cython.Distutils import build_ext
+import os
+
+with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'README.md'), 'r', encoding='utf-8') as f:
+    long_description = f.read()
 
 setup(name="opendht",
       version="@PACKAGE_VERSION@",
-      description="Python wrapper for OpenDHT",
+      description="OpenDHT: A lightweight Distributed Hash Table",
+      long_description=long_description,
+      long_description_content_type="text/markdown",
+      icon="opendht_icon.png",
       url='https://github.com/savoirfairelinux/opendht',
-      author="Adrien Béraud, Guillaume Roguez, Simon Désaulniers",
+      author="Adrien Beraud <adrien.beraud@savoirfairelinux.com>",
       license="GPL-3.0-or-later",
       classifiers=[
           'Development Status :: 5 - Production/Stable',
@@ -29,7 +35,7 @@ setup(name="opendht",
           'Topic :: System :: Distributed Computing',
           'Topic :: System :: Networking',
           'Programming Language :: Python :: 3',
-          'Programming Language :: Python :: 3.7',
+          'Programming Language :: Python :: 3.9',
       ],
       ext_modules = [Extension(
           "opendht",
