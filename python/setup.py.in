@@ -14,7 +14,6 @@
 # along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 from setuptools import setup, Extension
-from Cython.Build import cythonize
 from Cython.Distutils import build_ext
 
 setup(name="opendht",
@@ -32,8 +31,7 @@ setup(name="opendht",
           'Programming Language :: Python :: 3',
           'Programming Language :: Python :: 3.7',
       ],
-      cmdclass = { 'build_ext' : build_ext },
-      ext_modules = cythonize(Extension(
+      ext_modules = [Extension(
           "opendht",
           ["@CURRENT_SOURCE_DIR@/opendht.pyx"],
           language="c++",
@@ -42,5 +40,5 @@ setup(name="opendht",
           libraries=["opendht"],
           include_dirs = ['@PROJECT_SOURCE_DIR@/include'],
           library_dirs = ['@CURRENT_BINARY_DIR@', '@PROJECT_BINARY_DIR@']
-      ))
+      )]
 )
