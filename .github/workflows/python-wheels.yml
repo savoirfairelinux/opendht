@@ -1,5 +1,8 @@
 name: Python Package
 
+permissions:
+  contents: read
+
 on:
   release:
     types: [published]
