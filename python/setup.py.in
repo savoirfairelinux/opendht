@@ -38,7 +38,7 @@ setup(name="opendht",
           extra_compile_args=["-std=c++17"],
           extra_link_args=["-std=c++17"],
           libraries=["opendht"],
-          include_dirs = ['@PROJECT_SOURCE_DIR@/include'],
-          library_dirs = ['@CURRENT_BINARY_DIR@', '@PROJECT_BINARY_DIR@']
+          include_dirs = ['@PROJECT_SOURCE_DIR@/include'@OPENDHT_PYTHON_INCLUDE_DIRS@],
+          library_dirs = ['@CURRENT_BINARY_DIR@', '@PROJECT_BINARY_DIR@'@OPENDHT_PYTHON_LIBRARY_DIRS@]
       )]
 )
