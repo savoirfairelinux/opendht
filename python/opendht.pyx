@@ -752,6 +752,28 @@ cdef class DhtRunner(_WithID):
                     lock.wait()
             return ok
 
+    def putEncrypted(self, InfoHash key, PkId to, Value val, done_cb=None, bool permanent=False):
+        if done_cb:
+            cb_obj = {'done':done_cb}
+            ref.Py_INCREF(cb_obj)
+            self.thisptr.get().putEncrypted(key._infohash, to._pkid, val._value, cpp.bindDoneCb(done_callback, <void*>cb_obj), permanent)
+        else:
+            lock = threading.Condition()
+            pending = 0
+            ok = False
+            def tmp_done(ok_ret, nodes):
+                nonlocal pending, ok, lock
+                with lock:
+                    ok = ok_ret
+                    pending -= 1
+                    lock.notify()
+            with lock:
+                pending += 1
+                self.putEncrypted(key, to, val, done_cb=tmp_done, permanent=permanent)
+                while pending > 0:
+                    lock.wait()
+            return ok
+
     def putEncrypted(self, InfoHash key, PublicKey to, Value val, done_cb=None, bool permanent=False):
         if done_cb:
             cb_obj = {'done':done_cb}

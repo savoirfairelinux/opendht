@@ -291,6 +291,7 @@ cdef extern from "opendht/dhtrunner.h" namespace "dht":
         void put(InfoHash key, shared_ptr[Value] val, DoneCallback done_cb, time_point created, bool permanent)
         void putSigned(InfoHash key, shared_ptr[Value] val, DoneCallback done_cb, bool permanent) 
         void putEncrypted(InfoHash key, InfoHash to, shared_ptr[Value] val, DoneCallback done_cb, bool permanent)
+        void putEncrypted(InfoHash key, PkId to, shared_ptr[Value] val, DoneCallback done_cb, bool permanent)
         void putEncrypted(InfoHash key, shared_ptr[PublicKey] to, shared_ptr[Value] val, DoneCallback done_cb, bool permanent)
         void cancelPut(InfoHash key, shared_ptr[Value] val)
         ListenToken listen(InfoHash key, ValueCallback get_cb)
