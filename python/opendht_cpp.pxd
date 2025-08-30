@@ -72,6 +72,24 @@ cdef extern from "opendht/infohash.h" namespace "dht":
         bool operator==(InfoHash) const
         bool operator<(InfoHash) const
         bool operator bool() const
+    
+    cdef cppclass PkId:
+        PkId() except +
+        PkId(string s) except +
+        string toString() const
+        bool getBit(unsigned bit) const
+        void setBit(unsigned bit, bool b)
+        double toFloat() const
+        @staticmethod
+        unsigned commonBits(PkId a, PkId b)
+        @staticmethod
+        PkId get(string s)
+        @staticmethod
+        PkId getRandom()
+        bool operator==(PkId) const
+        bool operator<(PkId) const
+        bool operator bool() const
+
 
 cdef extern from "opendht/sockaddr.h" namespace "dht":
     cdef cppclass SockAddr:

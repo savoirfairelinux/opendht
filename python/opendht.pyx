@@ -129,6 +129,44 @@ cdef class InfoHash(_WithID):
         h._infohash = cpp.InfoHash.getRandom()
         return h
 
+cdef class PkId(_WithID):
+    cdef cpp.PkId _pkid
+    def __cinit__(self, bytes str=b''):
+        self._pkid = cpp.PkId(str) if str else cpp.PkId()
+    def __bool__(PkId self):
+        return <bool>self._pkid
+    def __richcmp__(PkId self, PkId other, int op):
+        if op == 0:
+            return self._pkid < other._pkid
+        if op == 1:
+            return self._pkid < other._pkid or self._pkid == other._pkid
+        if op == 2:
+            return self._pkid == other._pkid
+        return NotImplemented
+    def getBit(PkId self, bit):
+        return self._pkid.getBit(bit)
+    def setBit(PkId self, bit, b):
+        self._pkid.setBit(bit, b)
+    def getId(PkId self):
+        return self
+    def toString(PkId self):
+        return self._pkid.toString()
+    def toFloat(PkId self):
+        return self._pkid.toFloat()
+    @staticmethod
+    def commonBits(PkId a, PkId b):
+        return cpp.PkId.commonBits(a._pkid, b._pkid)
+    @staticmethod
+    def get(str key):
+        h = PkId()
+        h._pkid = cpp.PkId.get(key.encode())
+        return h
+    @staticmethod
+    def getRandom():
+        h = PkId()
+        h._pkid = cpp.PkId.getRandom()
+        return h
+
 cdef class SockAddr(object):
     cdef cpp.SockAddr _addr
     def toString(SockAddr self):
