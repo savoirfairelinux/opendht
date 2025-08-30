@@ -281,36 +281,40 @@ cdef class Value(object):
 
     def __str__(self):
         return self._value.get().toString().decode()
-    property owner:
-        def __get__(self):
-            h = InfoHash()
-            h._infohash = self._value.get().owner.get().getId()
-            return h
-    property recipient:
-        def __get__(self):
-            h = InfoHash()
-            h._infohash = self._value.get().recipient
-            return h
-        def __set__(self, InfoHash h):
-            self._value.get().recipient = h._infohash
-    property data:
-        def __get__(self):
-            return string(<char*>self._value.get().data.data(), self._value.get().data.size())
-        def __set__(self, bytes value):
-            self._value.get().data = value
-    property user_type:
-        def __get__(self):
-            return self._value.get().user_type.decode()
-        def __set__(self, str t):
-            self._value.get().user_type = t.encode()
-    property id:
-        def __get__(self):
-            return self._value.get().id
-        def __set__(self, cpp.uint64_t value):
-            self._value.get().id = value
-    property size:
-        def __get__(self):
-            return self._value.get().size()
+    @property
+    def owner(self):
+        h = InfoHash()
+        h._infohash = self._value.get().owner.get().getId()
+        return h
+    @property
+    def recipient(self):
+        h = InfoHash()
+        h._infohash = self._value.get().recipient
+        return h
+    @recipient.setter
+    def recipient(self, InfoHash h):
+        self._value.get().recipient = h._infohash
+    @property
+    def data(self):
+        return string(<char*>self._value.get().data.data(), self._value.get().data.size())
+    @data.setter
+    def data(self, bytes value):
+        self._value.get().data = value
+    @property
+    def user_type(self):
+        return self._value.get().user_type.decode()
+    @user_type.setter
+    def user_type(self, str t):
+        self._value.get().user_type = t.encode()
+    @property
+    def id(self):
+        return self._value.get().id
+    @id.setter
+    def id(self, cpp.uint64_t value):
+        self._value.get().id = value
+    @property
+    def size(self):
+        return self._value.get().size()
 
 cdef class ValueType(object):
     cdef cpp.ValueType * _value
@@ -439,11 +443,11 @@ cdef class Certificate(_WithID):
         self._cert.get().revoke(deref(k._key.get()), deref(c._cert.get()));
     def __bytes__(self):
         return self._cert.get().toString() if self._cert else b''
-    property issuer:
-        def __get__(self):
-            c = Certificate()
-            c._cert = self._cert.get().issuer
-            return c;
+    @property
+    def issuer(self):
+        c = Certificate()
+        c._cert = self._cert.get().issuer
+        return c
     @staticmethod
     def generate(PrivateKey k, str name, Identity i = Identity(), bool is_ca = False):
         c = Certificate()
@@ -485,21 +489,21 @@ cdef class Identity(object):
         i = Identity()
         i._id = cpp.generateIdentity(name.encode(), ca._id, bits)
         return i
-    property publickey:
-        def __get__(self):
-            k = PublicKey()
-            k._key = self._id.first.get().getSharedPublicKey()
-            return k
-    property certificate:
-        def __get__(self):
-            c = Certificate()
-            c._cert = self._id.second
-            return c
-    property key:
-        def __get__(self):
-            k = PrivateKey()
-            k._key = self._id.first
-            return k
+    @property
+    def publickey(self):
+        k = PublicKey()
+        k._key = self._id.first.get().getSharedPublicKey()
+        return k
+    @property
+    def certificate(self):
+        c = Certificate()
+        c._cert = self._id.second
+        return c
+    @property
+    def key(self):
+        k = PrivateKey()
+        k._key = self._id.first
+        return k
 
 def aesEncrypt(bytes data, str password) -> bytes :
     cdef size_t d_len = len(data)
@@ -834,9 +838,9 @@ cdef class Pht(object):
         for kk, size in key_spec.items():
             cpp_key_spec[bytes(kk, 'utf-8')] = size
         self.thisptr = new cpp.Pht(name, cpp_key_spec, dht.thisptr)
-    property MAX_NODE_ENTRY_COUNT:
-        def __get__(self):
-            return cpp.PHT_MAX_NODE_ENTRY_COUNT
+    @property
+    def MAX_NODE_ENTRY_COUNT(self):
+        return cpp.PHT_MAX_NODE_ENTRY_COUNT
     def lookup(self, key, lookup_cb=None, done_cb=None):
         """Query the Index with a specified key.
 

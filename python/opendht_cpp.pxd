@@ -13,17 +13,17 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-from libc.stdint cimport *
+from libc.stdint cimport uint8_t, uint16_t, uint32_t, uint64_t
 from libcpp cimport bool, nullptr_t, nullptr
 from libcpp.string cimport string
 from libcpp.vector cimport vector
 from libcpp.utility cimport pair
 from libcpp.map cimport map
 from libcpp.memory cimport shared_ptr, make_shared
-from libc.string cimport const_char, const_uchar
+from libc.string cimport const_char
 
 ctypedef uint16_t in_port_t
-ctypedef unsigned short int sa_family_t;
+ctypedef unsigned short int sa_family_t
 
 cdef extern from "<chrono>" namespace "std::chrono" nogil:
     cdef cppclass duration[ulong]:
