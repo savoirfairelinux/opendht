@@ -403,6 +403,10 @@ cdef class PublicKey(_WithID):
         h = InfoHash()
         h._infohash = self._key.get().getId()
         return h
+    def getLongId(self):
+        id = PkId()
+        id._pkid = self._key.get().getLongId()
+        return id
     def encrypt(self, bytes dat):
         cdef size_t d_len = len(dat)
         cdef cpp.uint8_t* d_ptr = <cpp.uint8_t*>dat
@@ -423,6 +427,10 @@ cdef class Certificate(_WithID):
         if self._cert:
             h._infohash = self._cert.get().getId()
         return h
+    def getLongId(self):
+        id = PkId()
+        id._pkid = self._cert.get().getLongId()
+        return id
     def toString(self):
         return self._cert.get().toString().decode()
     def getName(self):
@@ -555,6 +563,16 @@ cdef class DhtRunner(_WithID):
         if self.thisptr:
             h._infohash = self.thisptr.get().getId()
         return h
+    def getLongId(self):
+        h = PkId()
+        if self.thisptr:
+            h._pkid = self.thisptr.get().getPublicKey().get().getLongId()
+        return h
+    def getPublicKey(self):
+        pk = PublicKey()
+        if self.thisptr:
+            pk._key = self.thisptr.get().getPublicKey()
+        return pk
     def getNodeId(self):
         return self.thisptr.get().getNodeId().toString()
     def ping(self, SockAddr addr, done_cb=None):

@@ -125,12 +125,14 @@ cdef extern from "opendht/crypto.h" namespace "dht::crypto":
     cdef cppclass PublicKey:
         PublicKey()
         InfoHash getId() const
+        PkId getLongId() const
         Blob encrypt(Blob data) const
 
     cdef cppclass Certificate:
         Certificate()
         Certificate(string pem)
         InfoHash getId() const
+        PkId getLongId() const
         string toString() const
         string getName() const
         void revoke(PrivateKey key, Certificate cert)
@@ -271,6 +273,7 @@ cdef extern from "opendht/dhtrunner.h" namespace "dht":
             SockAddr bind6
 
         InfoHash getId() const
+        shared_ptr[PublicKey] getPublicKey() const
         InfoHash getNodeId() const
         void bootstrap(const_char*, const_char*)
         void bootstrap(const SockAddr&, DoneCallbackSimple done_cb)
