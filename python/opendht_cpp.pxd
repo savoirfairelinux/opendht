@@ -117,6 +117,7 @@ cdef extern from "opendht/crypto.h" namespace "dht::crypto":
         PrivateKey()
         shared_ptr[PublicKey] getSharedPublicKey() const
         Blob decrypt(Blob data) const
+        Blob sign(Blob data) const
         @staticmethod
         PrivateKey generate()
         @staticmethod
@@ -127,6 +128,8 @@ cdef extern from "opendht/crypto.h" namespace "dht::crypto":
         InfoHash getId() const
         PkId getLongId() const
         Blob encrypt(Blob data) const
+        bool checkSignature(Blob data, Blob signature) const
+        bool operator==(PublicKey) const
 
     cdef cppclass Certificate:
         Certificate()

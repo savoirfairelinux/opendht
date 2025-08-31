@@ -377,24 +377,28 @@ cdef class NodeSet(object):
 
 cdef class PrivateKey(_WithPk):
     cdef shared_ptr[cpp.PrivateKey] _key
+
     def getId(self) -> InfoHash:
         if not self._key:
             raise ValueError("PrivateKey is not initialized")
         h = InfoHash()
         h._infohash = self._key.get().getSharedPublicKey().get().getId()
         return h
+
     def getLongId(self) -> PkId:
         if not self._key:
             raise ValueError("PrivateKey is not initialized")
         id = PkId()
         id._pkid = self._key.get().getSharedPublicKey().get().getLongId()
         return id
+
     def getPublicKey(self) -> PublicKey:
         if not self._key:
             raise ValueError("PrivateKey is not initialized")
         pk = PublicKey()
         pk._key = self._key.get().getSharedPublicKey()
         return pk
+
     def decrypt(self, bytes dat) -> bytes:
         cdef size_t d_len = len(dat)
         cdef cpp.uint8_t* d_ptr = <cpp.uint8_t*>dat
@@ -404,6 +408,19 @@ cdef class PrivateKey(_WithPk):
         cdef char* decrypted_c_str = <char *>decrypted.data()
         cdef Py_ssize_t length = decrypted.size()
         return decrypted_c_str[:length]
+
+    def sign(self, bytes dat) -> bytes:
+        if not self._key:
+            raise ValueError("PrivateKey is not initialized")
+        cdef size_t d_len = len(dat)
+        cdef cpp.uint8_t* d_ptr = <cpp.uint8_t*>dat
+        cdef cpp.Blob indat
+        indat.assign(d_ptr, <cpp.uint8_t*>(d_ptr + d_len))
+        cdef cpp.Blob signature = self._key.get().sign(indat)
+        cdef char* signature_c_str = <char *>signature.data()
+        cdef Py_ssize_t length = signature.size()
+        return signature_c_str[:length]
+
     @staticmethod
     def generate() -> PrivateKey:
         k = PrivateKey()
@@ -423,13 +440,15 @@ cdef class PublicKey(_WithPk):
         h = InfoHash()
         h._infohash = self._key.get().getId()
         return h
+
     def getLongId(self) -> PkId:
         if not self._key:
             raise ValueError("PublicKey is not initialized")
         id = PkId()
         id._pkid = self._key.get().getLongId()
         return id
-    def encrypt(self, bytes dat):
+
+    def encrypt(self, bytes dat) -> bytes:
         if not self._key:
             raise ValueError("PublicKey is not initialized")
         cdef size_t d_len = len(dat)
@@ -440,6 +459,19 @@ cdef class PublicKey(_WithPk):
         cdef char* encrypted_c_str = <char *>encrypted.data()
         cdef Py_ssize_t length = encrypted.size()
         return encrypted_c_str[:length]
+
+    def checkSignature(self, bytes dat, bytes signature) -> bool:
+        if not self._key:
+            raise ValueError("PublicKey is not initialized")
+        cdef size_t d_len = len(dat)
+        cdef cpp.uint8_t* d_ptr = <cpp.uint8_t*>dat
+        cdef cpp.Blob indat
+        indat.assign(d_ptr, <cpp.uint8_t*>(d_ptr + d_len))
+        cdef size_t s_len = len(signature)
+        cdef cpp.uint8_t* s_ptr = <cpp.uint8_t*>signature
+        cdef cpp.Blob sig
+        sig.assign(s_ptr, <cpp.uint8_t*>(s_ptr + s_len))
+        return self._key.get().checkSignature(indat, sig)
 
 cdef class Certificate(_WithPk):
     cdef shared_ptr[cpp.Certificate] _cert
