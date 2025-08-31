@@ -1,6 +1,6 @@
 # OpenDHT
 
-OpenDHT is a lightweight C++17 Distributed Hash Table implementation providing an easy to use distributed in-memory data store.
+OpenDHT is a lightweight Distributed Hash Table implementation providing an easy to use distributed in-memory data store.
 
 ## Key Features
 
@@ -8,7 +8,7 @@ OpenDHT is a lightweight C++17 Distributed Hash Table implementation providing a
 * High resilience to network disruption
 * Public key cryptography layer providing optional data signature and encryption
 * IPv4 and IPv6 support
-* Clean and powerful C++17 map API with Python 3 bindings
+* Python 3 bindings
 * REST API with optional HTTP client+server with push notification support
 
 Every node in the network can read and write values to the store. Values are distributed over the network with redundancy.
@@ -35,7 +35,7 @@ for r in results:
 
 ## Documentation
 
-For more information, examples, and documentation, visit: https://opendht.net
+For more information, examples and documentation, or to repport issues, visit: https://opendht.net
 
 ## License
 
