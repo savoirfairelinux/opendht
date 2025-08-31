@@ -26,7 +26,6 @@ from libcpp.utility cimport pair
 from libcpp.string cimport string
 from libcpp.memory cimport shared_ptr
 
-from cython.parallel import parallel, prange
 from cython.operator cimport dereference as deref, preincrement as inc, predecrement as dec
 from cpython cimport ref
 from datetime import timedelta
@@ -91,6 +90,12 @@ cdef class _WithID(object):
     def __str__(self):
         return self.getId().toString().decode()
 
+cdef class _WithPk(object):
+    def __repr__(self):
+        return "<%s '%s'>" % (self.__class__.__name__, str(self))
+    def __str__(self):
+        return self.getLongId().toString().decode()
+
 cdef class InfoHash(_WithID):
     cdef cpp.InfoHash _infohash
     def __cinit__(self, bytes str=b''):
@@ -116,20 +121,20 @@ cdef class InfoHash(_WithID):
     def toFloat(InfoHash self):
         return self._infohash.toFloat()
     @staticmethod
-    def commonBits(InfoHash a, InfoHash b):
+    def commonBits(InfoHash a, InfoHash b) -> int:
         return cpp.InfoHash.commonBits(a._infohash, b._infohash)
     @staticmethod
-    def get(str key):
+    def get(str key) -> InfoHash:
         h = InfoHash()
         h._infohash = cpp.InfoHash.get(key.encode())
         return h
     @staticmethod
-    def getRandom():
+    def getRandom() -> InfoHash:
         h = InfoHash()
         h._infohash = cpp.InfoHash.getRandom()
         return h
 
-cdef class PkId(_WithID):
+cdef class PkId(_WithPk):
     cdef cpp.PkId _pkid
     def __cinit__(self, bytes str=b''):
         self._pkid = cpp.PkId(str) if str else cpp.PkId()
@@ -147,22 +152,22 @@ cdef class PkId(_WithID):
         return self._pkid.getBit(bit)
     def setBit(PkId self, bit, b):
         self._pkid.setBit(bit, b)
-    def getId(PkId self):
+    def getLongId(PkId self):
         return self
     def toString(PkId self):
         return self._pkid.toString()
-    def toFloat(PkId self):
+    def toFloat(PkId self) -> float:
         return self._pkid.toFloat()
     @staticmethod
-    def commonBits(PkId a, PkId b):
+    def commonBits(PkId a, PkId b) -> int:
         return cpp.PkId.commonBits(a._pkid, b._pkid)
     @staticmethod
-    def get(str key):
+    def get(str key) -> PkId:
         h = PkId()
         h._pkid = cpp.PkId.get(key.encode())
         return h
     @staticmethod
-    def getRandom():
+    def getRandom() -> PkId:
         h = PkId()
         h._pkid = cpp.PkId.getRandom()
         return h
@@ -256,7 +261,7 @@ cdef class Where(object):
             self._where = cpp.Where()
     def __str__(self):
         return self._where.toString().decode()
-    def isSatisfiedBy(self, Where where):
+    def isSatisfiedBy(self, Where where) -> bool:
         return self._where.isSatisfiedBy(where._where)
     def id(self, cpp.uint64_t id):
         self._where.id(id)
@@ -278,16 +283,15 @@ cdef class Value(object):
     cdef shared_ptr[cpp.Value] _value
     def __init__(self, bytes val=b'', cpp.uint16_t id=0):
         self._value.reset(new cpp.Value(id, val, len(val)))
-
     def __str__(self):
         return self._value.get().toString().decode()
     @property
-    def owner(self):
-        h = InfoHash()
-        h._infohash = self._value.get().owner.get().getId()
+    def owner(self) -> PublicKey:
+        h = PublicKey()
+        h._key = self._value.get().owner
         return h
     @property
-    def recipient(self):
+    def recipient(self) -> InfoHash:
         h = InfoHash()
         h._infohash = self._value.get().recipient
         return h
@@ -295,13 +299,15 @@ cdef class Value(object):
     def recipient(self, InfoHash h):
         self._value.get().recipient = h._infohash
     @property
-    def data(self):
-        return string(<char*>self._value.get().data.data(), self._value.get().data.size())
+    def data(self) -> bytes:
+        cdef char* data_ptr = <char*>self._value.get().data.data()
+        cdef int data_size = self._value.get().data.size()
+        return data_ptr[:data_size]
     @data.setter
     def data(self, bytes value):
         self._value.get().data = value
     @property
-    def user_type(self):
+    def user_type(self) -> str:
         return self._value.get().user_type.decode()
     @user_type.setter
     def user_type(self, str t):
@@ -313,7 +319,7 @@ cdef class Value(object):
     def id(self, cpp.uint64_t value):
         self._value.get().id = value
     @property
-    def size(self):
+    def size(self) -> int:
         return self._value.get().size()
 
 cdef class ValueType(object):
@@ -369,17 +375,27 @@ cdef class NodeSet(object):
     def __iter__(self):
         return NodeSetIter(self)
 
-cdef class PrivateKey(_WithID):
+cdef class PrivateKey(_WithPk):
     cdef shared_ptr[cpp.PrivateKey] _key
-    def getId(self):
+    def getId(self) -> InfoHash:
+        if not self._key:
+            raise ValueError("PrivateKey is not initialized")
         h = InfoHash()
         h._infohash = self._key.get().getSharedPublicKey().get().getId()
         return h
-    def getPublicKey(self):
+    def getLongId(self) -> PkId:
+        if not self._key:
+            raise ValueError("PrivateKey is not initialized")
+        id = PkId()
+        id._pkid = self._key.get().getSharedPublicKey().get().getLongId()
+        return id
+    def getPublicKey(self) -> PublicKey:
+        if not self._key:
+            raise ValueError("PrivateKey is not initialized")
         pk = PublicKey()
         pk._key = self._key.get().getSharedPublicKey()
         return pk
-    def decrypt(self, bytes dat):
+    def decrypt(self, bytes dat) -> bytes:
         cdef size_t d_len = len(dat)
         cdef cpp.uint8_t* d_ptr = <cpp.uint8_t*>dat
         cdef cpp.Blob indat
@@ -388,30 +404,34 @@ cdef class PrivateKey(_WithID):
         cdef char* decrypted_c_str = <char *>decrypted.data()
         cdef Py_ssize_t length = decrypted.size()
         return decrypted_c_str[:length]
-    def __str__(self):
-        return self.getId().toString().decode()
     @staticmethod
-    def generate():
+    def generate() -> PrivateKey:
         k = PrivateKey()
         k._key = cpp.make_shared[cpp.PrivateKey](cpp.PrivateKey.generate())
         return k
     @staticmethod
-    def generateEC():
+    def generateEC() -> PrivateKey:
         k = PrivateKey()
         k._key = cpp.make_shared[cpp.PrivateKey](cpp.PrivateKey.generateEC())
         return k
 
-cdef class PublicKey(_WithID):
+cdef class PublicKey(_WithPk):
     cdef cpp.shared_ptr[cpp.PublicKey] _key
-    def getId(self):
+    def getId(self) -> InfoHash:
+        if not self._key:
+            raise ValueError("PublicKey is not initialized")
         h = InfoHash()
         h._infohash = self._key.get().getId()
         return h
-    def getLongId(self):
+    def getLongId(self) -> PkId:
+        if not self._key:
+            raise ValueError("PublicKey is not initialized")
         id = PkId()
         id._pkid = self._key.get().getLongId()
         return id
     def encrypt(self, bytes dat):
+        if not self._key:
+            raise ValueError("PublicKey is not initialized")
         cdef size_t d_len = len(dat)
         cdef cpp.uint8_t* d_ptr = <cpp.uint8_t*>dat
         cdef cpp.Blob indat
@@ -421,33 +441,40 @@ cdef class PublicKey(_WithID):
         cdef Py_ssize_t length = encrypted.size()
         return encrypted_c_str[:length]
 
-cdef class Certificate(_WithID):
+cdef class Certificate(_WithPk):
     cdef shared_ptr[cpp.Certificate] _cert
     def __init__(self, bytes dat = None):
         if dat:
             self._cert = cpp.make_shared[cpp.Certificate](<cpp.string>dat)
-    def getId(self):
+    def getId(self) -> InfoHash:
+        if not self._cert:
+            raise ValueError("Certificate is not initialized")
         h = InfoHash()
-        if self._cert:
-            h._infohash = self._cert.get().getId()
+        h._infohash = self._cert.get().getId()
         return h
-    def getLongId(self):
+    def getLongId(self) -> PkId:
+        if not self._cert:
+            raise ValueError("Certificate is not initialized")
         id = PkId()
         id._pkid = self._cert.get().getLongId()
         return id
-    def toString(self):
+    def toString(self) -> str:
+        if not self._cert:
+            return ""
         return self._cert.get().toString().decode()
-    def getName(self):
-        return self._cert.get().getName()
+    def getName(self) -> str:
+        return self._cert.get().getName().decode()
     def revoke(self, PrivateKey k, Certificate c):
         self._cert.get().revoke(deref(k._key.get()), deref(c._cert.get()));
     def __bytes__(self):
-        return self._cert.get().toString() if self._cert else b''
+        return self._cert.get().toString().encode() if self._cert else b''
     @property
-    def issuer(self):
-        c = Certificate()
-        c._cert = self._cert.get().issuer
-        return c
+    def issuer(self) -> Certificate|None:
+        if self._cert and self._cert.get().issuer:
+            c = Certificate()
+            c._cert = self._cert.get().issuer
+            return c
+        return None
     @staticmethod
     def generate(PrivateKey k, str name, Identity i = Identity(), bool is_ca = False):
         c = Certificate()
@@ -490,17 +517,23 @@ cdef class Identity(object):
         i._id = cpp.generateIdentity(name.encode(), ca._id, bits)
         return i
     @property
-    def publickey(self):
+    def publickey(self) -> PublicKey|None:
+        if not self._id.first:
+            return None
         k = PublicKey()
         k._key = self._id.first.get().getSharedPublicKey()
         return k
     @property
-    def certificate(self):
+    def certificate(self) -> Certificate|None:
+        if not self._id.second:
+            return None
         c = Certificate()
         c._cert = self._id.second
         return c
     @property
-    def key(self):
+    def key(self) -> PrivateKey|None:
+        if not self._id.first:
+            return None
         k = PrivateKey()
         k._key = self._id.first
         return k
@@ -562,23 +595,22 @@ cdef class DhtRunner(_WithID):
     cdef cpp.shared_ptr[cpp.DhtRunner] thisptr
     def __cinit__(self):
         self.thisptr.reset(new cpp.DhtRunner())
-    def getId(self):
+    def getId(self) -> InfoHash:
         h = InfoHash()
         if self.thisptr:
             h._infohash = self.thisptr.get().getId()
         return h
-    def getLongId(self):
-        h = PkId()
-        if self.thisptr:
-            h._pkid = self.thisptr.get().getPublicKey().get().getLongId()
-        return h
-    def getPublicKey(self):
+    def getPublicKey(self) -> PublicKey:
+        if not self.thisptr:
+            raise ValueError("DhtRunner is not initialized")
         pk = PublicKey()
-        if self.thisptr:
-            pk._key = self.thisptr.get().getPublicKey()
+        pk._key = self.thisptr.get().getPublicKey()
         return pk
-    def getNodeId(self):
-        return self.thisptr.get().getNodeId().toString()
+    def getNodeId(self) -> InfoHash:
+        h = InfoHash()
+        if self.thisptr:
+            h._infohash = self.thisptr.get().getNodeId()
+        return h
     def ping(self, SockAddr addr, done_cb=None):
         if done_cb:
             cb_obj = {'done':done_cb}
