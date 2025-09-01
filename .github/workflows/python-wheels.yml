@@ -31,6 +31,62 @@ jobs:
         with:
           name: opendht-wheels-${{ matrix.os }}
           path: ./wheelhouse/*.whl
+  
+  build_wheels_windows:
+    name: Build wheels on Windows
+    runs-on: windows-latest
+    env:
+      VCPKG_VERSION: "2025.07.25"
+      VCPKG_INSTALLATION_ROOT: "C:\\vcpkg"
+      VCPKG_DISABLE_METRICS: "1"
+      VCPKG_DEFAULT_TRIPLET: x64-windows-release
+      VCPKG_INSTALLED_DIR: ${{ github.workspace }}\vcpkg_installed
+      VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}\vcpkg_binary_cache
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Cache vcpkg installed packages
+        id: cache-vcpkg
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ env.VCPKG_INSTALLED_DIR }}
+            ${{ env.VCPKG_DEFAULT_BINARY_CACHE }}
+          key: ${{ runner.os }}-vcpkg-${{ env.VCPKG_VERSION }}-${{ env.VCPKG_DEFAULT_TRIPLET }}-${{ hashFiles('**/vcpkg.json', '**/vcpkg-configuration.json') }}-${{ hashFiles('.github/workflows/windows-build.yml') }}
+
+      - name: Setup vcpkg and install dependencies
+        if: steps.cache-vcpkg.outputs.cache-hit != 'true'
+        run: |
+          New-Item -Path "${{ env.VCPKG_INSTALLED_DIR }}" -ItemType Directory -Force
+          New-Item -Path "${{ env.VCPKG_DEFAULT_BINARY_CACHE }}" -ItemType Directory -Force
+          vcpkg install `
+            --recurse `
+            --clean-after-build `
+            --triplet=${{ env.VCPKG_DEFAULT_TRIPLET }} `
+            --x-install-root=${{ env.VCPKG_INSTALLED_DIR }} `
+            --x-feature=test
+        shell: pwsh
+
+      - name: Build wheels
+        run: |
+          cmake -S . -B build `
+            -DCMAKE_BUILD_TYPE=Release `
+            -DCMAKE_TOOLCHAIN_FILE=${{ env.VCPKG_INSTALLATION_ROOT }}\scripts\buildsystems\vcpkg.cmake `
+            -DVCPKG_INSTALLED_DIR=${{ env.VCPKG_INSTALLED_DIR }} `
+            -DBUILD_TESTING=OFF `
+            -DOPENDHT_C=OFF `
+            -DOPENDHT_TOOLS=OFF `
+            -DOPENDHT_PYTHON=ON `
+            -DOPENDHT_PROXY_CLIENT=ON `
+            -DOPENDHT_PROXY_SERVER=ON `
+          cd build
+          pipx run cibuildwheel python
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: opendht-wheels-win_amd64
+          path: ./build/wheelhouse/*.whl
 
   publish:
     runs-on: ubuntu-latest
