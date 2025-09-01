@@ -34,6 +34,20 @@ cimport opendht_cpp as cpp
 
 import threading
 
+cdef inline void _initialize_gnutls():
+    cdef int err = cpp.gnutls_global_init()
+    if err != 0:
+        print(f"Failed to initialize GnuTLS: {cpp.gnutls_strerror(err).decode()}")
+    else:
+        import atexit
+        atexit.register(_deinitialize_gnutls)
+
+cdef inline _deinitialize_gnutls():
+    cpp.gnutls_global_deinit()
+
+# Initialize GnuTLS when this module is imported
+_initialize_gnutls()
+
 cdef inline void lookup_callback(cpp.vector[cpp.shared_ptr[cpp.IndexValue]]* values, cpp.Prefix* p, void *user_data) noexcept with gil:
     cbs = <object>user_data
     if 'lookup' in cbs and cbs['lookup']:

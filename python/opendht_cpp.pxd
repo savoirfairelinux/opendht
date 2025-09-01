@@ -326,3 +326,8 @@ cdef extern from "opendht/indexation/pht.h" namespace "dht::indexation":
         void insert(IndexKey k, IndexValue v, DoneCallbackSimple cb)
         @staticmethod
         LookupCallback bindLookupCb(LookupCallbackRaw cb, void *user_data)
+
+cdef extern from "gnutls/gnutls.h" nogil:
+    int gnutls_global_init()
+    void gnutls_global_deinit()
+    const char* gnutls_strerror(int error)
