@@ -27,6 +27,7 @@
 #include <random>
 #include <functional>
 #include <map>
+#include <string_view>
 
 #include <cstdarg>
 
