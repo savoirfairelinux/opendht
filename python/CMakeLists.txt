@@ -7,7 +7,7 @@ configure_file(README.md README.md COPYONLY)
 
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
 
-add_custom_target(python ALL
+add_custom_target(python
     COMMAND ${Python3_EXECUTABLE} -m build .
     DEPENDS opendht opendht_cpp.pxd opendht.pyx pyproject.toml)
 
