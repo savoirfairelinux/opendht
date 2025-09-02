@@ -45,9 +45,11 @@ Makefile.in
 *~
 *.pc
 
-# KDevelop
-.kdev4/
-*.kdev4
+# CMake
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+*ConfigVersion.cmake
 
 # VSCode
 .vscode/*
@@ -67,6 +69,9 @@ language.settings.xml
 *.stamp
 python/opendht.cpp
 python/setup.py
+python/dist/
+wheelhouse/
+*.egg-info/
 
 # Doxygen
 doc/Doxyfile
