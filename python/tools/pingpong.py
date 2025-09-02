@@ -15,64 +15,63 @@
 # You should have received a copy of the GNU General Public License
 # along with this program; If not, see <https://www.gnu.org/licenses/>.
 
-import opendht as dht
-import time
 import asyncio
+import time
 
-config = dht.DhtConfig()
-config.setRateLimit(-1, -1)
+from opendht import aio as dht
 
-ping_node = dht.DhtRunner()
-ping_node.run(config=config)
-#ping_node.enableLogging()
-#ping_node.bootstrap("bootstrap.jami.net", "4222")
-pong_node = dht.DhtRunner()
-pong_node.run(config=config)
-#pong_node.enableLogging()
-pong_node.ping(ping_node.getBound())
 
-loc_ping = dht.InfoHash.get("toto99")
-loc_pong = dht.InfoHash.get(str(loc_ping))
+async def main():
+	config = dht.DhtConfig()
+	config.setRateLimit(-1, -1)
 
-net = []
-for i in range(1,10):
-	node = dht.DhtRunner()
-	node.run(config=config)
-	node.ping(ping_node.getBound())
-	net.append(node)
+	ping_node = dht.DhtRunner()
+	pong_node = dht.DhtRunner()
+	# ping_node.enableLogging()
+	# pong_node.enableLogging()
+	# ping_node.bootstrap("bootstrap.jami.net", "4222")
+	await asyncio.gather(
+		ping_node.run(config=config),
+		pong_node.run(config=config),
+	)
+	await pong_node.ping(ping_node.getBound())
 
-i = 0
-MAX = 2048
+	net = [dht.DhtRunner() for _ in range(1, 10)]
+	await asyncio.gather(*(n.run(config=config) for n in net))
+	await asyncio.gather(*(n.ping(ping_node.getBound()) for n in net))
 
-loop = asyncio.get_event_loop()
+	MAX = 2048
+	counter = 0
+	loc_ping = dht.InfoHash.get(f"ping-{ping_node.getNodeId()}")
+	loc_pong = dht.InfoHash.get(str(loc_ping))
 
-def done(h, ok):
-	pass
-	#print(h, "over", ok)
+	async def ponger(listener_node: dht.DhtRunner, listen_key, responder_node: dht.DhtRunner, respond_key):
+		nonlocal counter
+		with listener_node.listen(listen_key) as listener:
+			async for value, expired in listener:
+				if not expired:
+					await responder_node.put(respond_key, dht.Value(b"hey"))
+					counter += 1
+					if counter >= MAX:
+						break
 
-def ping(node, h):
-	global i
-	i += 1
-	if i < MAX:
-		node.put(h, dht.Value(b"hey"), lambda ok, nodes: done(node.getNodeId().decode(), ok))
-	else:
-		loop.stop()
+	start = time.time()
+	await asyncio.gather(
+		ponger(ping_node, loc_ping, pong_node, loc_pong),
+		ponger(pong_node, loc_pong, ping_node, loc_ping),
+		pong_node.put(loc_ping, dht.Value(b"hey"))
+	)
+	duration = time.time() - start
 
-def pong(node, h):
-	#print(node.getNodeId().decode(), "got ping", h, i)
-	loop.call_soon_threadsafe(ping, node, h)
-	return True
+	await asyncio.gather(
+		ping_node.shutdown(),
+		pong_node.shutdown(),
+		*(n.shutdown() for n in net),
+	)
 
-t1 = time.time()
+	print(MAX, "ping-pong done, took", duration, "s")
+	print(1000 * duration / MAX, "ms per rt", MAX / duration, "rt per s")
 
-ping_node.listen(loc_ping, lambda v, e: pong(pong_node, loc_pong) if not e else True)
-pong_node.listen(loc_pong, lambda v, e: pong(ping_node, loc_ping) if not e else True)
 
-ping(pong_node, loc_ping)
-
-loop.run_forever()
-
-t2 = time.time()
-
-print(MAX, "ping-pong done, took", t2 - t1, "s")
-print(1000 * (t2 - t1)/MAX, "ms per rt", MAX/(t2 - t1), "rt per s")
+if __name__ == "__main__":
+	asyncio.run(main())
