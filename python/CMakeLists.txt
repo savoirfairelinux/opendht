@@ -9,7 +9,9 @@ find_package(Python3 REQUIRED COMPONENTS Interpreter)
 
 add_custom_target(python
     COMMAND ${Python3_EXECUTABLE} -m build .
-    DEPENDS opendht opendht_cpp.pxd opendht.pyx pyproject.toml)
+    DEPENDS opendht opendht_cpp.pxd opendht.pyx pyproject.toml
+            ${CURRENT_SOURCE_DIR}/opendht/__init__.py
+            ${CURRENT_SOURCE_DIR}/opendht/aio.py)
 
 install(CODE [[
     execute_process(
