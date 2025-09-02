@@ -69,7 +69,7 @@ jobs:
 
       - name: Build wheels
         run: |
-          pip install cython delvewheel
+          pip install cython delvewheel build
           cmake -S . -B build `
             -DCMAKE_BUILD_TYPE=Release `
             -DVCPKG_TARGET_TRIPLET=${{ env.VCPKG_DEFAULT_TRIPLET }} `

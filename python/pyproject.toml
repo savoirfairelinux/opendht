@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools", "wheel", "Cython"]
+requires = ["setuptools", "wheel", "Cython", "build"]
 build-backend = "setuptools.build_meta"
 
 [tool.cibuildwheel]
@@ -43,6 +43,7 @@ repair-wheel-command = 'DYLD_LIBRARY_PATH=$PWD delocate-wheel -w {dest_dir} {whe
 [tool.cibuildwheel.windows]
 # Configure first, then from 'build' directory run: with pipx run cibuildwheel python
 before-build = [
-  'cmake --build . --config Release --target python',
+  'pip install cython delvewheel build',
+  'cmake --build . --config Release',
 ]
 repair-wheel-command = "delvewheel repair -w {dest_dir} {wheel} --add-path ./Release --add-path ./vcpkg_installed/x64-windows-release/bin"
