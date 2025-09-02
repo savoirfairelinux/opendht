@@ -689,6 +689,8 @@ if (WIN32)
             "msvcp.*\\.dll"
             "wpax.*\\.dll"
             "azure.*\\.dll"
+            "lsasrv\\.dll"
+            "samsrv\\.dll"
     )
 endif()
 
@@ -727,9 +729,9 @@ add_subdirectory(doc)
 if (OPENDHT_PYTHON)
     if (JSONCPP_FOUND)
         list (APPEND OPENDHT_PYTHON_INCLUDE_DIRS_LIST ${JSONCPP_INCLUDE_DIRS})
-        if (OPENDHT_USE_PKGCONFIG)
-            list (APPEND OPENDHT_PYTHON_LIBRARY_DIRS_LIST ${Jsoncpp_LIBRARY_DIRS})
-        endif()
+        #if (OPENDHT_USE_PKGCONFIG)
+        list (APPEND OPENDHT_PYTHON_LIBRARY_DIRS_LIST ${Jsoncpp_LIBRARY_DIRS})
+        #endif()
     endif()
     if (NOT HAVE_MSGPACKCXX)
         get_target_property(MSGPACK_INCLUDEDIR msgpack-cxx INTERFACE_INCLUDE_DIRECTORIES)
@@ -739,6 +741,25 @@ if (OPENDHT_PYTHON)
             list(APPEND OPENDHT_PYTHON_LIBRARY_DIRS_LIST ${MSGPACK_LIBRARY_DIRS})
         endif()
     endif()
+    
+    # Add the directory where the OpenDHT library is built
+    if(WIN32)
+        # Append actual configuration-specific build directories instead of an unevaluated $<CONFIG> generator expression
+        if(CMAKE_CONFIGURATION_TYPES)
+            foreach(cfg ${CMAKE_CONFIGURATION_TYPES})
+                list(APPEND OPENDHT_PYTHON_LIBRARY_DIRS_LIST ${CMAKE_CURRENT_BINARY_DIR}/${cfg})
+            endforeach()
+        elseif(CMAKE_BUILD_TYPE)
+            list(APPEND OPENDHT_PYTHON_LIBRARY_DIRS_LIST ${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_BUILD_TYPE})
+        else()
+            list(APPEND OPENDHT_PYTHON_LIBRARY_DIRS_LIST ${CMAKE_CURRENT_BINARY_DIR})
+        endif()
+        # if using MSVC with vcpkg, add the vcpkg installed directory
+        if (MSVC AND VCPKG_TARGET_TRIPLET)
+            list(APPEND OPENDHT_PYTHON_LIBRARY_DIRS_LIST "${CMAKE_CURRENT_BINARY_DIR}/vcpkg_installed/${VCPKG_TARGET_TRIPLET}/lib")
+        endif()
+    endif()
+    
     if (OPENDHT_PYTHON_INCLUDE_DIRS_LIST)
         list(REMOVE_DUPLICATES OPENDHT_PYTHON_INCLUDE_DIRS_LIST)
         string(JOIN "\", \"" OPENDHT_PYTHON_INCLUDE_DIRS ${OPENDHT_PYTHON_INCLUDE_DIRS_LIST})
