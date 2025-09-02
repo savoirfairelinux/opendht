@@ -69,6 +69,7 @@ jobs:
 
       - name: Build wheels
         run: |
+          pip install cython delvewheel
           cmake -S . -B build `
             -DCMAKE_BUILD_TYPE=Release `
             -DVCPKG_TARGET_TRIPLET=${{ env.VCPKG_DEFAULT_TRIPLET }} `
@@ -79,7 +80,7 @@ jobs:
             -DOPENDHT_TOOLS=OFF `
             -DOPENDHT_PYTHON=ON `
             -DOPENDHT_PROXY_CLIENT=ON `
-            -DOPENDHT_PROXY_SERVER=ON `
+            -DOPENDHT_PROXY_SERVER=ON
           cd build
           pipx run cibuildwheel python
         shell: pwsh
