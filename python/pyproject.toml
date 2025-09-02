@@ -8,6 +8,7 @@ build = [
   'cp3{10,11,12,13}-manylinux_aarch64',
   'cp3{11,12,13}-macosx_x86_64',
   'cp3{11,12,13}-macosx_arm64',
+  'cp3{11,12,13}-win_amd64',
 ]
 
 [tool.cibuildwheel.linux]
@@ -38,3 +39,11 @@ before-build = [
 ]
 # Bundle dependent dylibs into the wheel; ensure local libopendht.dylib is found
 repair-wheel-command = 'DYLD_LIBRARY_PATH=$PWD delocate-wheel -w {dest_dir} {wheel}'
+
+[tool.cibuildwheel.windows]
+# Configure first, then from 'build' directory run: with pipx run cibuildwheel python
+before-build = [
+  'pip install cython delvewheel',
+  'cmake --build . --config Release --target python',
+]
+repair-wheel-command = "delvewheel repair -w {dest_dir} {wheel} --add-path ./Release --add-path ./vcpkg_installed/x64-windows-release/bin"
