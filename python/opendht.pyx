@@ -812,18 +812,33 @@ cdef class DhtRunner(_WithID):
                     lock.wait()
             return ok
 
-    def putEncrypted(self, InfoHash key, Value val, PkId to=None, PublicKey to_pk=None, InfoHash to_shortid=None, done_cb=None, bool permanent=False):
-        if to is None and to_pk is None and to_shortid is None:
-            raise ValueError("to, to_pk or to_shortid must be provided")
+    def putEncrypted(self, InfoHash key, Value val, to, done_cb=None, bool permanent=False):
+        if to is None:
+            raise ValueError("'to' must be provided")
         if done_cb:
             cb_obj = {'done':done_cb}
             ref.Py_INCREF(cb_obj)
-            if to_pk is not None:
-                self.thisptr.get().putEncrypted(key._infohash, to_pk._key, val._value, cpp.bindDoneCb(done_callback, <void*>cb_obj), permanent)
-            elif to is not None:
-                self.thisptr.get().putEncrypted(key._infohash, to._pkid, val._value, cpp.bindDoneCb(done_callback, <void*>cb_obj), permanent)
-            else:
-                self.thisptr.get().putEncrypted(key._infohash, to_shortid._infohash, val._value, cpp.bindDoneCb(done_callback, <void*>cb_obj), permanent)
+            try:
+                if isinstance(to, PublicKey):
+                    self.thisptr.get().putEncrypted(
+                        key._infohash, (<PublicKey>to)._key, val._value,
+                        cpp.bindDoneCb(done_callback, <void*>cb_obj), permanent
+                    )
+                elif isinstance(to, PkId):
+                    self.thisptr.get().putEncrypted(
+                        key._infohash, (<PkId>to)._pkid, val._value,
+                        cpp.bindDoneCb(done_callback, <void*>cb_obj), permanent
+                    )
+                elif isinstance(to, InfoHash):
+                    self.thisptr.get().putEncrypted(
+                        key._infohash, (<InfoHash>to)._infohash, val._value,
+                        cpp.bindDoneCb(done_callback, <void*>cb_obj), permanent
+                    )
+                else:
+                    raise TypeError("'to' must be PublicKey, PkId, or InfoHash")
+            except:
+                ref.Py_DECREF(cb_obj)
+                raise
         else:
             lock = threading.Condition()
             pending = 0
@@ -836,7 +851,7 @@ cdef class DhtRunner(_WithID):
                     lock.notify()
             with lock:
                 pending += 1
-                self.putEncrypted(key, val, to=to, to_pk=to_pk, to_shortid=to_shortid, done_cb=tmp_done, permanent=permanent)
+                self.putEncrypted(key, val, to=to, done_cb=tmp_done, permanent=permanent)
                 while pending > 0:
                     lock.wait()
             return ok
