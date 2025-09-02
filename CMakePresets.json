@@ -125,7 +125,9 @@
         "OPENDHT_PROXY_CLIENT": true,
         "OPENDHT_PROXY_SERVER": true,
         "OPENDHT_C": true,
-        "OPENDHT_CPACK": true
+        "OPENDHT_PYTHON": true,
+        "OPENDHT_CPACK": true,
+        "OPENDHT_DOCUMENTATION": false
       }
     },
     {
@@ -148,7 +150,9 @@
         "BUILD_TESTING": false,
         "OPENDHT_PROXY_CLIENT": true,
         "OPENDHT_PROXY_SERVER": true,
-        "OPENDHT_CPACK": true
+        "OPENDHT_C": true,
+        "OPENDHT_CPACK": true,
+        "OPENDHT_DOCUMENTATION": false
       }
     },
     {
@@ -234,6 +238,12 @@
       "name": "vcpkg-release-static",
       "inherits": "default",
       "configurePreset": "vcpkg_release_static_full",
+      "configuration": "Release"
+    },
+    {
+      "name": "vcpkg-release",
+      "inherits": "default",
+      "configurePreset": "vcpkg_release_full",
       "configuration": "Release"
     }
   ]
