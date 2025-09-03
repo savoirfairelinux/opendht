@@ -756,7 +756,11 @@ if (OPENDHT_PYTHON)
         endif()
         # if using MSVC with vcpkg, add the vcpkg installed directory
         if (MSVC AND VCPKG_TARGET_TRIPLET)
-            list(APPEND OPENDHT_PYTHON_LIBRARY_DIRS_LIST "${CMAKE_CURRENT_BINARY_DIR}/vcpkg_installed/${VCPKG_TARGET_TRIPLET}/lib")
+            if (VCPKG_INSTALLED_DIR)
+                list(APPEND OPENDHT_PYTHON_LIBRARY_DIRS_LIST "${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/lib")
+            else()
+                list(APPEND OPENDHT_PYTHON_LIBRARY_DIRS_LIST "${CMAKE_CURRENT_BINARY_DIR}/vcpkg_installed/${VCPKG_TARGET_TRIPLET}/lib")
+            endif()
         endif()
     endif()
     
