@@ -435,42 +435,10 @@ jobs:
             build_static/**/*dhtnode.exe
           retention-days: 7
 
-  build-python-wheels:
-    name: Build Python Wheels
-    runs-on: ubuntu-latest
-    container: ghcr.io/savoirfairelinux/opendht/opendht-deps:latest
-    permissions:
-      contents: read
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v5
-
-      - name: cmake (for Python wheel)
-        run: |
-          mkdir build_python && cd build_python && \
-          cmake .. -DCMAKE_INSTALL_PREFIX=/usr \
-                   -DCMAKE_BUILD_TYPE=Release \
-                   -DBUILD_SHARED_LIBS=On \
-                   -DOPENDHT_PYTHON=On \
-                   -DOPENDHT_C=Off \
-                   -DOPENDHT_PEER_DISCOVERY=On \
-                   -DOPENDHT_TOOLS=Off \
-                   -DOPENDHT_PROXY_SERVER=On \
-                   -DOPENDHT_PROXY_CLIENT=On
-
-      - name: build (for Python wheel)
-        run: cd build_python && make dist
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: opendht-wheels-linux
-          path: build_python/python/dist/*.whl
-          retention-days: 7
-
   create-github-release:
     name: Create GitHub Release
     runs-on: ubuntu-latest
-    needs: [build-windows-msi, build-python-wheels, build-windows-dhtnode]
+    needs: [build-windows-msi, build-windows-dhtnode]
     permissions:
       contents: write
 
@@ -502,6 +470,5 @@ jobs:
         with:
           draft: true
           files: |
-            downloaded_artifacts/linux_wheels/*.whl
             downloaded_artifacts/windows_msi/*.msi
             downloaded_artifacts/static_dhtnode/**/*dhtnode.exe
