@@ -1,22 +1,17 @@
-"""
-Asyncio-friendly wrapper for OpenDHT Python bindings.
-
-Usage:
-
-    from opendht import aio as dht
-
-    node = dht.DhtRunner()
-    await node.run()
-    await node.bootstrap("bootstrap.jami.net", "4222")
-
-    key = dht.InfoHash.get("mykey")
-    await node.put(key, dht.Value(b"hello"))
-    vals = await node.get(key)
-
-    async for v, expired in await node.listen(key):
-        ...
-"""
-
+# Copyright (C) 2014-2025 Savoir-faire Linux Inc.
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 from __future__ import annotations
 
 import asyncio
@@ -26,21 +21,6 @@ from . import _core as _dht
 
 # Re-export core types for convenience
 from ._core import InfoHash, Value, ValueType, Where, SockAddr, PublicKey, PkId, DhtConfig, Identity
-
-
-class _DoneOnce:
-    """Helper to prevent multiple resolution of a Future from repeated callbacks."""
-
-    __slots__ = ("_done",)
-
-    def __init__(self) -> None:
-        self._done = False
-
-    def mark(self) -> bool:
-        if self._done:
-            return False
-        self._done = True
-        return True
 
 
 class _Listener:
@@ -162,8 +142,6 @@ class _GetStream:
 
 class DhtRunner:
     """Async wrapper around opendht.DhtRunner.
-
-    Methods are awaitable and won't block the event loop.
     """
 
     __slots__ = ("_dht", "_loop", "_config", "_bootstrap")
@@ -182,10 +160,9 @@ class DhtRunner:
             self._loop = asyncio.get_event_loop()
         self._dht = core or _dht.DhtRunner()
         self._config = config
-        # Keep a copy to avoid consuming a one-shot iterator
         self._bootstrap = list(bootstrap) if bootstrap is not None else None
 
-    async def run(
+    def run(
         self,
         id: Optional[Identity] = None,
         is_bootstrap: bool = False,
@@ -195,27 +172,17 @@ class DhtRunner:
         config: Optional[DhtConfig] = None,
     ) -> None:
         cfg = config or self._config or DhtConfig()
-        # The core run spawns internal threads; call directly
         self._dht.run(id, is_bootstrap, port, ipv4, ipv6, cfg)
-        # Optionally bootstrap after starting
         if self._bootstrap:
             for host, port_str in self._bootstrap:
                 self._dht.bootstrap(host, port_str)
 
     def bootstrap(self, host: str, port: Optional[str] = None) -> None:
-        # The core call is fast; call directly
         self._dht.bootstrap(host, port)
 
     async def ping(self, addr: SockAddr) -> bool:
         fut: asyncio.Future[bool] = self._loop.create_future()
-        done_once = _DoneOnce()
-
-        def _done(ok: bool) -> None:
-            if done_once.mark():
-                self._loop.call_soon_threadsafe(fut.set_result, bool(ok))
-
-        # Use non-blocking callback form and await completion.
-        self._dht.ping(addr, _done)
+        self._dht.ping(addr, lambda ok: self._loop.call_soon_threadsafe(fut.set_result, bool(ok)))
         return await fut
 
     def get(
@@ -263,22 +230,18 @@ class DhtRunner:
 
     async def put(self, key: InfoHash, val: Value, *, permanent: bool = False) -> bool:
         fut: asyncio.Future[bool] = self._loop.create_future()
-        done_once = _DoneOnce()
 
         def _done(ok: bool, _nodes: Iterable[Any]) -> None:
-            if done_once.mark():
-                self._loop.call_soon_threadsafe(fut.set_result, bool(ok))
+            self._loop.call_soon_threadsafe(fut.set_result, bool(ok))
 
         self._dht.put(key, val, _done, permanent)
         return await fut
 
     async def putSigned(self, key: InfoHash, val: Value, *, permanent: bool = False) -> bool:
         fut: asyncio.Future[bool] = self._loop.create_future()
-        done_once = _DoneOnce()
 
         def _done(ok: bool, _nodes: Iterable[Any]) -> None:
-            if done_once.mark():
-                self._loop.call_soon_threadsafe(fut.set_result, bool(ok))
+            self._loop.call_soon_threadsafe(fut.set_result, bool(ok))
 
         self._dht.putSigned(key, val, _done, permanent)
         return await fut
@@ -292,11 +255,9 @@ class DhtRunner:
         permanent: bool = False,
     ) -> bool:
         fut: asyncio.Future[bool] = self._loop.create_future()
-        done_once = _DoneOnce()
 
         def _done(ok: bool, _nodes: Iterable[Any]) -> None:
-            if done_once.mark():
-                self._loop.call_soon_threadsafe(fut.set_result, bool(ok))
+            self._loop.call_soon_threadsafe(fut.set_result, bool(ok))
 
         self._dht.putEncrypted(key, val, to, _done, permanent)
         return await fut
@@ -316,21 +277,17 @@ class DhtRunner:
         await asyncio.to_thread(self._dht.join)
 
     async def __aenter__(self):
-        # Start the node on entering the async context (id/ports default to run() defaults)
         if not self.isRunning():
-            await self.run()
+            self.run()
         return self
 
     async def __aexit__(self, exc_type, exc, tb):
-        # Gracefully stop the node on context exit
         if self.isRunning():
             try:
                 await self.shutdown()
             finally:
                 await self.join()
-        return False  # do not suppress exceptions
+        return False
 
     def __getattr__(self, name: str) -> Any:
-        """Delegate unknown method calls to the wrapped DhtRunner instance."""
         return getattr(self._dht, name)
-
