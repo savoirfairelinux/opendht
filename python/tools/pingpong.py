@@ -30,15 +30,14 @@ async def main():
 	# ping_node.enableLogging()
 	# pong_node.enableLogging()
 	# ping_node.bootstrap("bootstrap.jami.net", "4222")
-	await asyncio.gather(
-		ping_node.run(config=config),
-		pong_node.run(config=config),
-	)
+	ping_node.run(config=config)
+	pong_node.run(config=config)
 	await pong_node.ping(ping_node.getBound())
 
 	net = [dht.DhtRunner() for _ in range(1, 10)]
-	await asyncio.gather(*(n.run(config=config) for n in net))
-	await asyncio.gather(*(n.ping(ping_node.getBound()) for n in net))
+	for n in net:
+		n.run(config=config)
+		n.ping(ping_node.getBound())
 
 	MAX = 2048
 	counter = 0
