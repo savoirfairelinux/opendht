@@ -12,7 +12,7 @@ Build is currently tested on GNU/Linux, macOS and Windows.
 sudo apt install libncurses5-dev libreadline-dev nettle-dev libgnutls28-dev libargon2-0-dev libmsgpack-dev  libssl-dev libfmt-dev libjsoncpp-dev libhttp-parser-dev libasio-dev
 
 # Install python binding dependencies
-sudo apt-get install cython3 python3-dev python3-setuptools
+sudo apt-get install cython3 python3-dev python3-setuptools python3-build
 ```
 
 Optionally, install Restinio to enable OpenDHT proxy client and server:
@@ -42,7 +42,7 @@ brew install gnutls msgpack-cxx argon2 asio readline jsoncpp fmt
 ```
 
 ## Build
-### Using CMake
+Using CMake:
 
 ```sh
 # Clone the repository
@@ -73,8 +73,6 @@ cmake -DOPENDHT_PYTHON=ON \
       -DOPENDHT_PUSH_NOTIFICATIONS=ON \
       -DCMAKE_INSTALL_PREFIX=/usr ..
 ```
-
-**Note:** The `/usr` install prefix helps avoid adding `/usr/local/lib` to `LD_LIBRARY_PATH`. Use `/usr/local` for development builds or if you prefer standard local installation paths.
 
 ## Windows/MSVC
 
