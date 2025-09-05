@@ -48,6 +48,9 @@ cdef inline _deinitialize_gnutls():
 # Initialize GnuTLS when this module is imported
 _initialize_gnutls()
 
+def version() -> str:
+    return cpp.version().decode()
+
 cdef inline void lookup_callback(cpp.vector[cpp.shared_ptr[cpp.IndexValue]]* values, cpp.Prefix* p, void *user_data) noexcept with gil:
     cbs = <object>user_data
     if 'lookup' in cbs and cbs['lookup']:

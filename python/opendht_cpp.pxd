@@ -49,6 +49,7 @@ cdef extern from "<future>" namespace "std" nogil:
         shared_future[T] share()
 
 cdef extern from "opendht/utils.h" namespace "dht":
+    const char* version()
     cdef cppclass time_point:
         @staticmethod
         time_point min() const
