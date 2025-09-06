@@ -7,6 +7,7 @@ env:
   UBUNTU_FULL_DEPS: "libncurses5-dev libreadline-dev nettle-dev libasio-dev libgnutls28-dev libuv1-dev python3-pip python3-dev python3-setuptools libcppunit-dev libjsoncpp-dev autotools-dev autoconf libfmt-dev libmsgpack-dev libargon2-dev"
   UBUNTU_MESON_DEPS: "ninja-build libncurses5-dev libreadline-dev nettle-dev libasio-dev libgnutls28-dev libuv1-dev python3-dev python3-setuptools python3-pip libcppunit-dev libjsoncpp-dev libfmt-dev libmsgpack-dev libargon2-dev"
   UBUNTU_MINIMAL_DEPS: "libncurses5-dev libreadline-dev nettle-dev libfmt-dev libgnutls28-dev libcppunit-dev libmsgpack-dev libargon2-dev"
+  DEBIAN12_DEPS: "autotools-dev autoconf libtool m4 automake pkg-config libncurses5-dev libreadline-dev nettle-dev libasio-dev libgnutls28-dev libuv1-dev python3-pip python3-dev python3-setuptools libcppunit-dev libjsoncpp-dev libfmt-dev libmsgpack-dev libargon2-dev"
 
 on: [push, pull_request]
 
@@ -108,6 +109,31 @@ jobs:
 
       - name: Run Unit tests
         run: cd build && ./opendht_unit_tests
+
+  build-debian12:
+    name: Debian 12/GCC build
+    runs-on: ubuntu-latest
+
+    container:
+      image: debian:12
+      volumes:
+        - .:/workspace
+      options: --workdir /workspace
+      env:
+        DEBIAN_FRONTEND: noninteractive
+
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install Dependencies
+        run: |
+          apt-get update
+          apt-get install -y $DEBIAN12_DEPS
+
+      - name: Build
+        run: |
+          ./autogen.sh
+          ./configure --enable-proxy-client
+          make
 
   build-macos:
     name: macOS/Clang build
