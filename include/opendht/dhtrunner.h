@@ -438,9 +438,11 @@ public:
     void shutdown(ShutdownCallback cb = {}, bool stop = false);
 
     /**
-     * Quit and wait for all threads to terminate.
-     * No callbacks will be called after this method returns.
-     * All internal state will be lost. The DHT can then be run again with @run().
+     * Stop the node and wait for all threads to terminate.
+     * The node is reset to its default state. The DHT can then be run again with @run().
+     * No DHT callbacks will run after this method returns.
+     * Calling this method is optional. It allows to ensure the destructor won't block.
+     * This method can't be called from a DHT callback.
      */
     void join();
 
