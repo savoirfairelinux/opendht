@@ -7,7 +7,7 @@ env:
   UBUNTU_FULL_DEPS: "libncurses5-dev libreadline-dev nettle-dev libasio-dev libgnutls28-dev libuv1-dev python3-pip python3-dev python3-setuptools libcppunit-dev libjsoncpp-dev autotools-dev autoconf libfmt-dev libmsgpack-dev libargon2-dev"
   UBUNTU_MESON_DEPS: "ninja-build libncurses5-dev libreadline-dev nettle-dev libasio-dev libgnutls28-dev libuv1-dev python3-dev python3-setuptools python3-pip libcppunit-dev libjsoncpp-dev libfmt-dev libmsgpack-dev libargon2-dev"
   UBUNTU_MINIMAL_DEPS: "libncurses5-dev libreadline-dev nettle-dev libfmt-dev libgnutls28-dev libcppunit-dev libmsgpack-dev libargon2-dev"
-  DEBIAN12_DEPS: "autotools-dev autoconf libtool m4 automake pkg-config wget libncurses5-dev libreadline-dev nettle-dev libasio-dev libgnutls28-dev libuv1-dev python3-pip python3-dev python3-setuptools libcppunit-dev libjsoncpp-dev libfmt-dev libmsgpack-dev libargon2-dev"
+  DEBIAN12_DEPS: "autotools-dev autoconf libtool m4 automake pkg-config wget cmake libncurses5-dev libreadline-dev nettle-dev libasio-dev libgnutls28-dev libuv1-dev python3-pip python3-dev python3-setuptools libcppunit-dev libjsoncpp-dev libfmt-dev libmsgpack-dev libargon2-dev"
 
 on: [push, pull_request]
 
