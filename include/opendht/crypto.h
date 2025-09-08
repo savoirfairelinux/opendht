@@ -204,8 +204,9 @@ struct OPENDHT_PUBLIC PrivateKey
      * @param key_length : size of the modulus in bits
      *      Minimim value: 2048
      *      Recommended values: 4096, 8192
+     * @param algo : the public key algorithm to use, GNUTLS_PK_RSA or GNUTLS_PK_RSA_OAEP
      */
-    static PrivateKey generate(unsigned key_length = 4096);
+    static PrivateKey generate(unsigned key_length = 4096, gnutls_pk_algorithm_t algo = GNUTLS_PK_RSA);
     static PrivateKey generateEC();
 
     gnutls_privkey_t key {};

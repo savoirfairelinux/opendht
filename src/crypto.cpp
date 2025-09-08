@@ -1170,15 +1170,41 @@ Certificate::generateOcspRequest(gnutls_x509_crt_t& issuer)
 // PrivateKey
 
 PrivateKey
-PrivateKey::generate(unsigned key_length)
+PrivateKey::generate(unsigned key_length, gnutls_pk_algorithm_t algo)
 {
+    if (algo != GNUTLS_PK_RSA && algo != GNUTLS_PK_RSA_OAEP)
+        throw CryptoException("Only RSA keys can be generated for now.");
     gnutls_x509_privkey_t key;
     if (gnutls_x509_privkey_init(&key) != GNUTLS_E_SUCCESS)
         throw CryptoException("Can't initialize private key.");
-    int err = gnutls_x509_privkey_generate(key, GNUTLS_PK_RSA, key_length, 0);
-    if (err != GNUTLS_E_SUCCESS) {
-        gnutls_x509_privkey_deinit(key);
-        throw CryptoException(std::string("Can't generate RSA key pair: ") + gnutls_strerror(err));
+    if (algo == GNUTLS_PK_RSA) {
+        int err = gnutls_x509_privkey_generate(key, algo, key_length, 0);
+        if (err != GNUTLS_E_SUCCESS) {
+            gnutls_x509_privkey_deinit(key);
+            throw CryptoException(std::string("Can't generate RSA key pair: ") + gnutls_strerror(err));
+        }
+    } else if (algo == GNUTLS_PK_RSA_OAEP) {
+        int err;
+        Spki spki;
+        err = gnutls_x509_spki_set_rsa_oaep_params(spki.get(), GNUTLS_DIG_SHA256, nullptr);
+        if (err != GNUTLS_E_SUCCESS) {
+            gnutls_x509_privkey_deinit(key);
+            throw CryptoException(std::string("Can't set RSA-OAEP params: ") + gnutls_strerror(err));
+        }
+        /*gnutls_keygen_data_st params;
+        params.type = GNUTLS_KEYGEN_SPKI;
+        params.data = (uint8_t*)&spki.get();
+        params.size = spki.size();*/
+        err = gnutls_x509_privkey_generate2(key, algo, key_length, 0, nullptr, 0);
+        if (err != GNUTLS_E_SUCCESS) {
+            gnutls_x509_privkey_deinit(key);
+            throw CryptoException(std::string("Can't generate RSA key pair: ") + gnutls_strerror(err));
+        }
+        err = gnutls_x509_privkey_set_spki(key, spki.get(), 0);
+        if (err != GNUTLS_E_SUCCESS) {
+            gnutls_x509_privkey_deinit(key);
+            throw CryptoException(std::string("Can't set SPKI: ") + gnutls_strerror(err));
+        }
     }
     return PrivateKey{key};
 }
