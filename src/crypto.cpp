@@ -79,6 +79,31 @@ bool aesKeySizeGood(size_t key_size)
     return false;
 }
 
+class Spki {
+public:
+    Spki() {
+        gnutls_x509_spki_init(&spki);
+    }
+    Spki(gnutls_pubkey_t pubkey): Spki() {
+        auto err = gnutls_pubkey_get_spki(pubkey, spki, 0);
+        if (err < 0) {
+            gnutls_x509_spki_deinit(spki);
+            throw CryptoException(fmt::format("Can't get SPKI from public key: {}", gnutls_strerror(err)));
+        }
+    }
+
+    ~Spki() {
+        gnutls_x509_spki_deinit(spki);
+    }
+
+    inline gnutls_x509_spki_t& get() {
+        return spki;
+    }
+
+private:
+    gnutls_x509_spki_t spki;
+};
+
 #ifndef GCM_DIGEST_SIZE
 #define GCM_DIGEST_SIZE GCM_BLOCK_SIZE
 #endif
@@ -353,7 +378,7 @@ PrivateKey::decrypt(const uint8_t* cypher, size_t cypher_len) const
     int err = gnutls_privkey_get_pk_algorithm(key, &key_len);
     if (err < 0)
         throw CryptoException("Can't read public key length !");
-    if (err != GNUTLS_PK_RSA)
+    if (err != GNUTLS_PK_RSA && err != GNUTLS_PK_RSA_OAEP)
         throw CryptoException("Must be an RSA key");
 
     unsigned cypher_block_sz = key_len / 8;
@@ -529,14 +554,30 @@ PublicKey::encrypt(const uint8_t* data, size_t data_len) const
         throw CryptoException("Can't read public key !");
 
     unsigned key_len = 0;
-    int err = gnutls_pubkey_get_pk_algorithm(pk, &key_len);
-    if (err < 0)
+    int algo = gnutls_pubkey_get_pk_algorithm(pk, &key_len);
+    if (algo < 0)
         throw CryptoException("Can't read public key length !");
-    if (err != GNUTLS_PK_RSA)
+    if (algo != GNUTLS_PK_RSA && algo != GNUTLS_PK_RSA_OAEP)
         throw CryptoException("Must be an RSA key");
 
-    const unsigned max_block_sz = key_len / 8 - 11;
     const unsigned cypher_block_sz = key_len / 8;
+    unsigned max_block_sz = 0;
+
+    if (algo == GNUTLS_PK_RSA) {
+        max_block_sz = key_len / 8 - 11;
+    } else if (algo == GNUTLS_PK_RSA_OAEP) {
+        Spki spki(pk);
+        gnutls_digest_algorithm_t dig;
+        gnutls_datum_t label = {nullptr, 0};
+        if (gnutls_x509_spki_get_rsa_oaep_params(spki.get(), &dig, &label) < 0) {
+            throw CryptoException("Can't get OAEP params");
+        }
+        size_t hash_size = gnutlsHashSize(dig);
+        if (hash_size == 0) {
+            throw CryptoException("Invalid digest algorithm for OAEP: GNUTLS_DIG_UNKNOWN");
+        }
+        max_block_sz = key_len / 8 - 2 * hash_size - 2 - label.size;
+    }
 
     /* Use plain RSA if the data is small enough */
     if (data_len <= max_block_sz) {
