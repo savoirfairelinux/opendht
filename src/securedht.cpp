@@ -228,12 +228,13 @@ SecureDht::findCertificate(const InfoHash& node, const std::function<void(const 
             cb(b);
         return;
     }
-    if (localQueryMethod_) {
-        auto res = localQueryMethod_(node);
+    if (localQueryMethodLegacy_) {
+        auto res = localQueryMethodLegacy_(node);
         if (not res.empty()) {
             if (logger_)
                 logger_->d("Registering certificate from local store for %s", node.to_c_str());
             nodesCertificates_.emplace(node, res.front());
+            nodesCertificatesLong_.emplace(res.front()->getLongId(), res.front());
             if (cb)
                 cb(res.front());
             return;
@@ -294,6 +295,19 @@ SecureDht::findCertificate(const PkId& node, const std::function<void(const Sp<c
         if (cb)
             cb(b);
         return;
+    }
+
+    if (localQueryMethod_) {
+        auto res = localQueryMethod_(node);
+        if (not res.empty()) {
+            if (logger_)
+                logger_->debug("Registering certificate from local store for {}", node.to_c_str());
+            nodesCertificates_.emplace(res.front()->getId(), res.front());
+            nodesCertificatesLong_.emplace(node, res.front());
+            if (cb)
+                cb(res.front());
+            return;
+        }
     }
 
     auto found = std::make_shared<bool>(false);

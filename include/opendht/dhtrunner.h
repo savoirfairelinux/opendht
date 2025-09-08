@@ -77,7 +77,8 @@ public:
         std::unique_ptr<net::DatagramSocket> sock;
         std::shared_ptr<PeerDiscovery> peerDiscovery {};
         StatusCallback statusChangedCallback {};
-        CertificateStoreQuery certificateStore {};
+        CertificateStoreQueryLegacy certificateStore {};
+        CertificateStoreQuery certificateStorePkId {};
         IdentityAnnouncedCb identityAnnouncedCb {};
         PublicAddressChangedCb publicAddressChangedCb {};
         std::unique_ptr<std::mt19937_64> rng {};
@@ -393,6 +394,7 @@ public:
     void findCertificate(PkId hash, std::function<void(const std::shared_ptr<crypto::Certificate>&)>);
 
     void registerCertificate(const std::shared_ptr<crypto::Certificate>& cert);
+    void setLocalCertificateStore(CertificateStoreQueryLegacy&& query_method);
     void setLocalCertificateStore(CertificateStoreQuery&& query_method);
 
     /**

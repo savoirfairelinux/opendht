@@ -188,6 +188,9 @@ DhtRunner::run(const Config& config, Context&& context)
     if (context.certificateStore) {
         dht_->setLocalCertificateStore(std::move(context.certificateStore));
     }
+    if (context.certificateStorePkId) {
+        dht_->setLocalCertificateStore(std::move(context.certificateStorePkId));
+    }
     if (context.publicAddressChangedCb) {
         dht_->setOnPublicAddressChanged(std::move(context.publicAddressChangedCb));
     }
@@ -627,7 +630,14 @@ DhtRunner::registerCertificate(const std::shared_ptr<crypto::Certificate>& cert)
 }
 
 void
-DhtRunner::setLocalCertificateStore(CertificateStoreQuery&& query_method) {
+DhtRunner::setLocalCertificateStore(CertificateStoreQueryLegacy&& query_method) {
+    std::lock_guard<std::mutex> lck(dht_mtx);
+    if (dht_)
+        dht_->setLocalCertificateStore(std::forward<CertificateStoreQueryLegacy>(query_method));
+}
+
+void DhtRunner::setLocalCertificateStore(CertificateStoreQuery&& query_method)
+{
     std::lock_guard<std::mutex> lck(dht_mtx);
     if (dht_)
         dht_->setLocalCertificateStore(std::forward<CertificateStoreQuery>(query_method));

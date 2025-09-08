@@ -189,7 +189,9 @@ using ShutdownCallback = std::function<void()>;
 using IdentityAnnouncedCb = std::function<void(bool)>;
 using PublicAddressChangedCb = std::function<void(std::vector<SockAddr>)>;
 
-using CertificateStoreQuery = std::function<std::vector<std::shared_ptr<crypto::Certificate>>(const InfoHash& pk_id)>;
+using CertificateStoreQueryLegacy = std::function<std::vector<std::shared_ptr<crypto::Certificate>>(const InfoHash& pk_id)>;
+using CertificateStoreQuery = std::function<std::vector<std::shared_ptr<crypto::Certificate>>(const PkId& pk_id)>;
+
 using DoneCallback = std::function<void(bool success, const std::vector<std::shared_ptr<Node>>& nodes)>;
 using DoneCallbackSimple = std::function<void(bool success)>;
 

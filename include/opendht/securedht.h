@@ -157,6 +157,9 @@ public:
      * The search key used is the public key ID, so there may be multiple certificates retured, signed with
      * the same private key.
      */
+    void setLocalCertificateStore(CertificateStoreQueryLegacy&& query_method) {
+        localQueryMethodLegacy_ = std::move(query_method);
+    }
     void setLocalCertificateStore(CertificateStoreQuery&& query_method) {
         localQueryMethod_ = std::move(query_method);
     }
@@ -379,6 +382,7 @@ private:
 
     // method to query the local certificate store
     CertificateStoreQuery localQueryMethod_ {};
+    CertificateStoreQueryLegacy localQueryMethodLegacy_ {};
 
     // our certificate cache
     std::map<InfoHash, Sp<crypto::Certificate>> nodesCertificates_ {};
