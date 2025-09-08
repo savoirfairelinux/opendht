@@ -35,6 +35,7 @@ class CryptoTester : public CppUnit::TestFixture {
     CPPUNIT_TEST(testOcsp);
     CPPUNIT_TEST(testAesEncryption);
     CPPUNIT_TEST(testAesEncryptionWithMultipleKeySizes);
+    CPPUNIT_TEST(testOaep);
     CPPUNIT_TEST_SUITE_END();
 
  public:
@@ -71,6 +72,8 @@ class CryptoTester : public CppUnit::TestFixture {
      */
     void testAesEncryption();
     void testAesEncryptionWithMultipleKeySizes();
+
+    void testOaep();
 };
 
 }  // namespace test

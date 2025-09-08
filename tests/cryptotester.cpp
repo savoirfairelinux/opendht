@@ -260,6 +260,44 @@ void CryptoTester::testAesEncryptionWithMultipleKeySizes() {
     }
 }
 
+void CryptoTester::testOaep() {
+    auto data = std::vector<uint8_t>(446, 10);
+    auto ca = dht::crypto::generateIdentity("n1");
+
+    auto key = dht::crypto::PrivateKey::generate(4096, GNUTLS_PK_RSA_OAEP);
+
+    auto pk = key.getSharedPublicKey();
+    auto encrypted = pk->encrypt(data);
+
+    auto decrypted = key.decrypt(encrypted);
+    CPPUNIT_ASSERT(data == decrypted);
+
+    auto crt = dht::crypto::Certificate::generate(key, "dhtnode", ca);
+    auto pk2 = crt.getSharedPublicKey();
+    
+    auto encrypted2 = pk2->encrypt(data);
+    auto decrypted2 = key.decrypt(encrypted2);
+    CPPUNIT_ASSERT(data == decrypted2);
+
+    auto exported = crt.getPacked();
+    dht::crypto::Certificate imported(exported);
+    auto pk3 = imported.getSharedPublicKey();
+    auto encrypted3 = pk3->encrypt(data);
+    auto decrypted3 = key.decrypt(encrypted3);
+    CPPUNIT_ASSERT(data == decrypted3);
+
+    auto exportedPk = pk->toString();
+    dht::crypto::PublicKey importedPk(exportedPk);
+    auto encrypted4 = importedPk.encrypt(data);
+    auto decrypted4 = key.decrypt(encrypted4);
+    CPPUNIT_ASSERT(data == decrypted4);
+
+    auto exportedKey = key.serialize();
+    dht::crypto::PrivateKey importedKey(exportedKey);
+    auto decrypted5 = importedKey.decrypt(encrypted);
+    CPPUNIT_ASSERT(data == decrypted5);
+}
+
 void
 CryptoTester::tearDown() {
 
