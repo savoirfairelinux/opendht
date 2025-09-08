@@ -375,10 +375,14 @@ PrivateKey::decrypt(const uint8_t* cypher, size_t cypher_len) const
         throw CryptoException("Can't decrypt data without private key !");
 
     unsigned key_len = 0;
-    int err = gnutls_privkey_get_pk_algorithm(key, &key_len);
-    if (err < 0)
+    int algo = gnutls_privkey_get_pk_algorithm(key, &key_len);
+    if (algo < 0)
         throw CryptoException("Can't read public key length !");
-    if (err != GNUTLS_PK_RSA && err != GNUTLS_PK_RSA_OAEP)
+    if (algo != GNUTLS_PK_RSA
+#if GNUTLS_VERSION_NUMBER >= 0x030804
+         && algo != GNUTLS_PK_RSA_OAEP
+#endif
+    )
         throw CryptoException("Must be an RSA key");
 
     unsigned cypher_block_sz = key_len / 8;
@@ -557,15 +561,13 @@ PublicKey::encrypt(const uint8_t* data, size_t data_len) const
     int algo = gnutls_pubkey_get_pk_algorithm(pk, &key_len);
     if (algo < 0)
         throw CryptoException("Can't read public key length !");
-    if (algo != GNUTLS_PK_RSA && algo != GNUTLS_PK_RSA_OAEP)
-        throw CryptoException("Must be an RSA key");
-
-    const unsigned cypher_block_sz = key_len / 8;
     unsigned max_block_sz = 0;
-
+    
     if (algo == GNUTLS_PK_RSA) {
         max_block_sz = key_len / 8 - 11;
-    } else if (algo == GNUTLS_PK_RSA_OAEP) {
+    }
+#if GNUTLS_VERSION_NUMBER >= 0x030804
+    else if (algo == GNUTLS_PK_RSA_OAEP) {
         Spki spki(pk);
         gnutls_digest_algorithm_t dig;
         gnutls_datum_t label = {nullptr, 0};
@@ -578,7 +580,12 @@ PublicKey::encrypt(const uint8_t* data, size_t data_len) const
         }
         max_block_sz = key_len / 8 - 2 * hash_size - 2 - label.size;
     }
-
+#endif
+    else {
+        throw CryptoException("Must be an RSA key");
+    }
+    
+    const unsigned cypher_block_sz = key_len / 8;
     /* Use plain RSA if the data is small enough */
     if (data_len <= max_block_sz) {
         Blob ret(cypher_block_sz);
@@ -1172,8 +1179,6 @@ Certificate::generateOcspRequest(gnutls_x509_crt_t& issuer)
 PrivateKey
 PrivateKey::generate(unsigned key_length, gnutls_pk_algorithm_t algo)
 {
-    if (algo != GNUTLS_PK_RSA && algo != GNUTLS_PK_RSA_OAEP)
-        throw CryptoException("Only RSA keys can be generated for now.");
     gnutls_x509_privkey_t key;
     if (gnutls_x509_privkey_init(&key) != GNUTLS_E_SUCCESS)
         throw CryptoException("Can't initialize private key.");
@@ -1183,7 +1188,9 @@ PrivateKey::generate(unsigned key_length, gnutls_pk_algorithm_t algo)
             gnutls_x509_privkey_deinit(key);
             throw CryptoException(std::string("Can't generate RSA key pair: ") + gnutls_strerror(err));
         }
-    } else if (algo == GNUTLS_PK_RSA_OAEP) {
+    }
+#if GNUTLS_VERSION_NUMBER >= 0x030804
+    else if (algo == GNUTLS_PK_RSA_OAEP) {
         int err;
         Spki spki;
         err = gnutls_x509_spki_set_rsa_oaep_params(spki.get(), GNUTLS_DIG_SHA256, nullptr);
@@ -1205,6 +1212,11 @@ PrivateKey::generate(unsigned key_length, gnutls_pk_algorithm_t algo)
             gnutls_x509_privkey_deinit(key);
             throw CryptoException(std::string("Can't set SPKI: ") + gnutls_strerror(err));
         }
+    }
+#endif
+    else {
+        gnutls_x509_privkey_deinit(key);
+        throw CryptoException("Only RSA and RSA-OAEP keys are supported");
     }
     return PrivateKey{key};
 }
