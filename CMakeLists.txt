@@ -837,23 +837,31 @@ if (BUILD_TESTING)
             )
         endif()
     endif()
-    add_executable(opendht_unit_tests
-        tests/tests_runner.cpp
-        ${test_FILES}
-    )
-    target_link_libraries(opendht_unit_tests PRIVATE
-        opendht
-        ${CMAKE_THREAD_LIBS_INIT}
-        ${cppunit_LIBRARIES}
-    )
-    if (OPENDHT_PROXY_OPENSSL)
-        if (WIN32 AND MINGW) # MSYS2
-            target_link_libraries(opendht_unit_tests PRIVATE ${OPENSSL_LIBRARIES})
-        elseif(NOT MSVC) # Clang on UNIX-pkgconfig
-            target_link_libraries(opendht_unit_tests PRIVATE PkgConfig::OPENSSL)
+    # Create one test executable per test implementation (.cpp) so they can be run independently.
+    # We keep using the common tests_runner.cpp (CppUnit registry based) and compile it with each test file.
+    foreach(test_src ${test_FILES})
+        if (test_src MATCHES ".*\\.cpp$")
+            get_filename_component(test_name ${test_src} NAME_WE) # e.g. infohashtester
+            set(target_name ${test_name})
+            add_executable(${target_name}
+                tests/tests_runner.cpp
+                ${test_src}
+            )
+            target_link_libraries(${target_name} PRIVATE
+                opendht
+                ${CMAKE_THREAD_LIBS_INIT}
+                ${cppunit_LIBRARIES}
+            )
+            if (OPENDHT_PROXY_OPENSSL)
+                if (WIN32 AND MINGW) # MSYS2
+                    target_link_libraries(${target_name} PRIVATE ${OPENSSL_LIBRARIES})
+                elseif(NOT MSVC) # Clang on UNIX-pkgconfig
+                    target_link_libraries(${target_name} PRIVATE PkgConfig::OPENSSL)
+                endif()
+            endif()
+            add_test(NAME ${test_name} COMMAND ${test_name})
         endif()
-    endif()
-    add_test(TEST opendht_unit_tests)
+    endforeach()
 endif()
 
 if (OPENDHT_CPACK)
