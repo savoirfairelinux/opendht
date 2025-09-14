@@ -115,13 +115,13 @@ PeerDiscovery::DomainPeerDiscovery::DomainPeerDiscovery(asio::ip::udp domain, in
                 sockFd_.bind({domain, port});
             } catch(const std::exception& e){
                 if (logger_)
-                    logger_->error("Can't start peer discovery using android workaround: {}", e.what());
+                    logger_->error("Unable to start peer discovery using android workaround: {}", e.what());
             }
         }
         else
 #endif
         if (logger_)
-            logger_->error("Can't start peer discovery for {}: {}",
+            logger_->error("Unable to start peer discovery for {}: {}",
                     domain.family() == AF_INET ? "IPv4" : "IPv6", e.what());
     }
 }
@@ -322,9 +322,9 @@ PeerDiscovery::DomainPeerDiscovery::reDiscover()
 
     sockFd_.set_option(asio::ip::multicast::join_group(sockAddrSend_.address()), ec);
     if (ec and logger_)
-        logger_->w("can't multicast on %s: %s",
-                sockAddrSend_.address().to_string().c_str(),
-                ec.message().c_str());
+        logger_->w("Unable to multicast on %s: %s",
+                   sockAddrSend_.address().to_string().c_str(),
+                   ec.message().c_str());
     query(sockAddrSend_);
 }
 
@@ -382,13 +382,13 @@ PeerDiscovery::PeerDiscovery(in_port_t port, Sp<asio::io_context> ioContext, Sp<
         peerDiscovery4_.reset(new DomainPeerDiscovery(asio::ip::udp::v4(), port, ioContext, logger));
     } catch(const std::exception& e){
         if (logger)
-            logger->e("[peerdiscovery] can't start IPv4: %s", e.what());
+            logger->e("[peerdiscovery] Unable to start IPv4: %s", e.what());
     }
     try {
         peerDiscovery6_.reset(new DomainPeerDiscovery(asio::ip::udp::v6(), port, ioContext, logger));
     } catch(const std::exception& e) {
         if (logger)
-            logger->e("[peerdiscovery] can't start IPv6: %s", e.what());
+            logger->e("[peerdiscovery] Unable to start IPv6: %s", e.what());
     }
 }
 
