@@ -46,7 +46,7 @@ public:
             } else
                 ++rit;
         }
-        // printf("StorageBucket::erase can't find value %s %016" PRIx64 "\n", id.to_c_str(), value.id);
+        // printf("StorageBucket::erase unable to find value %s %016" PRIx64 "\n", id.to_c_str(), value.id);
     }
     void refresh(const InfoHash& id, const Value& value, time_point old_expiration, time_point expiration) {
         auto range = storedValues_.equal_range(old_expiration);
@@ -58,7 +58,7 @@ public:
             } else
                 ++rit;
         }
-        // printf("StorageBucket::refresh can't find value %s %016" PRIx64 "\n", id.to_c_str(), value.id);
+        // printf("StorageBucket::refresh unable to find value %s %016" PRIx64 "\n", id.to_c_str(), value.id);
         insert(id, value, expiration);
     }
     size_t size() const { return totalSize_; }
