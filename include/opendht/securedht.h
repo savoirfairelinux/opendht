@@ -87,7 +87,7 @@ public:
 
     /**
      * "Secure" get(), that will check the signature of signed data, and decrypt encrypted data.
-     * If the signature can't be checked, or if the data can't be decrypted, it is not returned.
+     * If the signature is unable to be checked, or if the data is unable to be decrypted, it is not returned.
      * Public, non-signed & non-encrypted data is retransmitted as-is.
      */
     void get(const InfoHash& id, GetCallback cb, DoneCallback donecb={}, Value::Filter&& = {}, Where&& w = {}) override;
