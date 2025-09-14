@@ -108,7 +108,7 @@ jobs:
         run: cd build && make
 
       - name: Run Unit tests
-        run: cd build && ./opendht_unit_tests
+        run: ctest --output-on-failure --test-dir build
 
   build-debian12:
     name: Debian 12/GCC build
@@ -135,13 +135,13 @@ jobs:
           mkdir llhttp
           wget "https://github.com/nodejs/llhttp/archive/refs/tags/release/${LLHTTP_VERSION}.tar.gz" -O llhttp.tar.gz
           tar -xzf llhttp.tar.gz -C llhttp --strip-components=1
-          cd llhttp && cmake -DCMAKE_INSTALL_PREFIX=/usr . && make -j2 && sudo make install
+          cd llhttp && cmake -DCMAKE_INSTALL_PREFIX=/usr . && make -j2 && make install
           cd ../ && rm -rf llhttp*
 
       - name: Install expected-lite header
         run: |
-          sudo mkdir -p /usr/local/include/nonstd
-          sudo wget "${EXPECTED_LITE_URL}" -O /usr/local/include/nonstd/expected.hpp
+          mkdir -p /usr/local/include/nonstd
+          wget "${EXPECTED_LITE_URL}" -O /usr/local/include/nonstd/expected.hpp
 
       - name: Build restinio dependency
         run: |
@@ -154,7 +154,7 @@ jobs:
                 -DRESTINIO_WITH_SOBJECTIZER=Off \
                 -DRESTINIO_DEP_STANDALONE_ASIO=system -DRESTINIO_DEP_LLHTTP=system \
                 -DRESTINIO_DEP_FMT=system -DRESTINIO_DEP_EXPECTED_LITE=system .
-          sudo make install
+          make install
           cd ../../ && rm -rf restinio*
 
       - name: Build
