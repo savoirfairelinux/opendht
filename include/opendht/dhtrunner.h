@@ -444,7 +444,7 @@ public:
      * The node is reset to its default state. The DHT can then be run again with @run().
      * No DHT callbacks will run after this method returns.
      * Calling this method is optional. It allows to ensure the destructor won't block.
-     * This method can't be called from a DHT callback.
+     * This method is unable to be called from a DHT callback.
      */
     void join();
 
