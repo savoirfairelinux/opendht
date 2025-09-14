@@ -93,7 +93,7 @@ SecureDht::secureType(ValueType&& type)
             return type.editPolicy(id, o, n, nid, a);
         if (*o->owner != *n->owner or not n->isSigned()) {
             if (logger_)
-                logger_->w("Edition forbidden: not signed or wrong owner.");
+                logger_->w("Edition forbidden: not signed or incorrect owner.");
             return false;
         }
         if (not n->checkSignature()) {
