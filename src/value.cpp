@@ -527,7 +527,7 @@ Where::Where(std::string_view q_str) {
                 else if (field_str == "user_type")
                     userType(s);
                 else
-                    throw std::invalid_argument(Query::QUERY_PARSE_ERROR + " (WHERE) wrong token near: " + field_str);
+                    throw std::invalid_argument(Query::QUERY_PARSE_ERROR + " (WHERE) incorrect token near: " + field_str);
             }
         }
     }
