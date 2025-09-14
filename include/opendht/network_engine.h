@@ -59,18 +59,18 @@ class DhtProtocolException : public DhtException {
 public:
     // sent to another peer (http-like).
     static const constexpr uint16_t NON_AUTHORITATIVE_INFORMATION {203}; /* incomplete request packet. */
-    static const constexpr uint16_t UNAUTHORIZED {401};                  /* wrong tokens. */
+    static const constexpr uint16_t UNAUTHORIZED {401};                  /* incorrect tokens. */
     static const constexpr uint16_t NOT_FOUND {404};                     /* storage not found */
     // for internal use (custom).
     static const constexpr uint16_t INVALID_TID_SIZE {421};              /* id was truncated. */
     static const constexpr uint16_t UNKNOWN_TID {422};                   /* unknown tid */
-    static const constexpr uint16_t WRONG_NODE_INFO_BUF_LEN {423};       /* node info length is wrong */
+    static const constexpr uint16_t WRONG_NODE_INFO_BUF_LEN {423};       /* node info length is incorrect */
 
     static const std::string GET_NO_INFOHASH;    /* received "get" request with no infohash */
     static const std::string LISTEN_NO_INFOHASH; /* got "listen" request without infohash */
-    static const std::string LISTEN_WRONG_TOKEN; /* wrong token in "listen" request */
+    static const std::string LISTEN_WRONG_TOKEN; /* incorrect token in "listen" request */
     static const std::string PUT_NO_INFOHASH;    /* no infohash in "put" request */
-    static const std::string PUT_WRONG_TOKEN;    /* got "put" request with wrong token */
+    static const std::string PUT_WRONG_TOKEN;    /* got "put" request with incorrect token */
     static const std::string STORAGE_NOT_FOUND;  /* got access request for an unknown storage */
     static const std::string PUT_INVALID_ID;     /* invalid id in "put" request */
 
