@@ -345,11 +345,11 @@ public:
      * @param previous    The previous request "listen" sent to this node.
      * @param socket      **UNUSED** The socket for further response.
      *
-     *                    For backward compatibility purpose, sendListen has to
-     *                    handle creation of the socket. Therefor, you cannot
-     *                    use openSocket yourself. TODO: Once we don't support
-     *                    the old "listen" negociation, sendListen shall not
-     *                    create the socket itself.
+     *                    For backward compatibility purposes, sendListen has to
+     *                    handle creation of the socket. Therefore, you are unable to
+     *                    use openSocket yourself.
+     *                    TODO: Once we don't support the old "listen" negotiation,
+     *                    sendListen shall not create the socket itself.
      *
      * @param on_done     Request callback when the request is completed.
      * @param on_expired  Request callback when the request expires.
