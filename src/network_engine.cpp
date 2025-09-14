@@ -33,10 +33,10 @@ using namespace std::chrono_literals;
 
 const std::string DhtProtocolException::GET_NO_INFOHASH {"Get_values with no info_hash"};
 const std::string DhtProtocolException::LISTEN_NO_INFOHASH {"Listen with no info_hash"};
-const std::string DhtProtocolException::LISTEN_WRONG_TOKEN {"Listen with wrong token"};
+const std::string DhtProtocolException::LISTEN_WRONG_TOKEN {"Listen with incorrect token"};
 const std::string DhtProtocolException::PUT_NO_INFOHASH {"Put with no info_hash"};
-const std::string DhtProtocolException::PUT_WRONG_TOKEN {"Put with wrong token"};
-const std::string DhtProtocolException::PUT_INVALID_ID {"Put with invalid id"};
+const std::string DhtProtocolException::PUT_WRONG_TOKEN {"Put with incorrect token"};
+const std::string DhtProtocolException::PUT_INVALID_ID {"Put with invalid ID"};
 const std::string DhtProtocolException::STORAGE_NOT_FOUND {"Access operation for unknown storage"};
 
 constexpr std::chrono::seconds NetworkEngine::UDP_REPLY_TIME;
@@ -133,7 +133,7 @@ NetworkEngine::tellListener(const Sp<Node>& node, Tid socket_id, const InfoHash&
         }
     } catch (const std::overflow_error& e) {
         if (logger_)
-            logger_->e("Can't send value: buffer not large enough !");
+            logger_->e("Unable to send value: buffer not large enough.");
     }
 }
 
@@ -288,7 +288,7 @@ NetworkEngine::requestStep(Sp<Request> sreq)
     auto& node = *req.node;
     if (req.isExpired(now)) {
         // if (logger_)
-        //     logger_->d(node.id, "[node %s] expired !", node.toString().c_str());
+        //     logger_->d(node.id, "[node %s] expired.", node.toString().c_str());
         node.setExpired();
         if (not node.id)
             requests.erase(req.tid);
@@ -429,7 +429,7 @@ NetworkEngine::processMessage(const uint8_t *buf, size_t buflen, SockAddr f)
         msg->msgpack_unpack(msg_res.get());
     } catch (const std::exception& e) {
         if (logger_)
-            logger_->w("Can't parse message of size %lu: %s", buflen, e.what());
+            logger_->w("Unable to parse message of size %lu: %s", buflen, e.what());
         // if (logger_)
         //     logger_->DBG.logPrintable(buf, buflen);
         return;
@@ -449,7 +449,7 @@ NetworkEngine::processMessage(const uint8_t *buf, size_t buflen, SockAddr f)
         if (pmsg_it == partial_messages.end()) {
             if (logIncoming_)
                 if (logger_)
-                    logger_->d("Can't find partial message");
+                    logger_->d("Unable to find partial message");
             rateLimit(from);
             return;
         }
@@ -523,7 +523,7 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
     if (msg->type == MessageType::ValueUpdate) {
         auto rsocket = node->getSocket(msg->tid);
         if (not rsocket)
-            throw DhtProtocolException {DhtProtocolException::UNKNOWN_TID, "Can't find socket", msg->id};
+            throw DhtProtocolException {DhtProtocolException::UNKNOWN_TID, "Unable to find socket", msg->id};
         node->received(now, {});
         onNewNode(node, 2);
         try {
@@ -531,7 +531,7 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
             rsocket->on_receive(node, std::move(*msg));
         } catch (const DhtProtocolException& e) {
             if (logger_)
-                logger_->w("Can't deserialize nodes %s", e.what());
+                logger_->w("Unable to deserialize nodes %s", e.what());
         }
     }
     else if (msg->type == MessageType::Error or msg->type == MessageType::Reply) {
@@ -550,7 +550,7 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
                 if (not node->isClient())
                     onNewNode(node, 1);
                 if (logger_)
-                    logger_->d(node->id, "[node %s] can't find transaction with id %u", node->toString().c_str(), msg->tid);
+                    logger_->d(node->id, "[node %s] Unable to find transaction with id %u", node->toString().c_str(), msg->tid);
                 return;
             }
         }
@@ -600,7 +600,7 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
                     r.setDone(std::move(*msg));
                 } catch (const DhtProtocolException& e) {
                     if (logger_)
-                        logger_->w("Can't deserialize nodes %s", e.what());
+                        logger_->w("Unable to deserialize nodes %s", e.what());
                 }
                 break;
             } else { /* request socket data */
@@ -609,7 +609,7 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
                     rsocket->on_receive(node, std::move(*msg));
                 } catch (const DhtProtocolException& e) {
                     if (logger_)
-                        logger_->w("Can't deserialize nodes %s", e.what());
+                        logger_->w("Unable to deserialize nodes %s", e.what());
                 }
             }
             break;
@@ -694,7 +694,7 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
             }
         } catch (const std::overflow_error& e) {
             if (logger_)
-                logger_->e("Can't send value: buffer not large enough !");
+                logger_->e("Unable to send value: buffer not large enough.");
         } catch (const DhtProtocolException& e) {
             sendError(from, msg->tid, e.getCode(), e.getMsg().c_str(), true);
         }
@@ -744,7 +744,7 @@ NetworkEngine::sendPing(const Sp<Node>& node, RequestCb&& on_done, RequestExpire
         Blob(buffer.data(), buffer.data() + buffer.size()),
         [=](const Request& req_status, ParsedMessage&&) {
             if (logger_)
-                logger_->d(req_status.node->id, "[node %s] got pong !", req_status.node->toString().c_str());
+                logger_->d(req_status.node->id, "[node %s] got pong.", req_status.node->toString().c_str());
             if (on_done) {
                 on_done(req_status, {});
             }
