@@ -638,9 +638,9 @@ PublicKey::getLongId() const
         PkId h;
         size_t sz = h.size();
         if (auto err = gnutls_pubkey_get_key_id(pk, GNUTLS_KEYID_USE_SHA256, h.data(), &sz))
-            throw CryptoException(std::string("Unable to get 256 bit public key ID: ") + gnutls_strerror(err));
+            throw CryptoException(std::string("Unable to get 256-bit public key ID: ") + gnutls_strerror(err));
         if (sz != h.size())
-            throw CryptoException("Unable to get 256 bit public key ID: incorrect output length.");
+            throw CryptoException("Unable to get 256-bit public key ID: incorrect output length.");
         cachedLongId_ = h;
         longIdCached_.store(true);
     }
@@ -968,9 +968,9 @@ Certificate::getLongId() const
         PkId id;
         size_t sz = id.size();
         if (auto err = gnutls_x509_crt_get_key_id(cert, GNUTLS_KEYID_USE_SHA256, id.data(), &sz))
-            throw CryptoException(std::string("Unable to get certificate 256 bit public key ID: ") + gnutls_strerror(err));
+            throw CryptoException(std::string("Unable to get certificate 256-bit public key ID: ") + gnutls_strerror(err));
         if (sz != id.size())
-            throw CryptoException("Unable to get certificate 256 bit public key ID: incorrect output length.");
+            throw CryptoException("Unable to get certificate 256-bit public key ID: incorrect output length.");
         cachedLongId_ = id;
         longIdCached_.store(true);
     }
