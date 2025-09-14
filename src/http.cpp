@@ -881,7 +881,7 @@ Request::Request(asio::io_context& ctx, const std::string& url, const Json::Valu
             Json::CharReaderBuilder rbuilder;
             auto reader = std::unique_ptr<Json::CharReader>(rbuilder.newCharReader());
             if (!reader->parse(response.body.data(), response.body.data() + response.body.size(), &json, &err) and logger_)
-                logger_->error("[http:request:{:d}] can't parse response to json: {:s}", id_, err);
+                logger_->error("[http:request:{:d}] Unable to parse response to JSON: {:s}", id_, err);
         }
         if (jsoncb)
             jsoncb(std::move(json), response);
@@ -903,7 +903,7 @@ Request::Request(asio::io_context& ctx, const std::string& url, OnJsonCb jsoncb,
             Json::CharReaderBuilder rbuilder;
             auto reader = std::unique_ptr<Json::CharReader>(rbuilder.newCharReader());
             if (!reader->parse(response.body.data(), response.body.data() + response.body.size(), &json, &err) and logger_)
-                logger_->error("[http:request:{:d}] can't parse response to json: {:s}", id_, err);
+                logger_->error("[http:request:{:d}] Unable to parse response to JSON: {:s}", id_, err);
         }
         if (jsoncb)
             jsoncb(std::move(json), response);
