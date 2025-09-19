@@ -261,7 +261,7 @@ void CryptoTester::testAesEncryptionWithMultipleKeySizes() {
 }
 
 void CryptoTester::testOaep() {
-#if GNUTLS_VERSION_NUMBER >= 0x030804 && !defined(__WIN32__)
+#if GNUTLS_VERSION_NUMBER >= 0x030804 && !defined(_WIN32)
     auto data = std::vector<uint8_t>(446, 10);
     auto ca = dht::crypto::generateIdentity("n1");
 
