@@ -79,6 +79,7 @@ jobs:
             -DOPENDHT_C=OFF `
             -DOPENDHT_TOOLS=OFF `
             -DOPENDHT_PYTHON=ON `
+            -DOPENDHT_DOCUMENTATION=OFF `
             -DOPENDHT_PROXY_CLIENT=ON `
             -DOPENDHT_PROXY_SERVER=ON
           cd build
