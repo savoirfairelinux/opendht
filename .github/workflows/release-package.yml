@@ -315,6 +315,7 @@ jobs:
             -DOPENDHT_C=On `
             -DOPENDHT_TOOLS=On `
             -DOPENDHT_PYTHON=Off `
+            -DOPENDHT_DOCUMENTATION=OFF `
             -DOPENDHT_PEER_DISCOVERY=On `
             -DOPENDHT_PROXY_SERVER=On `
             -DOPENDHT_PROXY_CLIENT=On `
@@ -417,6 +418,7 @@ jobs:
             -DOPENDHT_PROXY_SERVER=ON `
             -DOPENDHT_C=ON `
             -DOPENDHT_TOOLS=ON `
+            -DOPENDHT_DOCUMENTATION=OFF `
             -DOPENDHT_PYTHON=OFF `
             -DOPENDHT_PEER_DISCOVERY=ON `
             -DOPENDHT_HTTP=ON `
