@@ -1,5 +1,5 @@
 project('opendht', 'c', 'cpp', 'cython',
-    version: '3.5.4',
+    version: '3.5.5',
     meson_version: '>=1.1.0',
     default_options: [
         'cpp_std=c++17',
