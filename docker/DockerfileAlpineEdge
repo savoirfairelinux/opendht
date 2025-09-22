@@ -1,0 +1,41 @@
+FROM opendht-alpine-edge-deps:latest AS build
+LABEL maintainer="Adrien Béraud <adrien.beraud@savoirfairelinux.com>"
+LABEL org.opencontainers.image.source=https://github.com/savoirfairelinux/opendht
+
+COPY . opendht
+
+RUN mkdir /install
+ENV DESTDIR=/install
+
+RUN cd opendht && mkdir build && cd build \
+	&& cmake .. -DCMAKE_INSTALL_PREFIX=/usr \
+                -DOPENDHT_DOWNLOAD_DEPS=Off \
+                -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+                -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=On \
+                -DOPENDHT_C=On \
+                -DOPENDHT_PEER_DISCOVERY=On \
+                -DOPENDHT_PYTHON=On \
+                -DOPENDHT_TOOLS=On \
+                -DOPENDHT_PROXY_SERVER=On \
+                -DOPENDHT_PROXY_CLIENT=On \
+                -DOPENDHT_SYSTEMD=On \
+	&& make -j8 && make install
+
+FROM alpine:edge AS install
+COPY --from=build /install /
+RUN apk add --no-cache \
+        libstdc++ \
+        gnutls \
+        nettle \
+        openssl \
+        argon2-dev \
+        jsoncpp \
+        llhttp \
+        fmt \
+        readline \
+        ncurses \
+        gdb
+#CMD ["dhtnode", "-b", "bootstrap.jami.net", "-p", "4222", "--proxyserver", "8080"]
+EXPOSE 4222/udp
+EXPOSE 8080/tcp
+CMD ["/bin/sh"]
