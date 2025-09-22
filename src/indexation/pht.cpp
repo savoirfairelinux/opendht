@@ -145,7 +145,7 @@ int Pht::Cache::lookup(const Prefix& p) {
     return pos;
 }
 
-const ValueType IndexEntry::TYPE = ValueType::USER_DATA;
+const ValueType& IndexEntry::TYPE = ValueType::USER_DATA;
 constexpr std::chrono::minutes Pht::Cache::NODE_EXPIRE_TIME;
 
 void Pht::lookupStep(Prefix p, std::shared_ptr<int> lo, std::shared_ptr<int> hi,
