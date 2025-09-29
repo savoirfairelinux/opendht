@@ -23,7 +23,7 @@ jobs:
 
       # Run locally with: pipx run cibuildwheel --platform linux python
       - name: Build wheels
-        uses: pypa/cibuildwheel@v3.1.4
+        uses: pypa/cibuildwheel@v3.2.0
         with:
           package-dir: python
 
