@@ -653,12 +653,21 @@ if (BUILD_SHARED_LIBS)
     target_compile_definitions(opendht PUBLIC opendht_EXPORTS)
 endif ()
 
+if(("${CMAKE_SYSTEM_NAME}" MATCHES "OpenBSD") OR
+   ("${CMAKE_SYSTEM_NAME}" MATCHES "NetBSD") OR
+   ("${CMAKE_SYSTEM_NAME}" MATCHES "DragonFly"))
+    install (TARGETS opendht
+        DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        EXPORT opendht
+    )
+else()
+    install (TARGETS opendht
+        DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        RUNTIME_DEPENDENCY_SET opendht_rdeps
+        EXPORT opendht
+    )
+endif()
 
-install (TARGETS opendht
-    DESTINATION ${CMAKE_INSTALL_LIBDIR}
-    RUNTIME_DEPENDENCY_SET opendht_rdeps
-    EXPORT opendht
-)
 if (WIN32)
     install(RUNTIME_DEPENDENCY_SET opendht_rdeps
         PRE_EXCLUDE_REGEXES
