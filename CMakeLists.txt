@@ -130,7 +130,7 @@ if (NOT MSVC)
         #  libfmt 
         pkg_search_module (fmt REQUIRED IMPORTED_TARGET fmt)
         # libreadline
-        if (OPENDHT_TOOLS AND NOT APPLE)   
+        if (OPENDHT_TOOLS AND NOT (APPLE OR ("${CMAKE_SYSTEM_NAME}" MATCHES "OpenBSD")))
             pkg_search_module(readline REQUIRED IMPORTED_TARGET readline)
             message(STATUS "libreadline: version ${readline_VERSION}")
             set(READLINE_VERSION ${readline_VERSION})
