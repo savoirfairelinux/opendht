@@ -138,6 +138,7 @@ if (NOT MSVC)
                 message(SEND_ERROR "libreadline: required version 6.0 or later")
             endif()
             set(READLINE_LIBRARIES ${readline_LIBRARIES})
+            link_directories(${readline_LIBRARY_DIRS})
         endif ()
         # ASIO
         if (OPENDHT_HTTP OR OPENDHT_PEER_DISCOVERY)
