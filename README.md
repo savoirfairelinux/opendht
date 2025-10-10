@@ -4,6 +4,8 @@
     <a id="user-content-opendht-" class="anchor" href="/savoirfairelinux/opendht/blob/master/README.md#opendht-" aria-hidden="true"></a>OpenDHT
 </h1>
 
+![PyPI - Version](https://img.shields.io/pypi/v/opendht?style=flat)
+
 A lightweight C++17 Distributed Hash Table implementation.
 
 OpenDHT provides an easy to use distributed in-memory data store.
