@@ -181,12 +181,10 @@ AS_IF([test "x$have_fmt" = "xyes"], [
 AM_COND_IF([PROXY_CLIENT_OR_SERVER], [
     AC_CHECK_HEADERS([asio.hpp],, AC_MSG_ERROR([Missing Asio headers files]))
     CXXFLAGS="${CXXFLAGS} -DASIO_STANDALONE"
-    # llhttp has no pkgconfig, instead we check with:
-    AC_CHECK_LIB(llhttp, exit,, AC_MSG_ERROR([Missing llhttp library files]))
-    AC_CHECK_HEADERS([llhttp.h], [llhttp_headers=yes; break;])
-    AC_SUBST(llhttp_lib, [", liblllhttp"])
-    AS_IF([test "x$llhttp_headers" != "xyes"], AC_MSG_ERROR([Missing llhttp headers files]))
+    PKG_CHECK_MODULES([Llhttp], [libllhttp])
+    llhttp_lib=", libllhttp"
 ])
+AC_SUBST(llhttp_lib)
 
 CXXFLAGS="${CXXFLAGS} -DMSGPACK_NO_BOOST -DMSGPACK_DISABLE_LEGACY_NIL -DMSGPACK_DISABLE_LEGACY_CONVERT"
 
