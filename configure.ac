@@ -186,6 +186,14 @@ AM_COND_IF([PROXY_CLIENT_OR_SERVER], [
 ])
 AC_SUBST(llhttp_lib)
 
+AC_ARG_WITH([liburing], AS_HELP_STRING([--with-liburing], [Build with io_uring support(Linux only)]),[], [with_liburing=no])
+AS_IF([test "x$with_liburing" != "xno"], [
+    CXX_FLAGS="${CXXFLAGS} -DASIO_HAS_IO_URING -DASIO_DISABLE_EPOLL"
+    PKG_CHECK_MODULES([Liburing], [liburing])
+    iouring_lib=", liburing"
+])
+AC_SUBST(iouring_lib)
+
 CXXFLAGS="${CXXFLAGS} -DMSGPACK_NO_BOOST -DMSGPACK_DISABLE_LEGACY_NIL -DMSGPACK_DISABLE_LEGACY_CONVERT"
 
 AC_ARG_ENABLE([tools], AS_HELP_STRING([--disable-tools],[Disable tools (CLI DHT node)]),,build_tools=yes)
