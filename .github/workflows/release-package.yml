@@ -350,7 +350,7 @@ jobs:
           }
 
       - name: Upload MSI Artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: opendht-windows-msi
           path: build/${{ steps.cpack_msi.outputs.msi_path }} # Path to the MSI in the build directory
@@ -430,7 +430,7 @@ jobs:
           cmake --build build_static --config Release --parallel $([System.Environment]::ProcessorCount)
 
       - name: Upload Static dhtnode Artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: opendht-windows-dhtnode
           path: |

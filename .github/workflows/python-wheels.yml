@@ -27,7 +27,7 @@ jobs:
         with:
           package-dir: python
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: opendht-wheels-${{ matrix.os }}
           path: ./wheelhouse/*.whl
@@ -86,7 +86,7 @@ jobs:
           pipx run cibuildwheel python
         shell: pwsh
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: opendht-wheels-win_amd64
           path: ./build/wheelhouse/*.whl
