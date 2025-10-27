@@ -449,13 +449,13 @@ jobs:
         uses: actions/checkout@v5
 
       - name: Download Windows MSI artifact
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v6
         with:
           name: opendht-windows-msi
           path: downloaded_artifacts/windows_msi
 
       - name: Download Static dhtnode artifact
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v6
         with:
           name: opendht-windows-dhtnode
           path: downloaded_artifacts/static_dhtnode
