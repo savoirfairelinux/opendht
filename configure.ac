@@ -6,7 +6,7 @@ m4_define([opendht_version],
 		  [opendht_major_version.opendht_minor_version.opendht_patch_version])
 
 AC_INIT(opendht, [opendht_version])
-AC_MSG_WARN([The Autotools build system for OpenDHT is deprecated and will be removed in a future release. Please use the CMake or Meson build.])
+AC_MSG_WARN([The Autotools build system for OpenDHT is deprecated and will be removed in a future release. Please use CMake or Meson instead.])
 AC_CONFIG_AUX_DIR(ac)
 AM_INIT_AUTOMAKE([foreign subdir-objects])
 AC_CONFIG_HEADERS([config.h])
@@ -225,4 +225,5 @@ AC_CONFIG_FILES([Makefile
                  doc/Makefile
                  doc/Doxyfile
                  opendht.pc])
+AC_MSG_WARN([The Autotools build system for OpenDHT is deprecated and will be removed in a future release. Please use CMake or Meson instead.])
 AC_OUTPUT
