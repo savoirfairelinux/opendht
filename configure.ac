@@ -6,7 +6,7 @@ m4_define([opendht_version],
 		  [opendht_major_version.opendht_minor_version.opendht_patch_version])
 
 AC_INIT(opendht, [opendht_version])
-AC_MSG_WARN([The Autotools build system for OpenDHT is deprecated and will be removed in a future release. Please use the CMake or Meson build.])
+AC_MSG_WARN([The Autotools build system for OpenDHT is deprecated and will be removed in a future release. Please use CMake or Meson instead.])
 AC_CONFIG_AUX_DIR(ac)
 AM_INIT_AUTOMAKE([foreign subdir-objects])
 AC_CONFIG_HEADERS([config.h])
@@ -142,19 +142,21 @@ AM_CONDITIONAL(PROXY_CLIENT_OR_SERVER, test x$proxy_client == xyes || test x$pro
 PKG_CHECK_MODULES([Nettle], [nettle >= 2.4])
 PKG_CHECK_MODULES([GnuTLS], [gnutls >= 3.3])
 AC_CHECK_HEADERS([msgpack.hpp], [], [
-  PKG_CHECK_MODULES([MsgPack], [msgpack >= 1.2])
+  PKG_CHECK_MODULES([MsgPack], [msgpack-cxx >= 1.2])
 ])
 PKG_CHECK_MODULES([Argon2], [libargon2])
 AC_SUBST(argon2_lib, [", libargon2"])
 
 AC_ARG_WITH([jsoncpp], AS_HELP_STRING([--without-jsoncpp], [Build without JsonCpp support]))
 AS_IF([test "x$with_jsoncpp" != "xno"],
-      [PKG_CHECK_MODULES([JsonCpp], [jsoncpp >= 1.7.2], [have_jsoncpp=yes], [have_jsoncpp=no])],
+      [PKG_CHECK_MODULES([JsonCpp], [jsoncpp >= 1.7.2], [have_jsoncpp=yes], [have_jsoncpp=no])
+       PKG_CHECK_MODULES([simdutf], [simdutf >= 6], [have_simdutf=yes], [have_simdutf=no])],
       [have_jsoncpp=no])
 AS_IF([test "x$have_jsoncpp" = "xyes"], [
     AC_MSG_NOTICE([Using JsonCpp])
     CPPFLAGS="${CPPFLAGS} -DOPENDHT_JSONCPP"
     AC_SUBST(jsoncpp_lib, [", jsoncpp"])
+    AC_SUBST(simdutf_lib, [", simdutf"])
 ], [
     AC_MSG_NOTICE([Not using JsonCpp])
     AM_COND_IF(PROXY_CLIENT_OR_SERVER, AC_MSG_ERROR(["JsonCpp is required for proxy/push notification support"]))
@@ -225,4 +227,5 @@ AC_CONFIG_FILES([Makefile
                  doc/Makefile
                  doc/Doxyfile
                  opendht.pc])
+AC_MSG_WARN([The Autotools build system for OpenDHT is deprecated and will be removed in a future release. Please use CMake or Meson instead.])
 AC_OUTPUT

@@ -7,7 +7,7 @@ env:
   UBUNTU_FULL_DEPS: "libncurses5-dev libreadline-dev nettle-dev libasio-dev libgnutls28-dev libuv1-dev python3-pip python3-dev python3-setuptools libcppunit-dev libjsoncpp-dev autotools-dev autoconf libfmt-dev libmsgpack-dev libargon2-dev"
   UBUNTU_MESON_DEPS: "ninja-build libncurses5-dev libreadline-dev nettle-dev libasio-dev libgnutls28-dev libuv1-dev python3-dev python3-setuptools python3-pip libcppunit-dev libjsoncpp-dev libfmt-dev libmsgpack-dev libargon2-dev"
   UBUNTU_MINIMAL_DEPS: "libncurses5-dev libreadline-dev nettle-dev libfmt-dev libgnutls28-dev libcppunit-dev libmsgpack-dev libargon2-dev"
-  DEBIAN12_DEPS: "autotools-dev autoconf libtool m4 automake pkg-config wget cmake libncurses5-dev libreadline-dev nettle-dev libasio-dev libgnutls28-dev libuv1-dev python3-pip python3-dev python3-setuptools libcppunit-dev libjsoncpp-dev libfmt-dev libmsgpack-dev libargon2-dev"
+  DEBIAN12_DEPS: "git autotools-dev autoconf libtool m4 automake pkg-config wget cmake libncurses5-dev libreadline-dev nettle-dev libasio-dev libgnutls28-dev libuv1-dev python3-pip python3-dev python3-setuptools libcppunit-dev libjsoncpp-dev libfmt-dev libmsgpack-dev libargon2-dev"
 
 on: [push, pull_request]
 
@@ -39,6 +39,15 @@ jobs:
         run: |
           sudo mkdir -p /usr/local/include/nonstd
           sudo wget "${EXPECTED_LITE_URL}" -O /usr/local/include/nonstd/expected.hpp
+        
+      - name: Install simdutf
+        run: |
+          wget https://github.com/simdutf/simdutf/archive/refs/tags/v7.7.0.tar.gz -O simdutf.tar.gz
+          tar -xzf simdutf.tar.gz
+          mv simdutf-7.7.0 simdutf
+          mkdir simdutf/build && cd simdutf/build
+          cmake -DCMAKE_INSTALL_PREFIX=/usr/local -DSIMDUTF_CXX_STANDARD=17 -DSIMDUTF_TOOLS=Off -DSIMDUTF_TESTS=Off .. && make -j2 && sudo make install
+          cd ../../ && rm -rf simdutf
 
       - name: Build restinio dependency
         run: |
@@ -157,11 +166,17 @@ jobs:
           make install
           cd ../../ && rm -rf restinio*
 
-      - name: Build
+      - name: Configure project with CMake
         run: |
-          ./autogen.sh
-          ./configure --enable-proxy-client
-          make
+          mkdir build && cd build
+          cmake .. -DCMAKE_BUILD_TYPE=Debug \
+                   -DOPENDHT_C=On -DBUILD_TESTING=On \
+                   -DOPENDHT_PEER_DISCOVERY=On -DOPENDHT_PYTHON=Off \
+                   -DOPENDHT_TOOLS=On -DOPENDHT_PROXY_SERVER=On \
+                   -DOPENDHT_PROXY_CLIENT=On
+
+      - name: Build
+        run: cd build && make
 
   build-macos:
     name: macOS/Clang build
