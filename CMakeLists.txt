@@ -126,6 +126,29 @@ if (NOT MSVC)
             set(JSONCPP_LIBRARIES PkgConfig::Jsoncpp)
             set(JSONCPP_INCLUDE_DIRS ${Jsoncpp_INCLUDE_DIRS})
             set(JSONCPP_FOUND ${Jsoncpp_FOUND})
+
+            pkg_search_module (simdutf IMPORTED_TARGET simdutf)
+            if (NOT simdutf_FOUND)
+                message(STATUS "simdutf not found with pkgconfig")
+                if (OPENDHT_DOWNLOAD_DEPS)
+                    message(STATUS "Fallback mode specified, downloading simdutf")
+                    set(SIMDUTF_TESTS OFF CACHE INTERNAL "Disable tests for simdutf downloader")
+                    set(SIMDUTF_TOOLS OFF CACHE INTERNAL "Disable tools for simdutf downloader")
+                    set(SIMDUTF_CXX_STANDARD 17 CACHE INTERNAL "Set C++ standard for simdutf downloader")
+                    FetchContent_Declare(simdutf
+                        GIT_REPOSITORY "https://github.com/simdutf/simdutf.git"
+                        GIT_TAG "v7.5.0"
+                    )
+                    FetchContent_MakeAvailable(simdutf)
+                    set(SIMDUTF_LIBRARIES simdutf::simdutf)
+                else()
+                    message(SEND_ERROR "simdutf not found and the fallback downloader is not set! Install simdutf or use OPENDHT_DOWNLOAD_DEPS option")
+                endif()
+            else()
+                message(STATUS "Found simdutf: ${simdutf_VERSION} ${simdutf_INCLUDE_DIRS} (module: ${simdutf_MODULE_NAME})")
+                set(SIMDUTF_LIBRARIES PkgConfig::simdutf)
+                set(simdutf_lib ", ${simdutf_MODULE_NAME}")
+            endif()
         endif()
         #  libfmt 
         pkg_search_module (fmt REQUIRED IMPORTED_TARGET fmt)
@@ -313,6 +336,9 @@ else () # MSVC
     find_package(jsoncpp CONFIG REQUIRED)
     set(JSONCPP_FOUND TRUE)
     include_directories(${JSONCPP_INCLUDE_DIRS})
+
+    find_package(simdutf CONFIG REQUIRED)
+    include_directories(${SIMDUTF_INCLUDE_DIRS})
     
     find_package(fmt CONFIG REQUIRED)
     include_directories(${FMT_INCLUDEDIR})
@@ -385,7 +411,7 @@ if (OPENDHT_HTTP OR OPENDHT_PEER_DISCOVERY)
 endif()
 
 if (NOT MSVC)
-    set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-attributes -Wno-return-type -Wno-deprecated -Wno-deprecated-declarations -Wno-unknown-pragmas -Wall -Wextra -Wnon-virtual-dtor -pedantic-errors -fvisibility=hidden")
+    set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g  -D_LIBCPP_HARDENING_MODE=_LIBCPP_HARDENING_MODE_EXTENSIVE -Wno-attributes -Wno-return-type -Wno-deprecated -Wno-deprecated-declarations -Wno-unknown-pragmas -Wall -Wextra -Wnon-virtual-dtor -pedantic-errors -fvisibility=hidden")
     if (OPENDHT_SANITIZE)
         set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=address -fstack-protector-strong")
         set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fsanitize=address -fstack-protector-strong")
@@ -563,13 +589,16 @@ if (MSVC)
             tasn1_lib
         PUBLIC
             ${GNUTLS_LIBRARIES}
+            msgpack-cxx 
+            JsonCpp::JsonCpp 
+            fmt::fmt
+            simdutf::simdutf
             wsock32
             ws2_32
     )
     if (OPENDHT_TOOLS)
         target_link_libraries(opendht PUBLIC unofficial::readline-win32::readline)
     endif()
-    target_link_libraries(opendht PUBLIC msgpack-cxx JsonCpp::JsonCpp fmt::fmt)
     if (OPENDHT_HTTP)
         target_link_libraries(opendht
             PUBLIC restinio::restinio
@@ -590,6 +619,7 @@ else()
             PRIVATE
                 PkgConfig::argon2
                 PkgConfig::Nettle
+                ${SIMDUTF_LIBRARIES}
             PUBLIC
                 ${CMAKE_THREAD_LIBS_INIT}
                 PkgConfig::GnuTLS
