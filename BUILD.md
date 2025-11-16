@@ -31,7 +31,7 @@ make -j2 && make install
 # Install dependencies
 sudo apt install pkg-config libncurses5-dev libreadline-dev nettle-dev libgnutls28-dev libargon2-dev libmsgpack-dev libssl-dev libfmt-dev libjsoncpp-dev libhttp-parser-dev libasio-dev libmsgpack-cxx-dev
 ```
-Remaining of the procedure is same as for dbian 12
+Remaining of the procedure is same as for debian 12
 
 To run it on another boxes thant the build one, you will need runtime dependencies
 ```sh
