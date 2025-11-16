@@ -26,6 +26,17 @@ cd restinio-0.7.3/dev
 cmake -DCMAKE_INSTALL_PREFIX=/usr -DRESTINIO_TEST=Off -DRESTINIO_SAMPLE=Off -DRESTINIO_BENCHMARK=Off -DRESTINIO_WITH_SOBJECTIZER=Off -DRESTINIO_DEP_STANDALONE_ASIO=system -DRESTINIO_DEP_LLHTTP=system -DRESTINIO_DEP_FMT=system -DRESTINIO_DEP_EXPECTED_LITE=system .
 make -j2 && make install
 ```
+### Debian 13
+```sh
+# Install dependencies
+sudo apt install pkg-config libncurses5-dev libreadline-dev nettle-dev libgnutls28-dev libargon2-dev libmsgpack-dev libssl-dev libfmt-dev libjsoncpp-dev libhttp-parser-dev libasio-dev libmsgpack-cxx-dev
+```
+Remaining of the procedure is same as for dbian 12
+
+To run it on another boxes thant the build one, you will need runtime dependencies
+```sh
+sudo apt install libargon2-1 libjsoncpp26
+```
 
 ### Fedora
 
