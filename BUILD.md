@@ -1,21 +1,22 @@
 # Build the library
 
-Build is currently tested on GNU/Linux, macOS and Windows.
+Build is currently tested on GNU/Linux, macOS, and Windows.
 
-## Unix-like systems (Linux, macOS, MSYS2/MinGW etc.)
+## Unix-like systems (Linux, macOS, MSYS2/MinGW, etc.)
 
 ## Install dependencies
 
 ### Debian 13
+
 ```sh
 # Install dependencies
 sudo apt install pkg-config libncurses5-dev libreadline-dev nettle-dev libgnutls28-dev libargon2-dev libmsgpack-dev libssl-dev libfmt-dev libjsoncpp-dev libhttp-parser-dev libasio-dev libmsgpack-cxx-dev
 
-# Install python binding dependencies
+# Install Python binding dependencies
 sudo apt-get install cython3 python3-dev python3-setuptools python3-build
 ```
 
-Optionally, install Restinio to enable OpenDHT proxy client and server:
+Optionally, install RESTinio to enable the OpenDHT proxy client and server:
 ```sh
 mkdir /usr/include/nonstd
 wget https://raw.githubusercontent.com/martinmoene/expected-lite/master/include/nonstd/expected.hpp -O /usr/include/nonstd/expected.hpp
@@ -33,15 +34,16 @@ sudo apt install libargon2-1 libjsoncpp26
 ```
 
 ### Ubuntu 24.04 and Debian 12
+
 ```sh
 # Install dependencies
 sudo apt install pkg-config libncurses5-dev libreadline-dev nettle-dev libgnutls28-dev libargon2-0-dev libmsgpack-dev libssl-dev libfmt-dev libjsoncpp-dev libhttp-parser-dev libasio-dev
 
-# Install python binding dependencies
+# Install Python binding dependencies
 sudo apt-get install cython3 python3-dev python3-setuptools python3-build
 ```
 
-Optionally, install Restinio to enable OpenDHT proxy client and server:
+Optionally, install RESTinio to enable the OpenDHT proxy client and server:
 ```sh
 mkdir /usr/include/nonstd
 wget https://raw.githubusercontent.com/martinmoene/expected-lite/master/include/nonstd/expected.hpp -O /usr/include/nonstd/expected.hpp
@@ -63,18 +65,20 @@ sudo dnf install python3-Cython python3-devel redhat-rpm-config
 ```
 
 ### macOS
+
 ```sh
 brew install gnutls msgpack-cxx argon2 asio readline jsoncpp fmt
 ```
 
 ## Build
+
 Using CMake:
 
 ```sh
 # Clone the repository
 git clone https://github.com/savoirfairelinux/opendht.git
 
-# build and install
+# Build and install
 cd opendht
 mkdir build && cd build
 cmake -DCMAKE_INSTALL_PREFIX=/usr ..
@@ -89,7 +93,7 @@ Minimal build (libraries only):
 cmake -DOPENDHT_TOOLS=OFF ..
 ```
 
-Full-featured build with proxy support, Python and C bindings:
+Full-featured build with proxy support, Python, and C bindings:
 ```sh
 cmake -DOPENDHT_PYTHON=ON \
       -DOPENDHT_C=ON \
