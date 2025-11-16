@@ -6,6 +6,32 @@ Build is currently tested on GNU/Linux, macOS and Windows.
 
 ## Install dependencies
 
+### Debian 13
+```sh
+# Install dependencies
+sudo apt install pkg-config libncurses5-dev libreadline-dev nettle-dev libgnutls28-dev libargon2-dev libmsgpack-dev libssl-dev libfmt-dev libjsoncpp-dev libhttp-parser-dev libasio-dev libmsgpack-cxx-dev
+
+# Install python binding dependencies
+sudo apt-get install cython3 python3-dev python3-setuptools python3-build
+```
+
+Optionally, install Restinio to enable OpenDHT proxy client and server:
+```sh
+mkdir /usr/include/nonstd
+wget https://raw.githubusercontent.com/martinmoene/expected-lite/master/include/nonstd/expected.hpp -O /usr/include/nonstd/expected.hpp
+
+wget https://github.com/Stiffstream/restinio/releases/download/v.0.7.3/restinio-0.7.3.tar.bz2
+tar -xjf restinio-0.7.3.tar.bz2
+cd restinio-0.7.3/dev
+cmake -DCMAKE_INSTALL_PREFIX=/usr -DRESTINIO_TEST=Off -DRESTINIO_SAMPLE=Off -DRESTINIO_BENCHMARK=Off -DRESTINIO_WITH_SOBJECTIZER=Off -DRESTINIO_DEP_STANDALONE_ASIO=system -DRESTINIO_DEP_LLHTTP=system -DRESTINIO_DEP_FMT=system -DRESTINIO_DEP_EXPECTED_LITE=system .
+make -j2 && make install
+```
+
+To run openDHT on a different computer from the build computer, the following runtime dependencies are required:
+```sh
+sudo apt install libargon2-1 libjsoncpp26
+```
+
 ### Ubuntu 24.04 and Debian 12
 ```sh
 # Install dependencies
@@ -25,17 +51,6 @@ tar -xjf restinio-0.7.3.tar.bz2
 cd restinio-0.7.3/dev
 cmake -DCMAKE_INSTALL_PREFIX=/usr -DRESTINIO_TEST=Off -DRESTINIO_SAMPLE=Off -DRESTINIO_BENCHMARK=Off -DRESTINIO_WITH_SOBJECTIZER=Off -DRESTINIO_DEP_STANDALONE_ASIO=system -DRESTINIO_DEP_LLHTTP=system -DRESTINIO_DEP_FMT=system -DRESTINIO_DEP_EXPECTED_LITE=system .
 make -j2 && make install
-```
-### Debian 13
-```sh
-# Install dependencies
-sudo apt install pkg-config libncurses5-dev libreadline-dev nettle-dev libgnutls28-dev libargon2-dev libmsgpack-dev libssl-dev libfmt-dev libjsoncpp-dev libhttp-parser-dev libasio-dev libmsgpack-cxx-dev
-```
-Remaining of the procedure is same as for debian 12
-
-To run it on another boxes thant the build one, you will need runtime dependencies
-```sh
-sudo apt install libargon2-1 libjsoncpp26
 ```
 
 ### Fedora
