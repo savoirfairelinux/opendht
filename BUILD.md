@@ -1,6 +1,6 @@
 # Build the library
 
-Build is currently tested on GNU/Linux, macOS, and Windows.
+The build is currently tested on GNU/Linux, macOS, and Windows.
 
 ## Unix-like systems (Linux, macOS, MSYS2/MinGW, etc.)
 
