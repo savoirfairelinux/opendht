@@ -208,7 +208,8 @@ DhtProxyClient::stop()
             std::lock_guard<std::mutex> l(resolverLock_);
             resolver = std::move(resolver_);
         }
-        resolver->cancel();
+        if (resolver)
+            resolver->cancel();
         cancelAllListeners();
         if (infoState_)
             infoState_->cancel = true;
