@@ -37,7 +37,7 @@ sudo apt install libargon2-1 libjsoncpp26
 
 ```sh
 # Install dependencies
-sudo apt install pkg-config libncurses5-dev libreadline-dev nettle-dev libgnutls28-dev libargon2-0-dev libmsgpack-dev libssl-dev libfmt-dev libjsoncpp-dev libhttp-parser-dev libasio-dev
+sudo apt install pkg-config libncurses5-dev libreadline-dev nettle-dev libgnutls28-dev libargon2-dev libmsgpack-dev libssl-dev libfmt-dev libjsoncpp-dev libhttp-parser-dev libasio-dev
 
 # Install Python binding dependencies
 sudo apt-get install cython3 python3-dev python3-setuptools python3-build
