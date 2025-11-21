@@ -30,89 +30,107 @@
 namespace dht {
 namespace log {
 
-enum class LogLevel {
-    debug, warning, error
-};
+enum class LogLevel { debug, warning, error };
 
 using LogMethod = std::function<void(LogLevel, std::string&&)>;
 
-struct OPENDHT_PUBLIC Logger {
+struct OPENDHT_PUBLIC Logger
+{
     Logger() = delete;
     Logger(LogMethod&& l)
-        : logger(std::move(l)) {
-            if (!logger)
-                throw std::invalid_argument{"logger and loggerf must be set"};
-        }
-    void setFilter(const InfoHash& f) {
+        : logger(std::move(l))
+    {
+        if (!logger)
+            throw std::invalid_argument {"logger and loggerf must be set"};
+    }
+    void setFilter(const InfoHash& f)
+    {
         filter_ = f;
         filterEnable_ = static_cast<bool>(filter_);
     }
-    inline void log0(LogLevel level, fmt::string_view format, fmt::printf_args args) const {
+    inline void log0(LogLevel level, fmt::string_view format, fmt::printf_args args) const
+    {
         if (not filterEnable_)
             logger(level, fmt::vsprintf(format, args));
     }
-    inline void log1(LogLevel level, const InfoHash& f, fmt::string_view format, fmt::printf_args args) const {
+    inline void log1(LogLevel level, const InfoHash& f, fmt::string_view format, fmt::printf_args args) const
+    {
         if (not filterEnable_ or f == filter_)
             logger(level, fmt::vsprintf(format, args));
     }
-    inline void log2(LogLevel level, const InfoHash& f1, const InfoHash& f2, fmt::string_view format, fmt::printf_args args) const {
+    inline void log2(
+        LogLevel level, const InfoHash& f1, const InfoHash& f2, fmt::string_view format, fmt::printf_args args) const
+    {
         if (not filterEnable_ or f1 == filter_ or f2 == filter_)
             logger(level, fmt::vsprintf(format, args));
     }
-    template<typename S, typename... Args>
-    inline void debug(S&& format, Args&&... args) const {
-        logger(LogLevel::debug, fmt::format(format, args...));
+    template<typename... Args>
+    inline void debug(fmt::format_string<Args...> format, Args&&... args) const
+    {
+        logger(LogLevel::debug, fmt::format(format, std::forward<Args>(args)...));
     }
-    template<typename S, typename... Args>
-    inline void warn(S&& format, Args&&... args) const {
-        logger(LogLevel::warning, fmt::format(format, args...));
+    template<typename... Args>
+    inline void warn(fmt::format_string<Args...> format, Args&&... args) const
+    {
+        logger(LogLevel::warning, fmt::format(format, std::forward<Args>(args)...));
     }
-    template<typename S, typename... Args>
-    inline void error(S&& format, Args&&... args) const {
-        logger(LogLevel::error, fmt::format(format, args...));
+    template<typename... Args>
+    inline void error(fmt::format_string<Args...> format, Args&&... args) const
+    {
+        logger(LogLevel::error, fmt::format(format, std::forward<Args>(args)...));
     }
-    template <typename... T>
-    inline void d(fmt::format_string<T...> format, T&&... args) const {
+    template<typename... T>
+    inline void d(fmt::format_string<T...> format, T&&... args) const
+    {
         log0(LogLevel::debug, format, fmt::make_printf_args(args...));
     }
-    template <typename... T>
-    inline void d(const InfoHash& f, fmt::format_string<T...> format, T&&... args) const {
+    template<typename... T>
+    inline void d(const InfoHash& f, fmt::format_string<T...> format, T&&... args) const
+    {
         log1(LogLevel::debug, f, format, fmt::make_printf_args(args...));
     }
-    template <typename... T>
-    inline void d(const InfoHash& f1, const InfoHash& f2, fmt::format_string<T...> format, T&&... args) const {
+    template<typename... T>
+    inline void d(const InfoHash& f1, const InfoHash& f2, fmt::format_string<T...> format, T&&... args) const
+    {
         log2(LogLevel::debug, f1, f2, format, fmt::make_printf_args(args...));
     }
-    template <typename... T>
-    inline void w(fmt::format_string<T...> format, T&&... args) const {
+    template<typename... T>
+    inline void w(fmt::format_string<T...> format, T&&... args) const
+    {
         log0(LogLevel::warning, format, fmt::make_printf_args(args...));
     }
-    template <typename... T>
-    inline void w(const InfoHash& f, fmt::format_string<T...> format, T&&... args) const {
+    template<typename... T>
+    inline void w(const InfoHash& f, fmt::format_string<T...> format, T&&... args) const
+    {
         log1(LogLevel::warning, f, format, fmt::make_printf_args(args...));
     }
-    template <typename... T>
-    inline void w(const InfoHash& f1, const InfoHash& f2, fmt::format_string<T...> format, T&&... args) const {
+    template<typename... T>
+    inline void w(const InfoHash& f1, const InfoHash& f2, fmt::format_string<T...> format, T&&... args) const
+    {
         log2(LogLevel::warning, f1, f2, format, fmt::make_printf_args(args...));
     }
-    template <typename... T>
-    inline void e(fmt::format_string<T...> format, T&&... args) const {
+    template<typename... T>
+    inline void e(fmt::format_string<T...> format, T&&... args) const
+    {
         log0(LogLevel::error, format, fmt::make_printf_args(args...));
     }
-    template <typename... T>
-    inline void e(const InfoHash& f, fmt::format_string<T...> format, T&&... args) const {
+    template<typename... T>
+    inline void e(const InfoHash& f, fmt::format_string<T...> format, T&&... args) const
+    {
         log1(LogLevel::error, f, format, fmt::make_printf_args(args...));
     }
-    template <typename... T>
-    inline void e(const InfoHash& f1, const InfoHash& f2, fmt::format_string<T...> format, T&&... args) const {
+    template<typename... T>
+    inline void e(const InfoHash& f1, const InfoHash& f2, fmt::format_string<T...> format, T&&... args) const
+    {
         log2(LogLevel::error, f1, f2, format, fmt::make_printf_args(args...));
     }
+
 private:
     LogMethod logger = {};
     bool filterEnable_ {false};
     InfoHash filter_ {};
 };
 
-}
+} // namespace log
 using Logger = log::Logger;
-}
+} // namespace dht
