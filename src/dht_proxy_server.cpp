@@ -1142,7 +1142,18 @@ DhtProxyServer::sendPushNotification(const std::string& token, Json::Value&& jso
         request->set_header_field(restinio::http_field_t::host, type == PushType::UnifiedPush ? tokenUrl.host.c_str() : pushServer_.c_str());
         request->set_header_field(restinio::http_field_t::user_agent, "RESTinio client");
         request->set_header_field(restinio::http_field_t::accept, "*/*");
-        request->set_header_field(restinio::http_field_t::content_type, "application/json");
+        if (type == PushType::UnifiedPush) {
+            // Unified Push with AND_3 expects encrypted WebPush requests. We can make
+            // our request look like a real WebPush request by adding Content-Encoding
+            // and TTL headers to our request and just sending the plain json data.
+            // This should work since the content of push message is already e2ee.
+            // See https://codeberg.org/UnifiedPush/wishlist/issues/22
+            request->set_header_field(restinio::http_field_t::content_encoding, "aes128gcm");
+            request->set_header_field(restinio::http_field_t::ttl, "86400");
+            request->set_header_field(restinio::http_field_t::urgency, highPriority ? "high" : "normal");
+        } else {
+            request->set_header_field(restinio::http_field_t::content_type, "application/json");
+        }
 
         if (type == PushType::UnifiedPush) {
             Json::Value notification(Json::objectValue);
