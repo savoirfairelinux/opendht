@@ -16,7 +16,7 @@ jobs:
     name: Ubuntu/GCC Autotools build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
 
       - name: Install Dependencies
         run: |
@@ -66,7 +66,7 @@ jobs:
     name: Ubuntu/GCC Meson build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
 
       - name: Install Dependencies
         run: |
@@ -87,7 +87,7 @@ jobs:
     name: Ubuntu/GCC minimal build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
 
       - name: Install Minimal Dependencies
         run: |
@@ -123,7 +123,7 @@ jobs:
         DEBIAN_FRONTEND: noninteractive
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
 
       - name: Install Dependencies
         run: |
@@ -167,7 +167,7 @@ jobs:
     name: macOS/Clang build
     runs-on: macos-15
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
 
       - name: Install Homebrew Dependencies
         run: brew install msgpack-cxx asio gnutls nettle readline fmt jsoncpp argon2 openssl cppunit
