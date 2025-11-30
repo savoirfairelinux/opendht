@@ -47,6 +47,14 @@ class HttpTester : public CppUnit::TestFixture {
     CPPUNIT_TEST(test_parse_url_ipv6);
     CPPUNIT_TEST(test_parse_url_no_prefix_no_target_ipv6);
     CPPUNIT_TEST(test_parse_url_target_ipv6);
+    CPPUNIT_TEST(test_parse_url_user_pass);
+    CPPUNIT_TEST(test_parse_url_user_only);
+    CPPUNIT_TEST(test_parse_url_ipv6_brackets);
+    CPPUNIT_TEST(test_parse_url_ipv6_brackets_port);
+    CPPUNIT_TEST(test_parse_url_mixed_case_protocol);
+    CPPUNIT_TEST(test_parse_url_complex_path_query_fragment);
+    CPPUNIT_TEST(test_parse_url_empty);
+    CPPUNIT_TEST(test_parse_url_just_slash);
     // send
     CPPUNIT_TEST(test_send_json);
     CPPUNIT_TEST_SUITE_END();
@@ -82,6 +90,14 @@ class HttpTester : public CppUnit::TestFixture {
    void test_parse_url_ipv6();
    void test_parse_url_no_prefix_no_target_ipv6();
    void test_parse_url_target_ipv6();
+   void test_parse_url_user_pass();
+   void test_parse_url_user_only();
+   void test_parse_url_ipv6_brackets();
+   void test_parse_url_ipv6_brackets_port();
+   void test_parse_url_mixed_case_protocol();
+   void test_parse_url_complex_path_query_fragment();
+   void test_parse_url_empty();
+   void test_parse_url_just_slash();
     /**
      * Test send(json)
      */

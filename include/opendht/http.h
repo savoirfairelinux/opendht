@@ -75,6 +75,8 @@ public:
     Url(std::string_view url);
     std::string url;
     std::string protocol {"http"};
+    std::string user;
+    std::string password;
     std::string host;
     std::string service;
     std::string target;
