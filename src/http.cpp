@@ -48,17 +48,19 @@
 namespace dht {
 namespace http {
 
-constexpr const char HTTP_HEADER_CONTENT_TYPE_JSON[] = "application/json";
+using namespace std::string_view_literals;
+
+constexpr std::string_view HTTP_HEADER_CONTENT_TYPE_JSON {"application/json"sv};
+constexpr std::string_view HTTP_PROTOCOL {"http://"sv};
+constexpr std::string_view HTTPS_PROTOCOL {"https://"sv};
+constexpr std::string_view ORIGIN_PROTOCOL {"//"sv};
 constexpr const char HTTP_HEADER_DELIM[] = "\r\n\r\n";
-constexpr const char HTTP_PROTOCOL[] = "http://";
-constexpr const char HTTPS_PROTOCOL[] = "https://";
-constexpr const char ORIGIN_PROTOCOL[] = "//";
 constexpr unsigned MAX_REDIRECTS {5};
 
 Url::Url(std::string_view url_str)
     : url(url_str)
 {
-    std::string_view u = url_str;
+    std::string_view u = url;
     if (u.empty())
         return;
 
@@ -73,30 +75,33 @@ Url::Url(std::string_view url_str)
     // Fragment
     auto frag_pos = u.find('#');
     if (frag_pos != std::string_view::npos) {
-        fragment = std::string(u.substr(frag_pos));
+        fragment = u.substr(frag_pos);
         u.remove_suffix(u.size() - frag_pos);
     }
 
     // Query
     auto query_pos = u.find('?');
     if (query_pos != std::string_view::npos) {
-        query = std::string(u.substr(query_pos + 1));
+        query = u.substr(query_pos + 1);
         u.remove_suffix(u.size() - query_pos);
     }
 
     // Path
+    std::string_view target_view;
     auto path_pos = u.find('/');
     if (path_pos != std::string_view::npos) {
-        target = std::string(u.substr(path_pos));
+        target_view = u.substr(path_pos);
         u.remove_suffix(u.size() - path_pos);
     }
 
-    if (target.empty()) {
-        if (!query.empty())
-            target = "/?" + query;
+    if (!query.empty()) {
+        if (target_view.empty()) {
+            target = concat("/?"sv, query);
+        } else {
+            target = concat(target_view, "?"sv, query);
+        }
     } else {
-        if (!query.empty())
-            target += "?" + query;
+        target = std::string(target_view);
     }
 
     // Authority
@@ -106,10 +111,10 @@ Url::Url(std::string_view url_str)
         u.remove_prefix(at_pos + 1);
         auto colon_pos = userinfo.find(':');
         if (colon_pos != std::string_view::npos) {
-            user = std::string(userinfo.substr(0, colon_pos));
-            password = std::string(userinfo.substr(colon_pos + 1));
+            user = userinfo.substr(0, colon_pos);
+            password = userinfo.substr(colon_pos + 1);
         } else {
-            user = std::string(userinfo);
+            user = userinfo;
         }
     }
 
@@ -845,8 +850,8 @@ Resolver::Resolver(asio::io_context& ctx, const std::string& url, std::shared_pt
 }
 
 Resolver::Resolver(asio::io_context& ctx,
-                   const std::string& host,
-                   const std::string& service,
+                   std::string_view host,
+                   std::string_view service,
                    const bool ssl,
                    std::shared_ptr<dht::Logger> logger)
     : resolver_(ctx)
@@ -927,48 +932,44 @@ Resolver::add_callback(ResolverCb cb, sa_family_t family)
 }
 
 void
-Resolver::resolve(const std::string& host, const std::string& serviceName)
+Resolver::resolve(std::string_view host, std::string_view service)
 {
-    auto service = serviceName;
     // The async_resolve function used below typically relies on the contents of the
     // /etc/services (Linux/POSIX) or c:\windows\system32\drivers\etc\services (Windows)
     // file in order to resolve a descriptive service name into a port number. A
     // resolution attempt that would otherwise succeed can therefore fail if the file
     // is inaccessible or corrupted (which is rare but can happen in practice). We
     // hardcode the port numbers for http and https to prevent this failure mode.
-    if (service == "http") {
-        service = "80";
-    } else if (service == "https") {
-        service = "443";
+    if (service == "http"sv) {
+        service = "80"sv;
+    } else if (service == "https"sv) {
+        service = "443"sv;
     }
-    resolver_
-        .async_resolve(host,
-                       service,
-                       [this, host, service, destroyed = destroyed_](const asio::error_code& ec,
-                                                                     asio::ip::tcp::resolver::results_type endpoints) {
-                           if (ec == asio::error::operation_aborted or *destroyed)
-                               return;
-                           if (logger_) {
-                               logger_->debug("[http:client] [resolver] result for {:s}:{:s}: {:s}",
-                                              host,
-                                              service,
-                                              ec.message());
-                           }
-                           decltype(cbs_) cbs;
-                           {
-                               std::lock_guard<std::mutex> lock(mutex_);
-                               ec_ = ec;
-                               endpoints_ = std::vector<asio::ip::tcp::endpoint> {endpoints.begin(), endpoints.end()};
-                               completed_ = true;
-                               cbs = std::move(cbs_);
-                           }
-                           while (not cbs.empty()) {
-                               auto cb = cbs.front();
-                               if (cb)
-                                   cb(ec, endpoints_);
-                               cbs.pop();
-                           }
-                       });
+    resolver_.async_resolve(host,
+                            service,
+                            [this, destroyed = destroyed_](const asio::error_code& ec,
+                                                           asio::ip::tcp::resolver::results_type endpoints) {
+                                if (ec == asio::error::operation_aborted or *destroyed)
+                                    return;
+                                if (logger_) {
+                                    logger_->debug("[http:client] [resolver] got result: {:s}", ec.message());
+                                }
+                                decltype(cbs_) cbs;
+                                {
+                                    std::lock_guard<std::mutex> lock(mutex_);
+                                    ec_ = ec;
+                                    endpoints_ = std::vector<asio::ip::tcp::endpoint> {endpoints.begin(),
+                                                                                       endpoints.end()};
+                                    completed_ = true;
+                                    cbs = std::move(cbs_);
+                                }
+                                while (not cbs.empty()) {
+                                    auto cb = cbs.front();
+                                    if (cb)
+                                        cb(ec, endpoints_);
+                                    cbs.pop();
+                                }
+                            });
 }
 
 // Request
@@ -986,8 +987,8 @@ Request::Request(asio::io_context& ctx,
     , resolver_(std::make_shared<Resolver>(ctx, url, logger))
 {
     init_default_headers();
-    set_header_field(restinio::http_field_t::content_type, HTTP_HEADER_CONTENT_TYPE_JSON);
-    set_header_field(restinio::http_field_t::accept, HTTP_HEADER_CONTENT_TYPE_JSON);
+    set_header_field(restinio::http_field_t::content_type, std::string(HTTP_HEADER_CONTENT_TYPE_JSON));
+    set_header_field(restinio::http_field_t::accept, std::string(HTTP_HEADER_CONTENT_TYPE_JSON));
     Json::StreamWriterBuilder wbuilder;
     set_method(restinio::http_method_post());
     set_body(Json::writeString(wbuilder, json));
@@ -1013,7 +1014,7 @@ Request::Request(asio::io_context& ctx, const std::string& url, OnJsonCb jsoncb,
     , resolver_(std::make_shared<Resolver>(ctx, url, logger))
 {
     init_default_headers();
-    set_header_field(restinio::http_field_t::accept, HTTP_HEADER_CONTENT_TYPE_JSON);
+    set_header_field(restinio::http_field_t::accept, std::string(HTTP_HEADER_CONTENT_TYPE_JSON));
     Json::StreamWriterBuilder wbuilder;
     set_method(restinio::http_method_get());
     add_on_done_callback([this, jsoncb](const Response& response) {
@@ -1051,8 +1052,8 @@ Request::Request(asio::io_context& ctx, const std::string& url, OnDoneCb onDone,
 }
 
 Request::Request(asio::io_context& ctx,
-                 const std::string& host,
-                 const std::string& service,
+                 std::string_view host,
+                 std::string_view service,
                  const bool ssl,
                  std::shared_ptr<dht::Logger> logger)
     : logger_(logger)
@@ -1095,7 +1096,7 @@ Request::Request(asio::io_context& ctx,
     , family_(family)
     , resolver_(resolver)
 {
-    set_header_field(restinio::http_field_t::host, get_url().host + ":" + get_url().service);
+    set_header_field(restinio::http_field_t::host, concat(get_url().host, ":", get_url().service));
     set_target(Url(target).target);
 }
 
@@ -1187,6 +1188,12 @@ void
 Request::set_body(std::string body)
 {
     body_ = std::move(body);
+}
+
+void
+Request::set_body(const uint8_t* data, size_t length)
+{
+    body_.assign(reinterpret_cast<const char*>(data), length);
 }
 
 void
@@ -1377,7 +1384,8 @@ Request::connect(std::vector<asio::ip::tcp::endpoint>&& endpoints, HandlerCb cb)
             conn_ = std::make_shared<Connection>(ctx_, server_ca_, client_identity_, logger_);
         else
             conn_ = std::make_shared<Connection>(ctx_, true /*ssl*/, logger_);
-        conn_->set_ssl_verification(get_url().host, asio::ssl::verify_peer | asio::ssl::verify_fail_if_no_peer_cert);
+        conn_->set_ssl_verification(std::string(get_url().host),
+                                    asio::ssl::verify_peer | asio::ssl::verify_fail_if_no_peer_cert);
     } else
         conn_ = std::make_shared<Connection>(ctx_, false /*ssl*/, logger_);
 
@@ -1405,10 +1413,10 @@ Request::connect(std::vector<asio::ip::tcp::endpoint>&& endpoints, HandlerCb cb)
                                  const auto& url = this_.get_url();
                                  auto port = endpoint.port();
                                  if ((!isHttps && port == (in_port_t) 80) || (isHttps && port == (in_port_t) 443))
-                                     this_.set_header_field(restinio::http_field_t::host, url.host);
+                                     this_.set_header_field(restinio::http_field_t::host, std::string(url.host));
                                  else
                                      this_.set_header_field(restinio::http_field_t::host,
-                                                            url.host + ":" + std::to_string(port));
+                                                            fmt::format("{}:{}", url.host, port));
 
                                  if (isHttps) {
                                      if (this_.conn_ and this_.conn_->is_open() and this_.conn_->is_ssl()) {
@@ -1635,7 +1643,7 @@ Request::onHeadersComplete()
 }
 
 bool
-startsWith(const std::string& haystack, const std::string& needle)
+startsWith(const std::string_view haystack, const std::string_view needle)
 {
     return needle.length() <= haystack.length() && std::equal(needle.begin(), needle.end(), haystack.begin());
 }

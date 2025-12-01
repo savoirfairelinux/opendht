@@ -52,14 +52,16 @@ bool setNonblocking(int fd, bool nonblocking = true);
 #ifdef _WIN32
 void udpPipe(int fds[2]);
 #endif
-struct ReceivedPacket {
+struct ReceivedPacket
+{
     Blob data;
     SockAddr from;
     time_point received;
 };
 using PacketList = std::list<ReceivedPacket>;
 
-class OPENDHT_PUBLIC DatagramSocket {
+class OPENDHT_PUBLIC DatagramSocket
+{
 public:
     /** A function that takes a list of new received packets and
      *  optionally returns consumed packets for recycling.
@@ -69,7 +71,8 @@ public:
 
     virtual int sendTo(const SockAddr& dest, const uint8_t* data, size_t size, bool replied) = 0;
 
-    inline void setOnReceive(OnReceive&& cb) {
+    inline void setOnReceive(OnReceive&& cb)
+    {
         std::lock_guard<std::mutex> lk(lock);
         rx_callback = std::move(cb);
     }
@@ -77,11 +80,13 @@ public:
     virtual bool hasIPv4() const = 0;
     virtual bool hasIPv6() const = 0;
 
-    SockAddr getBound(sa_family_t family = AF_UNSPEC) const {
+    SockAddr getBound(sa_family_t family = AF_UNSPEC) const
+    {
         std::lock_guard<std::mutex> lk(lock);
         return getBoundRef(family);
     }
-    in_port_t getPort(sa_family_t family = AF_UNSPEC) const {
+    in_port_t getPort(sa_family_t family = AF_UNSPEC) const
+    {
         std::lock_guard<std::mutex> lk(lock);
         return getBoundRef(family).getPort();
     }
@@ -89,14 +94,16 @@ public:
     virtual const SockAddr& getBoundRef(sa_family_t family = AF_UNSPEC) const = 0;
 
     /** Virtual resolver mothod allows to implement custom resolver */
-    virtual std::vector<SockAddr> resolve(const std::string& host, const std::string& service = {}) {
+    virtual std::vector<SockAddr> resolve(const std::string& host, const std::string& service = {})
+    {
         return SockAddr::resolve(host, service);
     }
 
     virtual void stop() = 0;
-protected:
 
-    PacketList getNewPacket() {
+protected:
+    PacketList getNewPacket()
+    {
         PacketList pkts;
         if (toRecycle_.empty()) {
             pkts.emplace_back();
@@ -108,7 +115,8 @@ protected:
         return pkts;
     }
 
-    inline void onReceived(PacketList&& packets) {
+    inline void onReceived(PacketList&& packets)
+    {
         std::lock_guard<std::mutex> lk(lock);
         if (rx_callback) {
             auto r = rx_callback(std::move(packets));
@@ -116,14 +124,17 @@ protected:
                 toRecycle_.splice(toRecycle_.end(), std::move(r));
         }
     }
+
 protected:
     mutable std::mutex lock;
+
 private:
     OnReceive rx_callback;
     PacketList toRecycle_;
 };
 
-class OPENDHT_PUBLIC UdpSocket : public DatagramSocket {
+class OPENDHT_PUBLIC UdpSocket : public DatagramSocket
+{
 public:
     UdpSocket(in_port_t port, const std::shared_ptr<Logger>& l = {});
     UdpSocket(const SockAddr& bind4, const SockAddr& bind6, const std::shared_ptr<Logger>& l = {});
@@ -131,20 +142,24 @@ public:
 
     int sendTo(const SockAddr& dest, const uint8_t* data, size_t size, bool replied) override;
 
-    const SockAddr& getBoundRef(sa_family_t family = AF_UNSPEC) const override {
+    const SockAddr& getBoundRef(sa_family_t family = AF_UNSPEC) const override
+    {
         return (family == AF_INET6) ? bound6 : bound4;
     }
 
-    bool hasIPv4() const override {
+    bool hasIPv4() const override
+    {
         std::lock_guard<std::mutex> lk(lock);
         return s4 != -1;
     }
-    bool hasIPv6() const override {
+    bool hasIPv6() const override
+    {
         std::lock_guard<std::mutex> lk(lock);
         return s6 != -1;
     }
 
     void stop() override;
+
 private:
     std::shared_ptr<Logger> logger;
     int s4 {-1};
@@ -157,5 +172,5 @@ private:
     void openSockets(const SockAddr& bind4, const SockAddr& bind6);
 };
 
-}
-}
+} // namespace net
+} // namespace dht

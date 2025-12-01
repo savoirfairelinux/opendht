@@ -241,9 +241,9 @@ HttpTester::test_parse_url_user_pass()
     // Assert
     CPPUNIT_ASSERT_EQUAL(url, parsed.toString());
     CPPUNIT_ASSERT_EQUAL(std::string("http"), parsed.protocol);
-    CPPUNIT_ASSERT_EQUAL(std::string("user"), parsed.user);
-    CPPUNIT_ASSERT_EQUAL(std::string("pass"), parsed.password);
-    CPPUNIT_ASSERT_EQUAL(std::string("example.com"), parsed.host);
+    CPPUNIT_ASSERT_EQUAL(std::string_view("user"), parsed.user);
+    CPPUNIT_ASSERT_EQUAL(std::string_view("pass"), parsed.password);
+    CPPUNIT_ASSERT_EQUAL(std::string_view("example.com"), parsed.host);
     CPPUNIT_ASSERT_EQUAL(std::string("/"), parsed.target);
 }
 
@@ -257,9 +257,9 @@ HttpTester::test_parse_url_user_only()
     // Assert
     CPPUNIT_ASSERT_EQUAL(url, parsed.toString());
     CPPUNIT_ASSERT_EQUAL(std::string("http"), parsed.protocol);
-    CPPUNIT_ASSERT_EQUAL(std::string("user"), parsed.user);
+    CPPUNIT_ASSERT_EQUAL(std::string_view("user"), parsed.user);
     CPPUNIT_ASSERT(parsed.password.empty());
-    CPPUNIT_ASSERT_EQUAL(std::string("example.com"), parsed.host);
+    CPPUNIT_ASSERT_EQUAL(std::string_view("example.com"), parsed.host);
     CPPUNIT_ASSERT_EQUAL(std::string("/"), parsed.target);
 }
 
@@ -273,7 +273,7 @@ HttpTester::test_parse_url_ipv6_brackets()
     // Assert
     CPPUNIT_ASSERT_EQUAL(url, parsed.toString());
     CPPUNIT_ASSERT_EQUAL(std::string("http"), parsed.protocol);
-    CPPUNIT_ASSERT_EQUAL(std::string("2001:db8::1"), parsed.host);
+    CPPUNIT_ASSERT_EQUAL(std::string_view("2001:db8::1"), parsed.host);
     CPPUNIT_ASSERT_EQUAL(std::string("/"), parsed.target);
 }
 
@@ -287,8 +287,8 @@ HttpTester::test_parse_url_ipv6_brackets_port()
     // Assert
     CPPUNIT_ASSERT_EQUAL(url, parsed.toString());
     CPPUNIT_ASSERT_EQUAL(std::string("http"), parsed.protocol);
-    CPPUNIT_ASSERT_EQUAL(std::string("2001:db8::1"), parsed.host);
-    CPPUNIT_ASSERT_EQUAL(std::string("8080"), parsed.service);
+    CPPUNIT_ASSERT_EQUAL(std::string_view("2001:db8::1"), parsed.host);
+    CPPUNIT_ASSERT_EQUAL(std::string_view("8080"), parsed.service);
     CPPUNIT_ASSERT_EQUAL(std::string("/"), parsed.target);
 }
 
@@ -302,7 +302,7 @@ HttpTester::test_parse_url_mixed_case_protocol()
     // Assert
     CPPUNIT_ASSERT_EQUAL(std::string("http://example.com/"), parsed.toString());
     CPPUNIT_ASSERT_EQUAL(std::string("http"), parsed.protocol);
-    CPPUNIT_ASSERT_EQUAL(std::string("example.com"), parsed.host);
+    CPPUNIT_ASSERT_EQUAL(std::string_view("example.com"), parsed.host);
 }
 
 void
@@ -315,10 +315,10 @@ HttpTester::test_parse_url_complex_path_query_fragment()
     // Assert
     CPPUNIT_ASSERT_EQUAL(url, parsed.toString());
     CPPUNIT_ASSERT_EQUAL(std::string("https"), parsed.protocol);
-    CPPUNIT_ASSERT_EQUAL(std::string("example.com"), parsed.host);
+    CPPUNIT_ASSERT_EQUAL(std::string_view("example.com"), parsed.host);
     CPPUNIT_ASSERT_EQUAL(std::string("/path/to/resource?query=param&q2=v2"), parsed.target);
-    CPPUNIT_ASSERT_EQUAL(std::string("query=param&q2=v2"), parsed.query);
-    CPPUNIT_ASSERT_EQUAL(std::string("#fragment"), parsed.fragment);
+    CPPUNIT_ASSERT_EQUAL(std::string_view("query=param&q2=v2"), parsed.query);
+    CPPUNIT_ASSERT_EQUAL(std::string_view("#fragment"), parsed.fragment);
 }
 
 void

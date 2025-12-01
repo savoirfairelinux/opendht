@@ -76,7 +76,7 @@ concat(Args&&... args)
 /**
  * Split "[host]:port" or "host:port" to pair<"host", "port">.
  */
-OPENDHT_PUBLIC std::pair<std::string, std::string> splitPort(std::string_view s);
+OPENDHT_PUBLIC std::pair<std::string_view, std::string_view> splitPort(std::string_view s);
 
 class OPENDHT_PUBLIC DhtException : public std::runtime_error
 {

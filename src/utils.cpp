@@ -20,7 +20,7 @@
 #include "config.h"
 #endif
 
-#if defined(_WIN32) && (_WIN32_WINNT < 0x0502) && (NTDDI_VERSION >= NTDDI_VISTA) 
+#if defined(_WIN32) && (_WIN32_WINNT < 0x0502) && (NTDDI_VERSION >= NTDDI_VISTA)
 #define _WIN32_WINNT _WIN32_WINNT_WIN10
 #include <winsock2.h>
 #include <ws2tcpip.h>
@@ -42,30 +42,35 @@
 
 namespace dht {
 
-const char* version() {
+const char*
+version()
+{
     return PACKAGE_VERSION;
 }
 
-static constexpr std::array<uint8_t, 12> MAPPED_IPV4_PREFIX {{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xff, 0xff}};
+static constexpr std::array<uint8_t, 12> MAPPED_IPV4_PREFIX {
+    {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xff, 0xff}
+};
 
-std::pair<std::string, std::string>
-splitPort(std::string_view s) {
+std::pair<std::string_view, std::string_view>
+splitPort(std::string_view s)
+{
     if (s.empty())
         return {};
     if (s[0] == '[') {
         std::size_t closure = s.find_first_of(']');
         std::size_t found = s.find_last_of(':');
         if (closure == std::string_view::npos)
-            return {std::string(s), ""};
+            return {s, ""};
         if (found == std::string_view::npos or found < closure)
-            return {std::string(s.substr(1,closure-1)), ""};
-        return {std::string(s.substr(1,closure-1)), std::string(s.substr(found+1))};
+            return {s.substr(1, closure - 1), ""};
+        return {s.substr(1, closure - 1), s.substr(found + 1)};
     }
     std::size_t found = s.find_last_of(':');
     std::size_t first = s.find_first_of(':');
     if (found == std::string_view::npos or found != first)
-        return {std::string(s), ""};
-    return {std::string(s.substr(0,found)), std::string(s.substr(found+1))};
+        return {s, ""};
+    return {s.substr(0, found), s.substr(found + 1)};
 }
 
 std::vector<SockAddr>
@@ -80,7 +85,7 @@ SockAddr::resolve(const std::string& host, const std::string& service)
     hints.ai_socktype = SOCK_DGRAM;
     addrinfo* info = nullptr;
     int rc = getaddrinfo(host.c_str(), service.empty() ? nullptr : service.c_str(), &hints, &info);
-    if(rc != 0)
+    if (rc != 0)
         throw std::invalid_argument(std::string("Error: `") + host + ":" + service + "`: " + gai_strerror(rc));
 
     for (addrinfo* infop = info; infop; infop = infop->ai_next)
@@ -108,11 +113,13 @@ SockAddr::setAddress(const char* address)
         throw std::runtime_error(std::string("Can't parse IP address: ") + strerror(errno));
 }
 
-void print_addr(std::ostream& out, const sockaddr* sa, socklen_t slen)
+void
+print_addr(std::ostream& out, const sockaddr* sa, socklen_t slen)
 {
     char hbuf[NI_MAXHOST];
     char sbuf[NI_MAXSERV];
-    if (sa and slen and !getnameinfo(sa, slen, hbuf, sizeof(hbuf), sbuf, sizeof(sbuf), NI_NUMERICHOST | NI_NUMERICSERV)) {
+    if (sa and slen
+        and !getnameinfo(sa, slen, hbuf, sizeof(hbuf), sbuf, sizeof(sbuf), NI_NUMERICHOST | NI_NUMERICSERV)) {
         if (sa->sa_family == AF_INET6)
             out << '[' << hbuf << ']';
         else
@@ -134,7 +141,7 @@ print_addr(const sockaddr* sa, socklen_t slen)
 std::string
 print_addr(const sockaddr_storage& ss, socklen_t sslen)
 {
-    return print_addr((const sockaddr*)&ss, sslen);
+    return print_addr((const sockaddr*) &ss, sslen);
 }
 
 bool
@@ -156,7 +163,7 @@ SockAddr::isLoopback() const
     switch (getFamily()) {
     case AF_INET: {
         auto addr_host = ntohl(getIPv4().sin_addr.s_addr);
-        uint8_t b1 = (uint8_t)(addr_host >> 24);
+        uint8_t b1 = (uint8_t) (addr_host >> 24);
         return b1 == 127;
     }
     case AF_INET6:
@@ -176,8 +183,8 @@ SockAddr::isPrivate() const
     case AF_INET: {
         auto addr_host = ntohl(getIPv4().sin_addr.s_addr);
         uint8_t b1, b2;
-        b1 = (uint8_t)(addr_host >> 24);
-        b2 = (uint8_t)((addr_host >> 16) & 0x0ff);
+        b1 = (uint8_t) (addr_host >> 24);
+        b2 = (uint8_t) ((addr_host >> 16) & 0x0ff);
         // 10.x.y.z
         if (b1 == 10)
             return true;
@@ -240,11 +247,15 @@ SockAddr::getMappedIPv6()
     return ret;
 }
 
-bool operator==(const SockAddr& a, const SockAddr& b) {
+bool
+operator==(const SockAddr& a, const SockAddr& b)
+{
     return a.equals(b);
 }
 
-time_point from_time_t(std::time_t t) {
+time_point
+from_time_t(std::time_t t)
+{
     auto dt = system_clock::from_time_t(t) - system_clock::now();
     auto now = clock::now();
     if (dt > system_clock::duration(0) and now > time_point::max() - dt)
@@ -254,7 +265,9 @@ time_point from_time_t(std::time_t t) {
     return now + dt;
 }
 
-std::time_t to_time_t(time_point t) {
+std::time_t
+to_time_t(time_point t)
+{
     auto dt = t - clock::now();
     auto now = system_clock::now();
     if (dt > duration(0) and now >= system_clock::time_point::max() - dt)
@@ -265,15 +278,16 @@ std::time_t to_time_t(time_point t) {
 }
 
 Blob
-unpackBlob(const msgpack::object& o) {
+unpackBlob(const msgpack::object& o)
+{
     switch (o.type) {
     case msgpack::type::BIN:
-        return {o.via.bin.ptr, o.via.bin.ptr+o.via.bin.size};
+        return {o.via.bin.ptr, o.via.bin.ptr + o.via.bin.size};
     case msgpack::type::STR:
-        return {o.via.str.ptr, o.via.str.ptr+o.via.str.size};
+        return {o.via.str.ptr, o.via.str.ptr + o.via.str.size};
     case msgpack::type::ARRAY: {
         Blob ret(o.via.array.size);
-        std::transform(o.via.array.ptr, o.via.array.ptr+o.via.array.size, ret.begin(), [](const msgpack::object& b) {
+        std::transform(o.via.array.ptr, o.via.array.ptr + o.via.array.size, ret.begin(), [](const msgpack::object& b) {
             return b.as<uint8_t>();
         });
         return ret;
@@ -284,21 +298,23 @@ unpackBlob(const msgpack::object& o) {
 }
 
 msgpack::unpacked
-unpackMsg(Blob b) {
-    return msgpack::unpack((const char*)b.data(), b.size());
+unpackMsg(Blob b)
+{
+    return msgpack::unpack((const char*) b.data(), b.size());
 }
 
 msgpack::object*
-findMapValue(const msgpack::object& map, const char* key, size_t key_length) {
-    if (map.type != msgpack::type::MAP) throw msgpack::type_error();
+findMapValue(const msgpack::object& map, const char* key, size_t key_length)
+{
+    if (map.type != msgpack::type::MAP)
+        throw msgpack::type_error();
     for (unsigned i = 0; i < map.via.map.size; i++) {
         auto& o = map.via.map.ptr[i];
-        if (o.key.type == msgpack::type::STR
-            && key_length == o.key.via.str.size
+        if (o.key.type == msgpack::type::STR && key_length == o.key.via.str.size
             && std::strncmp(o.key.via.str.ptr, key, o.key.via.str.size) == 0)
             return &o.val;
     }
     return nullptr;
 }
 
-}
+} // namespace dht
