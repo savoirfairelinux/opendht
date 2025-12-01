@@ -30,19 +30,22 @@
 #include "base64.h"
 #endif
 
-
 namespace dht {
 
 const std::string Query::QUERY_PARSE_ERROR {"Error parsing query."};
 
-Value::Filter bindFilterRaw(FilterRaw raw_filter, void* user_data) {
-    if (not raw_filter) return {};
+Value::Filter
+bindFilterRaw(FilterRaw raw_filter, void* user_data)
+{
+    if (not raw_filter)
+        return {};
     return [=](const Value& value) {
         return raw_filter(value, user_data);
     };
 }
 
-std::ostream& operator<< (std::ostream& s, const Value& v)
+std::ostream&
+operator<<(std::ostream& s, const Value& v)
 {
     auto flags(s.flags());
     s << "Value[id:" << std::hex << v.id << std::dec << ' ';
@@ -240,7 +243,8 @@ Value::toJson() const
 }
 
 uint64_t
-unpackId(const Json::Value& json, const std::string& key) {
+unpackId(const Json::Value& json, const std::string& key)
+{
     uint64_t ret = 0;
     try {
         const auto& t = json[key];
@@ -249,7 +253,8 @@ unpackId(const Json::Value& json, const std::string& key) {
         } else {
             ret = t.asLargestUInt();
         }
-    } catch (...) {}
+    } catch (...) {
+    }
     return ret;
 }
 #endif
@@ -297,7 +302,7 @@ Value::decrypt(const crypto::PrivateKey& key)
         decrypted = true;
         if (isEncrypted()) {
             auto decryptedBlob = key.decrypt(cypher);
-            auto msg = msgpack::unpack((const char*)decryptedBlob.data(), decryptedBlob.size());
+            auto msg = msgpack::unpack((const char*) decryptedBlob.data(), decryptedBlob.size());
             auto v = std::make_unique<Value>(id);
             v->msgpack_unpack_body(msg.get());
             if (v->recipient != key.getPublicKey().getId())
@@ -355,13 +360,13 @@ FieldValueIndex::FieldValueIndex(const Value& v, const Select& s)
 {
     if (not s.empty()) {
         auto selection = s.getSelection();
-        std::transform(selection.begin(), selection.end(), std::inserter(index, index.end()),
-            [](const std::set<Value::Field>::value_type& f) {
-                return std::make_pair(f, FieldValue {});
-        });
+        std::transform(selection.begin(),
+                       selection.end(),
+                       std::inserter(index, index.end()),
+                       [](const std::set<Value::Field>::value_type& f) { return std::make_pair(f, FieldValue {}); });
     } else {
         index.clear();
-        for (size_t f = 1 ; f < static_cast<int>(Value::Field::COUNT) ; ++f)
+        for (size_t f = 1; f < static_cast<int>(Value::Field::COUNT); ++f)
             index[static_cast<Value::Field>(f)] = {};
     }
     for (const auto& fvp : index) {
@@ -374,13 +379,15 @@ FieldValueIndex::FieldValueIndex(const Value& v, const Select& s)
             index[f] = {f, v.type};
             break;
         case Value::Field::OwnerPk:
-            index[f] = {f, v.owner ? v.owner->getId() : InfoHash() };
+            index[f] = {f, v.owner ? v.owner->getId() : InfoHash()};
             break;
         case Value::Field::SeqNum:
             index[f] = {f, v.seq};
             break;
         case Value::Field::UserType:
-            index[f] = {f, Blob {v.user_type.begin(), v.user_type.end()}};
+            index[f] = {
+                f, Blob {v.user_type.begin(), v.user_type.end()}
+            };
             break;
         default:
             break;
@@ -388,7 +395,9 @@ FieldValueIndex::FieldValueIndex(const Value& v, const Select& s)
     }
 }
 
-bool FieldValueIndex::containedIn(const FieldValueIndex& other) const {
+bool
+FieldValueIndex::containedIn(const FieldValueIndex& other) const
+{
     if (index.size() > other.index.size())
         return false;
     for (const auto& field : index) {
@@ -399,7 +408,9 @@ bool FieldValueIndex::containedIn(const FieldValueIndex& other) const {
     return true;
 }
 
-std::ostream& operator<<(std::ostream& os, const FieldValueIndex& fvi) {
+std::ostream&
+operator<<(std::ostream& os, const FieldValueIndex& fvi)
+{
     os << "Index[";
     for (auto v = fvi.index.begin(); v != fvi.index.end(); ++v) {
         switch (v->first) {
@@ -438,7 +449,7 @@ FieldValueIndex::msgpack_unpack_fields(const std::set<Value::Field>& fields, con
 
     unsigned j = 0;
     for (const auto& field : fields) {
-        auto& field_value = o.via.array.ptr[offset+(j++)];
+        auto& field_value = o.via.array.ptr[offset + (j++)];
         switch (field) {
         case Value::Field::Id:
         case Value::Field::ValueType:
@@ -457,13 +468,16 @@ FieldValueIndex::msgpack_unpack_fields(const std::set<Value::Field>& fields, con
     }
 }
 
-void trim_str(std::string& str) {
+void
+trim_str(std::string& str)
+{
     auto first = std::min(str.size(), str.find_first_not_of(' '));
     auto last = std::min(str.size(), str.find_last_not_of(' '));
     str = str.substr(first, last - first + 1);
 }
 
-Select::Select(std::string_view q_str) {
+Select::Select(std::string_view q_str)
+{
     std::istringstream q_iss {std::string(q_str)};
     std::string token {};
     q_iss >> token;
@@ -488,7 +502,8 @@ Select::Select(std::string_view q_str) {
     }
 }
 
-Where::Where(std::string_view q_str) {
+Where::Where(std::string_view q_str)
+{
     std::istringstream q_iss {std::string(q_str)};
     std::string token {};
     q_iss >> token;
@@ -509,11 +524,9 @@ Where::Where(std::string_view q_str) {
                 std::string s {};
                 std::istringstream convert {value_str};
                 convert >> v;
-                if (not convert
-                        and value_str.size() > 1
-                        and value_str[0] == '"'
-                        and value_str[value_str.size()-1] == '"')
-                    s = value_str.substr(1, value_str.size()-2);
+                if (not convert and value_str.size() > 1 and value_str[0] == '"'
+                    and value_str[value_str.size() - 1] == '"')
+                    s = value_str.substr(1, value_str.size() - 2);
                 else
                     s = value_str;
                 if (field_str == VALUE_KEY_ID)
@@ -527,7 +540,8 @@ Where::Where(std::string_view q_str) {
                 else if (field_str == "user_type")
                     userType(s);
                 else
-                    throw std::invalid_argument(Query::QUERY_PARSE_ERROR + " (WHERE) incorrect token near: " + field_str);
+                    throw std::invalid_argument(Query::QUERY_PARSE_ERROR
+                                                + " (WHERE) incorrect token near: " + field_str);
             }
         }
     }
@@ -536,24 +550,25 @@ Where::Where(std::string_view q_str) {
 void
 Query::msgpack_unpack(const msgpack::object& o)
 {
-	if (o.type != msgpack::type::MAP)
-		throw msgpack::type_error();
+    if (o.type != msgpack::type::MAP)
+        throw msgpack::type_error();
 
-	auto rfilters = findMapValue(o, "w"sv); /* unpacking filters */
-	if (rfilters)
+    auto rfilters = findMapValue(o, "w"sv); /* unpacking filters */
+    if (rfilters)
         where.msgpack_unpack(*rfilters);
-	else
-		throw msgpack::type_error();
+    else
+        throw msgpack::type_error();
 
-	auto rfield_selector = findMapValue(o, "s"sv); /* unpacking field selectors */
-	if (rfield_selector)
+    auto rfield_selector = findMapValue(o, "s"sv); /* unpacking field selectors */
+    if (rfield_selector)
         select.msgpack_unpack(*rfield_selector);
-	else
-		throw msgpack::type_error();
+    else
+        throw msgpack::type_error();
 }
 
-template <typename T>
-bool subset(const std::vector<T>& fds, const std::vector<T>& qfds)
+template<typename T>
+bool
+subset(const std::vector<T>& fds, const std::vector<T>& qfds)
 {
     for (const auto& fd : fds) {
         if (std::find_if(qfds.begin(), qfds.end(), [&fd](const T& _vfd) { return fd == _vfd; }) == qfds.end())
@@ -562,22 +577,28 @@ bool subset(const std::vector<T>& fds, const std::vector<T>& qfds)
     return true;
 }
 
-bool Select::isSatisfiedBy(const Select& os) const {
+bool
+Select::isSatisfiedBy(const Select& os) const
+{
     /* empty, means all values are selected. */
-    return fieldSelection_.empty() ?
-        os.fieldSelection_.empty() :
-        subset(fieldSelection_, os.fieldSelection_);
+    return fieldSelection_.empty() ? os.fieldSelection_.empty() : subset(fieldSelection_, os.fieldSelection_);
 }
 
-bool Where::isSatisfiedBy(const Where& ow) const {
+bool
+Where::isSatisfiedBy(const Where& ow) const
+{
     return subset(ow.filters_, filters_);
 }
 
-bool Query::isSatisfiedBy(const Query& q) const {
+bool
+Query::isSatisfiedBy(const Query& q) const
+{
     return none or (where.isSatisfiedBy(q.where) and select.isSatisfiedBy(q.select));
 }
 
-std::ostream& operator<<(std::ostream& s, const dht::Select& select) {
+std::ostream&
+operator<<(std::ostream& s, const dht::Select& select)
+{
     s << "SELECT ";
     if (select.fieldSelection_.empty())
         s << '*';
@@ -608,10 +629,12 @@ std::ostream& operator<<(std::ostream& s, const dht::Select& select) {
     return s;
 }
 
-std::ostream& operator<<(std::ostream& s, const dht::Where& where) {
+std::ostream&
+operator<<(std::ostream& s, const dht::Where& where)
+{
     if (not where.filters_.empty()) {
         s << "WHERE ";
-        for (auto f = where.filters_.begin() ; f != where.filters_.end() ; ++f) {
+        for (auto f = where.filters_.begin(); f != where.filters_.end(); ++f) {
             switch (f->getField()) {
             case Value::Field::Id:
                 s << VALUE_KEY_ID << '=' << f->getInt();
@@ -639,5 +662,4 @@ std::ostream& operator<<(std::ostream& s, const dht::Where& where) {
     return s;
 }
 
-
-}
+} // namespace dht
