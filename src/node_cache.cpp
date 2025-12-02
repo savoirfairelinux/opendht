@@ -115,7 +115,7 @@ NodeCache::NodeMap::getNode(const InfoHash& id, const SockAddr& addr, time_point
             cleanup();
             cleanup_counter = 0;
         }
-    } else if (confirm or node->isOld(now)) {
+    } else if ((confirm and node->isUpgradeable(now)) or node->isOld(now)) {
         node->update(addr);
     }
     return node;
