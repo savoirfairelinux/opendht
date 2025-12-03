@@ -26,6 +26,7 @@
 
 #include "default_types.h"
 #include "dhtrunner.h"
+#include "base64.h"
 
 #include <msgpack.hpp>
 #include <json/json.h>
@@ -289,14 +290,14 @@ DhtProxyServer::DhtProxyServer(const std::shared_ptr<DhtRunner>& dht,
         throw std::invalid_argument("A DHT instance must be provided");
 
     if (logger_)
-        logger_->d("[proxy:server] [init] running on %i", config.port);
+        logger_->debug("[proxy:server] [init] running on {:d}", config.port);
     if (not pushServer_.empty()) {
 #ifdef OPENDHT_PUSH_NOTIFICATIONS
         if (logger_)
-            logger_->d("[proxy:server] [init] using push server %s", pushServer_.c_str());
+            logger_->debug("[proxy:server] [init] using push server {}", pushServer_);
 #else
         if (logger_)
-            logger_->e("[proxy:server] [init] opendht built without push notification support");
+            logger_->error("[proxy:server] [init] opendht built without push notification support");
 #endif
     }
 
@@ -310,9 +311,7 @@ DhtProxyServer::DhtProxyServer(const std::shared_ptr<DhtRunner>& dht,
         // define http request destination for push notifications
         pushHostPort_ = splitPort(pushServer_);
         if (logger_)
-            logger_->d("Using push server for notifications: %s:%s",
-                       pushHostPort_.first.c_str(),
-                       pushHostPort_.second.c_str());
+            logger_->debug("Using push server for notifications: {}:{}", pushHostPort_.first, pushHostPort_.second);
     }
     if (config.identity.first and config.identity.second) {
         asio::error_code ec;
@@ -1226,20 +1225,18 @@ DhtProxyServer::sendPushNotification(
         if (type == PushType::UnifiedPush) {
             http::Url tokenUrl(token);
             request = std::make_shared<http::Request>(io_context(),
-                                                      tokenUrl.protocol + "://" + tokenUrl.host,
+                                                      concat(tokenUrl.protocol, "://"sv, tokenUrl.host),
                                                       tokenUrl.service,
-                                                      tokenUrl.protocol == "https",
+                                                      tokenUrl.protocol.find("https") == 0,
                                                       logger_);
             request->set_target(tokenUrl.target);
-            request->set_header_field(restinio::http_field_t::host, tokenUrl.host);
+            request->set_header_field(restinio::http_field_t::host, std::string(tokenUrl.host));
         } else {
             request = std::make_shared<http::Request>(io_context(),
                                                       pushHostPort_.first,
                                                       pushHostPort_.second,
                                                       pushHostPort_.first.find("https") == 0,
                                                       logger_);
-            request->set_target("/api/push");
-            request->set_header_field(restinio::http_field_t::host, pushServer_);
         }
         reqid = request->id();
         request->set_method(restinio::http_method_post());
@@ -1247,21 +1244,39 @@ DhtProxyServer::sendPushNotification(
         request->set_header_field(restinio::http_field_t::accept, "*/*");
 
         if (type == PushType::UnifiedPush) {
-            // Unified Push with AND_3 expects encrypted WebPush requests. We can make
-            // our request look like a real WebPush request by adding Content-Encoding
-            // and TTL headers to our request and just sending the plain json data.
-            // This should work since the content of push message is already e2ee.
-            // See https://codeberg.org/UnifiedPush/wishlist/issues/22
-            request->set_header_field(restinio::http_field_t::content_encoding, "aes128gcm");
+            std::string_view topicView = topic;
+            Blob pubKey; ///< P-256 Public key
+            Blob auth;   ///< Auth secret
+            auto delim = topicView.find('|');
+            if (delim != std::string_view::npos) {
+                pubKey = base64_decode(topicView.substr(0, delim));
+                auth = base64_decode(topicView.substr(delim + 1));
+            }
+
             request->set_header_field(restinio::http_field_t::ttl, "86400");
             request->set_header_field(restinio::http_field_t::urgency, highPriority ? "high" : "normal");
+            request->set_header_field(restinio::http_field_t::content_type, "application/json");
 
-            Json::Value notification(Json::objectValue);
-            notification["message"] = Json::writeString(jsonBuilder_, std::move(json));
-            notification["topic"] = token;
-            notification["priority"] = highPriority ? 5 : 1;
-            request->set_body(Json::writeString(jsonBuilder_, std::move(json)));
+            std::string payloadStr = Json::writeString(jsonBuilder_, std::move(json));
+            if (!pubKey.empty() && !auth.empty()) {
+                request->set_header_field(restinio::http_field_t::content_encoding, "aes128gcm");
+                try {
+                    Blob encrypted = crypto::webPushEncrypt(pubKey,
+                                                            auth,
+                                                            reinterpret_cast<const uint8_t*>(payloadStr.data()),
+                                                            payloadStr.size());
+                    request->set_body(std::string(encrypted.begin(), encrypted.end()));
+                } catch (const std::exception& e) {
+                    if (logger_)
+                        logger_->e("[proxy:server] [notification] encryption failed: %s", e.what());
+                    return;
+                }
+            } else {
+                request->set_body(payloadStr);
+            }
         } else {
+            request->set_target("/api/push");
+            request->set_header_field(restinio::http_field_t::host, pushServer_);
             request->set_header_field(restinio::http_field_t::content_type, "application/json");
 
             // NOTE: see https://github.com/appleboy/gorush

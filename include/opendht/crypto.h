@@ -1,7 +1,5 @@
 /*
  *  Copyright (C) 2014-2025 Savoir-faire Linux Inc.
- *  Author : Adrien Béraud <adrien.beraud@savoirfairelinux.com>
- *           Vsevolod Ivanov <vsevolod.ivanov@savoirfairelinux.com>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -47,10 +45,13 @@ namespace dht {
  */
 namespace crypto {
 
-class OPENDHT_PUBLIC CryptoException : public std::runtime_error {
+class OPENDHT_PUBLIC CryptoException : public std::runtime_error
+{
 public:
-    explicit CryptoException(const std::string& str) : std::runtime_error(str) {};
-    explicit CryptoException(const char* str) : std::runtime_error(str) {};
+    explicit CryptoException(const std::string& str)
+        : std::runtime_error(str) {};
+    explicit CryptoException(const char* str)
+        : std::runtime_error(str) {};
     CryptoException(const CryptoException& e) noexcept = default;
     CryptoException& operator=(const CryptoException&) noexcept = default;
 };
@@ -58,10 +59,13 @@ public:
 /**
  * Exception thrown when a decryption error happened.
  */
-class OPENDHT_PUBLIC DecryptError : public CryptoException {
+class OPENDHT_PUBLIC DecryptError : public CryptoException
+{
 public:
-    explicit DecryptError(const std::string& str) : CryptoException(str) {};
-    explicit DecryptError(const char* str) : CryptoException(str) {};
+    explicit DecryptError(const std::string& str)
+        : CryptoException(str) {};
+    explicit DecryptError(const char* str)
+        : CryptoException(str) {};
     DecryptError(const DecryptError& e) noexcept = default;
     DecryptError& operator=(const DecryptError&) noexcept = default;
 };
@@ -82,29 +86,35 @@ struct OPENDHT_PUBLIC PublicKey
     /**
      * Takes ownership of an existing gnutls_pubkey.
      */
-    PublicKey(gnutls_pubkey_t k) : pk(k) {}
+    PublicKey(gnutls_pubkey_t k)
+        : pk(k)
+    {}
 
     /** Import public key from serialized data */
     PublicKey(const uint8_t* dat, size_t dat_size);
-    PublicKey(const Blob& pk) : PublicKey(pk.data(), pk.size()) {}
-    PublicKey(std::string_view pk) : PublicKey((const uint8_t*)pk.data(), pk.size()) {}
-    PublicKey(PublicKey&& o) noexcept : pk(o.pk) { o.pk = nullptr; }
+    PublicKey(const Blob& pk)
+        : PublicKey(pk.data(), pk.size())
+    {}
+    PublicKey(std::string_view pk)
+        : PublicKey((const uint8_t*) pk.data(), pk.size())
+    {}
+    PublicKey(PublicKey&& o) noexcept
+        : pk(o.pk)
+    {
+        o.pk = nullptr;
+    }
 
     ~PublicKey();
     explicit operator bool() const { return pk; }
-    bool operator ==(const PublicKey& o) const {
-        return pk == o.pk || getLongId() == o.getLongId();
-    }
-    bool operator !=(const PublicKey& o) const {
-        return !(*this == o);
-    }
+    bool operator==(const PublicKey& o) const { return pk == o.pk || getLongId() == o.getLongId(); }
+    bool operator!=(const PublicKey& o) const { return !(*this == o); }
 
     PublicKey& operator=(PublicKey&& o) noexcept;
 
     /**
      * Get public key fingerprint
      */
-   const InfoHash& getId() const;
+    const InfoHash& getId() const;
 
     /**
      * Get public key long fingerprint
@@ -112,30 +122,27 @@ struct OPENDHT_PUBLIC PublicKey
     const PkId& getLongId() const;
 
     bool checkSignature(const uint8_t* data, size_t data_len, const uint8_t* signature, size_t signature_len) const;
-    inline bool checkSignature(const Blob& data, const Blob& signature) const {
+    inline bool checkSignature(const Blob& data, const Blob& signature) const
+    {
         return checkSignature(data.data(), data.size(), signature.data(), signature.size());
     }
 
     Blob encrypt(const uint8_t* data, size_t data_len) const;
-    inline Blob encrypt(const Blob& data) const {
-        return encrypt(data.data(), data.size());
-    }
-    inline Blob encrypt(std::string_view data) const {
-        return encrypt((const uint8_t*)data.data(), data.size());
-    }
+    inline Blob encrypt(const Blob& data) const { return encrypt(data.data(), data.size()); }
+    inline Blob encrypt(std::string_view data) const { return encrypt((const uint8_t*) data.data(), data.size()); }
     void pack(Blob& b) const;
     int pack(uint8_t* out, size_t* out_len) const;
     void unpack(const uint8_t* dat, size_t dat_size);
 
     std::string toString() const;
 
-    template <typename Packer>
+    template<typename Packer>
     void msgpack_pack(Packer& p) const
     {
         Blob b;
         pack(b);
         p.pack_bin(b.size());
-        p.pack_bin_body((const char*)b.data(), b.size());
+        p.pack_bin_body((const char*) b.data(), b.size());
     }
 
     void msgpack_unpack(const msgpack::object& o);
@@ -143,6 +150,7 @@ struct OPENDHT_PUBLIC PublicKey
     gnutls_digest_algorithm_t getPreferredDigest() const;
 
     gnutls_pubkey_t pk {nullptr};
+
 private:
     mutable InfoHash cachedId_ {};
     mutable PkId cachedLongId_ {};
@@ -160,7 +168,7 @@ private:
 struct OPENDHT_PUBLIC PrivateKey
 {
     PrivateKey();
-    //PrivateKey(gnutls_privkey_t k) : key(k) {}
+    // PrivateKey(gnutls_privkey_t k) : key(k) {}
 
     /**
      * Takes ownership of an existing gnutls_x509_privkey.
@@ -171,8 +179,12 @@ struct OPENDHT_PUBLIC PrivateKey
     PrivateKey& operator=(PrivateKey&& o) noexcept;
 
     PrivateKey(const uint8_t* src, size_t src_size, const char* password = nullptr);
-    PrivateKey(const Blob& src, const std::string& password = {}) : PrivateKey(src.data(), src.size(), password.c_str()) {}
-    PrivateKey(std::string_view src, const std::string& password = {}) : PrivateKey((const uint8_t*)src.data(), src.size(), password.c_str()) {}
+    PrivateKey(const Blob& src, const std::string& password = {})
+        : PrivateKey(src.data(), src.size(), password.c_str())
+    {}
+    PrivateKey(std::string_view src, const std::string& password = {})
+        : PrivateKey((const uint8_t*) src.data(), src.size(), password.c_str())
+    {}
 
     ~PrivateKey();
     explicit operator bool() const { return key; }
@@ -188,7 +200,7 @@ struct OPENDHT_PUBLIC PrivateKey
      * @returns the signature data.
      */
     Blob sign(const uint8_t* data, size_t data_len) const;
-    inline Blob sign(std::string_view dat) const { return sign((const uint8_t*)dat.data(), dat.size()); }
+    inline Blob sign(std::string_view dat) const { return sign((const uint8_t*) dat.data(), dat.size()); }
     inline Blob sign(const Blob& dat) const { return sign(dat.data(), dat.size()); }
 
     /**
@@ -211,6 +223,7 @@ struct OPENDHT_PUBLIC PrivateKey
 
     gnutls_privkey_t key {};
     gnutls_x509_privkey_t x509_key {};
+
 private:
     PrivateKey(const PrivateKey&) = delete;
     PrivateKey& operator=(const PrivateKey&) = delete;
@@ -225,28 +238,39 @@ class OPENDHT_PUBLIC RevocationList
     using clock = std::chrono::system_clock;
     using time_point = clock::time_point;
     using duration = clock::duration;
+
 public:
     RevocationList();
     RevocationList(const Blob& b);
-    RevocationList(RevocationList&& o) noexcept : crl(o.crl) { o.crl = nullptr; }
+    RevocationList(RevocationList&& o) noexcept
+        : crl(o.crl)
+    {
+        o.crl = nullptr;
+    }
     ~RevocationList();
 
-    RevocationList& operator=(RevocationList&& o) { crl = o.crl; o.crl = nullptr; return *this; }
+    RevocationList& operator=(RevocationList&& o)
+    {
+        crl = o.crl;
+        o.crl = nullptr;
+        return *this;
+    }
 
     void pack(Blob& b) const;
     void unpack(const uint8_t* dat, size_t dat_size);
-    Blob getPacked() const {
+    Blob getPacked() const
+    {
         Blob b;
         pack(b);
         return b;
     }
 
-    template <typename Packer>
+    template<typename Packer>
     void msgpack_pack(Packer& p) const
     {
         Blob b = getPacked();
         p.pack_bin(b.size());
-        p.pack_bin_body((const char*)b.data(), b.size());
+        p.pack_bin_body((const char*) b.data(), b.size());
     }
 
     void msgpack_unpack(const msgpack::object& o);
@@ -281,7 +305,8 @@ public:
     time_point getNextUpdateTime() const;
 
     gnutls_x509_crl_t get() { return crl; }
-    gnutls_x509_crl_t getCopy() const {
+    gnutls_x509_crl_t getCopy() const
+    {
         if (not crl)
             return nullptr;
         auto copy = RevocationList(getPacked());
@@ -298,14 +323,21 @@ private:
 
 enum class NameType { UNKNOWN = 0, RFC822, DNS, URI, IP };
 
-class OPENDHT_PUBLIC CertificateRequest {
+class OPENDHT_PUBLIC CertificateRequest
+{
 public:
     CertificateRequest();
     CertificateRequest(const uint8_t* data, size_t size);
-    CertificateRequest(std::string_view src) : CertificateRequest((const uint8_t*)src.data(), src.size()) {}
-    CertificateRequest(const Blob& data) : CertificateRequest(data.data(), data.size()) {}
+    CertificateRequest(std::string_view src)
+        : CertificateRequest((const uint8_t*) src.data(), src.size())
+    {}
+    CertificateRequest(const Blob& data)
+        : CertificateRequest(data.data(), data.size())
+    {}
 
-    CertificateRequest(CertificateRequest&& o) noexcept : request(std::move(o.request)) {
+    CertificateRequest(CertificateRequest&& o) noexcept
+        : request(std::move(o.request))
+    {
         o.request = nullptr;
     }
     CertificateRequest& operator=(CertificateRequest&& o) noexcept;
@@ -327,6 +359,7 @@ public:
     std::string toString() const;
 
     gnutls_x509_crq_t get() const { return request; }
+
 private:
     CertificateRequest(const CertificateRequest& o) = delete;
     CertificateRequest& operator=(const CertificateRequest& o) = delete;
@@ -336,9 +369,13 @@ private:
 class OPENDHT_PUBLIC OcspRequest
 {
 public:
-    OcspRequest(gnutls_ocsp_req_t r) : request(r) {}
+    OcspRequest(gnutls_ocsp_req_t r)
+        : request(r)
+    {}
     OcspRequest(const uint8_t* dat_ptr, size_t dat_size);
-    OcspRequest(std::string_view dat): OcspRequest((const uint8_t*)dat.data(), dat.size()) {}
+    OcspRequest(std::string_view dat)
+        : OcspRequest((const uint8_t*) dat.data(), dat.size())
+    {}
     ~OcspRequest();
 
     /*
@@ -348,6 +385,7 @@ public:
 
     Blob pack() const;
     Blob getNonce() const;
+
 private:
     gnutls_ocsp_req_t request;
 };
@@ -356,7 +394,9 @@ class OPENDHT_PUBLIC OcspResponse
 {
 public:
     OcspResponse(const uint8_t* dat_ptr, size_t dat_size);
-    OcspResponse(std::string_view response) : OcspResponse((const uint8_t*)response.data(), response.size()) {}
+    OcspResponse(std::string_view response)
+        : OcspResponse((const uint8_t*) response.data(), response.size())
+    {}
     ~OcspResponse();
 
     Blob pack() const;
@@ -383,36 +423,46 @@ private:
     gnutls_ocsp_resp_t response;
 };
 
-struct OPENDHT_PUBLIC Certificate {
+struct OPENDHT_PUBLIC Certificate
+{
     Certificate() noexcept {}
 
     /**
      * Take ownership of existing gnutls structure
      */
-    Certificate(gnutls_x509_crt_t crt) noexcept : cert(crt) {}
+    Certificate(gnutls_x509_crt_t crt) noexcept
+        : cert(crt)
+    {}
 
     Certificate(Certificate&& o) noexcept
         : cert(o.cert)
         , issuer(std::move(o.issuer))
         , publicKey_(std::move(o.publicKey_))
-        { o.cert = nullptr; };
+    {
+        o.cert = nullptr;
+    };
 
     /**
      * Import certificate (PEM or DER) or certificate chain (PEM),
      * ordered from subject to issuer
      */
     Certificate(const Blob& crt);
-    Certificate(const uint8_t* dat, size_t dat_size) : cert(nullptr) {
+    Certificate(const uint8_t* dat, size_t dat_size)
+        : cert(nullptr)
+    {
         unpack(dat, dat_size);
     }
-    Certificate(std::string_view pem) : Certificate((const uint8_t*)pem.data(), pem.size()) {}
+    Certificate(std::string_view pem)
+        : Certificate((const uint8_t*) pem.data(), pem.size())
+    {}
 
     /**
      * Import certificate chain (PEM or DER),
      * ordered from subject to issuer
      */
     template<typename Iterator>
-    Certificate(const Iterator& begin, const Iterator& end) {
+    Certificate(const Iterator& begin, const Iterator& end)
+    {
         unpack(begin, end);
     }
 
@@ -421,7 +471,8 @@ struct OPENDHT_PUBLIC Certificate {
      * ordered from subject to issuer
      */
     template<typename Iterator>
-    Certificate(const std::vector<std::pair<Iterator, Iterator>>& certs) {
+    Certificate(const std::vector<std::pair<Iterator, Iterator>>& certs)
+    {
         unpack(certs);
     }
 
@@ -430,7 +481,8 @@ struct OPENDHT_PUBLIC Certificate {
 
     void pack(Blob& b) const;
     void unpack(const uint8_t* dat, size_t dat_size);
-    Blob getPacked() const {
+    Blob getPacked() const
+    {
         Blob b;
         pack(b);
         return b;
@@ -479,7 +531,7 @@ struct OPENDHT_PUBLIC Certificate {
         for (auto li = certs.rbegin(); li != certs.rend(); ++li) {
             Certificate tmp_crt;
             gnutls_x509_crt_init(&tmp_crt.cert);
-            const gnutls_datum_t crt_dt {(uint8_t*)&(*li->first), (unsigned)(li->second-li->first)};
+            const gnutls_datum_t crt_dt {(uint8_t*) &(*li->first), (unsigned) (li->second - li->first)};
             int err = gnutls_x509_crt_import(tmp_crt.cert, &crt_dt, GNUTLS_X509_FMT_PEM);
             if (err != GNUTLS_E_SUCCESS)
                 err = gnutls_x509_crt_import(tmp_crt.cert, &crt_dt, GNUTLS_X509_FMT_DER);
@@ -491,13 +543,13 @@ struct OPENDHT_PUBLIC Certificate {
         *this = tmp_issuer ? std::move(*tmp_issuer) : Certificate();
     }
 
-    template <typename Packer>
+    template<typename Packer>
     void msgpack_pack(Packer& p) const
     {
         Blob b;
         pack(b);
         p.pack_bin(b.size());
-        p.pack_bin_body((const char*)b.data(), b.size());
+        p.pack_bin_body((const char*) b.data(), b.size());
     }
 
     void msgpack_unpack(const msgpack::object& o);
@@ -513,7 +565,7 @@ struct OPENDHT_PUBLIC Certificate {
 
     Blob getSerialNumber() const;
 
-    /** Read certificate full DN as described in RFC4514 */ 
+    /** Read certificate full DN as described in RFC4514 */
     std::string getDN() const;
 
     /** Read certificate Common Name (CN) */
@@ -568,10 +620,15 @@ struct OPENDHT_PUBLIC Certificate {
     void addRevocationList(RevocationList&&);
     void addRevocationList(std::shared_ptr<RevocationList>);
 
-    static Certificate generate(const PrivateKey& key, const std::string& name = "dhtnode", const Identity& ca = {}, bool is_ca = false, int64_t validity = 0);
+    static Certificate generate(const PrivateKey& key,
+                                const std::string& name = "dhtnode",
+                                const Identity& ca = {},
+                                bool is_ca = false,
+                                int64_t validity = 0);
     static Certificate generate(const CertificateRequest& request, const Identity& ca, int64_t validity = 0);
 
-    gnutls_x509_crt_t getCopy() const {
+    gnutls_x509_crt_t getCopy() const
+    {
         if (not cert)
             return nullptr;
         auto copy = Certificate(getPacked());
@@ -580,8 +637,7 @@ struct OPENDHT_PUBLIC Certificate {
         return ret;
     }
 
-    std::vector<gnutls_x509_crt_t>
-    getChain(bool copy = false) const
+    std::vector<gnutls_x509_crt_t> getChain(bool copy = false) const
     {
         if (not cert)
             return {};
@@ -591,11 +647,8 @@ struct OPENDHT_PUBLIC Certificate {
         return crts;
     }
 
-    std::pair<
-        std::vector<gnutls_x509_crt_t>,
-        std::vector<gnutls_x509_crl_t>
-    >
-    getChainWithRevocations(bool copy = false) const
+    std::pair<std::vector<gnutls_x509_crt_t>, std::vector<gnutls_x509_crl_t>> getChainWithRevocations(
+        bool copy = false) const
     {
         if (not cert)
             return {};
@@ -628,6 +681,7 @@ struct OPENDHT_PUBLIC Certificate {
     gnutls_x509_crt_t cert {nullptr};
     std::shared_ptr<Certificate> issuer {};
     std::shared_ptr<OcspResponse> ocspResponse;
+
 private:
     Certificate(const Certificate&) = delete;
     Certificate& operator=(const Certificate&) = delete;
@@ -636,8 +690,10 @@ private:
     mutable std::atomic_bool idCached_ {false};
     mutable std::atomic_bool longIdCached_ {false};
 
-    struct crlNumberCmp {
-        bool operator() (const std::shared_ptr<RevocationList>& lhs, const std::shared_ptr<RevocationList>& rhs) const {
+    struct crlNumberCmp
+    {
+        bool operator()(const std::shared_ptr<RevocationList>& lhs, const std::shared_ptr<RevocationList>& rhs) const
+        {
             return lhs->getNumber() < rhs->getNumber();
         }
     };
@@ -650,18 +706,21 @@ private:
 
 struct OPENDHT_PUBLIC TrustList
 {
-    struct VerifyResult {
+    struct VerifyResult
+    {
         int ret;
         unsigned result;
         bool hasError() const { return ret < 0; }
         bool isValid() const { return !hasError() and !(result & GNUTLS_CERT_INVALID); }
         explicit operator bool() const { return isValid(); }
         OPENDHT_PUBLIC std::string toString() const;
-        OPENDHT_PUBLIC friend std::ostream& operator<< (std::ostream& s, const VerifyResult& h);
+        OPENDHT_PUBLIC friend std::ostream& operator<<(std::ostream& s, const VerifyResult& h);
     };
 
     TrustList();
-    TrustList(TrustList&& o) noexcept : trust(std::move(o.trust)) {
+    TrustList(TrustList&& o) noexcept
+        : trust(std::move(o.trust))
+    {
         o.trust = nullptr;
     }
     TrustList& operator=(TrustList&& o) noexcept;
@@ -685,13 +744,15 @@ private:
  * @param key_length stength of the generated private key (bits).
  */
 OPENDHT_PUBLIC Identity generateIdentity(const std::string& name, const Identity& ca, unsigned key_length, bool is_ca);
-OPENDHT_PUBLIC Identity generateIdentity(const std::string& name = "dhtnode", const Identity& ca = {}, unsigned key_length = 4096);
+OPENDHT_PUBLIC Identity generateIdentity(const std::string& name = "dhtnode",
+                                         const Identity& ca = {},
+                                         unsigned key_length = 4096);
 
 OPENDHT_PUBLIC Identity generateEcIdentity(const std::string& name, const Identity& ca, bool is_ca);
 OPENDHT_PUBLIC Identity generateEcIdentity(const std::string& name = "dhtnode", const Identity& ca = {});
 
 OPENDHT_PUBLIC void saveIdentity(const Identity& id, const std::string& path, const std::string& privkey_password = {});
-OPENDHT_PUBLIC Identity loadIdentity(const std::string &path,const std::string &privkey_password = {});
+OPENDHT_PUBLIC Identity loadIdentity(const std::string& path, const std::string& privkey_password = {});
 
 /**
  * Performs SHA512, SHA256 or SHA1, depending on hash_length.
@@ -701,7 +762,7 @@ OPENDHT_PUBLIC Identity loadIdentity(const std::string &path,const std::string &
  * will use SHA256 for hash_length up to 32 bytes,
  * will use SHA512 for hash_length of 33 bytes and more.
  */
-OPENDHT_PUBLIC Blob hash(const Blob& data, size_t hash_length = 512/8);
+OPENDHT_PUBLIC Blob hash(const Blob& data, size_t hash_length = 512 / 8);
 
 OPENDHT_PUBLIC void hash(const uint8_t* data, size_t data_length, uint8_t* hash, size_t hash_length);
 
@@ -712,20 +773,23 @@ OPENDHT_PUBLIC void hash(const uint8_t* data, size_t data_length, uint8_t* hash,
  * that can be transmitted in clear, and will be generated if
  * not provided (32 bytes).
  */
-OPENDHT_PUBLIC Blob stretchKey(std::string_view password, Blob& salt, size_t key_length = 512/8);
+OPENDHT_PUBLIC Blob stretchKey(std::string_view password, Blob& salt, size_t key_length = 512 / 8);
 
 /**
  * AES-GCM encryption. Key must be 128, 192 or 256 bits long (16, 24 or 32 bytes).
  */
 OPENDHT_PUBLIC Blob aesEncrypt(const uint8_t* data, size_t data_length, const Blob& key);
-OPENDHT_PUBLIC inline Blob aesEncrypt(const Blob& data, const Blob& key) {
+OPENDHT_PUBLIC inline Blob
+aesEncrypt(const Blob& data, const Blob& key)
+{
     return aesEncrypt(data.data(), data.size(), key);
 }
 /**
  * AES-GCM encryption with argon2 key derivation.
  * This function uses `stretchKey` to generate an AES key from the password and a random salt.
  * The result is a bundle including the salt that can be decrypted with `aesDecrypt(data, password)`.
- * If needed, the salt or encrypted data can be individually extracted from the bundle with `aesGetSalt` and `aesGetEncrypted`.
+ * If needed, the salt or encrypted data can be individually extracted from the bundle with `aesGetSalt` and
+ * `aesGetEncrypted`.
  * @param data: data to encrypt
  * @param password: password to encrypt the data with
  * @param salt: optional salt to use for key derivation. If not provided, a random salt will be generated.
@@ -736,28 +800,47 @@ OPENDHT_PUBLIC Blob aesEncrypt(const Blob& data, std::string_view password, cons
  * AES-GCM decryption.
  */
 OPENDHT_PUBLIC Blob aesDecrypt(const uint8_t* data, size_t data_length, const Blob& key);
-OPENDHT_PUBLIC inline Blob aesDecrypt(const Blob& data, const Blob& key) { return aesDecrypt(data.data(), data.size(), key); }
-OPENDHT_PUBLIC inline Blob aesDecrypt(std::string_view data, const Blob& key) { return aesDecrypt((uint8_t*)data.data(), data.size(), key); }
+OPENDHT_PUBLIC inline Blob
+aesDecrypt(const Blob& data, const Blob& key)
+{
+    return aesDecrypt(data.data(), data.size(), key);
+}
+OPENDHT_PUBLIC inline Blob
+aesDecrypt(std::string_view data, const Blob& key)
+{
+    return aesDecrypt((uint8_t*) data.data(), data.size(), key);
+}
 
 OPENDHT_PUBLIC Blob aesDecrypt(const uint8_t* data, size_t data_length, std::string_view password);
-OPENDHT_PUBLIC inline Blob aesDecrypt(const Blob& data, std::string_view password) { return aesDecrypt(data.data(), data.size(), password); }
-OPENDHT_PUBLIC inline Blob aesDecrypt(std::string_view data, std::string_view password) { return aesDecrypt((uint8_t*)data.data(), data.size(), password); }
+OPENDHT_PUBLIC inline Blob
+aesDecrypt(const Blob& data, std::string_view password)
+{
+    return aesDecrypt(data.data(), data.size(), password);
+}
+OPENDHT_PUBLIC inline Blob
+aesDecrypt(std::string_view data, std::string_view password)
+{
+    return aesDecrypt((uint8_t*) data.data(), data.size(), password);
+}
 
 /**
  * Get raw AES key from password and salt stored with the encrypted data.
  */
 OPENDHT_PUBLIC Blob aesGetKey(const uint8_t* data, size_t data_length, std::string_view password);
-OPENDHT_PUBLIC Blob inline aesGetKey(const Blob& data, std::string_view password) {
+OPENDHT_PUBLIC Blob inline aesGetKey(const Blob& data, std::string_view password)
+{
     return aesGetKey(data.data(), data.size(), password);
 }
 /** Get the salt part of data password-encrypted with `aesEncrypt(data, password)` */
 OPENDHT_PUBLIC Blob aesGetSalt(const uint8_t* data, size_t data_length);
-OPENDHT_PUBLIC Blob inline aesGetSalt(const Blob& data) {
+OPENDHT_PUBLIC Blob inline aesGetSalt(const Blob& data)
+{
     return aesGetSalt(data.data(), data.size());
 }
 /** Get the encrypted data (ciphertext) part of data password-encrypted with `aesEncrypt(data, password)` */
 OPENDHT_PUBLIC std::string_view aesGetEncrypted(const uint8_t* data, size_t data_length);
-OPENDHT_PUBLIC std::string_view inline aesGetEncrypted(const Blob& data) {
+OPENDHT_PUBLIC std::string_view inline aesGetEncrypted(const Blob& data)
+{
     return aesGetEncrypted(data.data(), data.size());
 }
 
@@ -767,12 +850,30 @@ OPENDHT_PUBLIC std::string_view inline aesGetEncrypted(const Blob& data) {
  *  Can be obtained from an existing bundle with `aesGetSalt`.
  **/
 OPENDHT_PUBLIC Blob aesBuildEncrypted(const uint8_t* encryptedData, size_t data_length, const Blob& salt);
-OPENDHT_PUBLIC Blob inline aesBuildEncrypted(const Blob& encryptedData, const Blob& salt) {
+OPENDHT_PUBLIC Blob inline aesBuildEncrypted(const Blob& encryptedData, const Blob& salt)
+{
     return aesBuildEncrypted(encryptedData.data(), encryptedData.size(), salt);
 }
-OPENDHT_PUBLIC Blob inline aesBuildEncrypted(std::string_view encryptedData, const Blob& salt) {
-    return aesBuildEncrypted((const uint8_t*)encryptedData.data(), encryptedData.size(), salt);
+OPENDHT_PUBLIC Blob inline aesBuildEncrypted(std::string_view encryptedData, const Blob& salt)
+{
+    return aesBuildEncrypted((const uint8_t*) encryptedData.data(), encryptedData.size(), salt);
 }
 
-}
-}
+/**
+ * Encrypts a payload for WebPush (RFC 8291).
+ * @param p256dh: The user's P-256 public key (uncompressed, 65 bytes).
+ * @param auth: The user's authentication secret (16 bytes).
+ * @param payload: The data to encrypt.
+ * @param privKey: (Optional) The sender's private key (for testing).
+ * @param salt: (Optional) The salt to use (for testing).
+ * @return The encrypted body (including salt, record size, keyid).
+ */
+OPENDHT_PUBLIC Blob webPushEncrypt(const Blob& p256dh,
+                                   const Blob& auth,
+                                   const uint8_t* payload,
+                                   size_t payload_length,
+                                   const PrivateKey& privKey = {},
+                                   const Blob& salt = {});
+
+} // namespace crypto
+} // namespace dht

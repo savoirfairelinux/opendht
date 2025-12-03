@@ -62,6 +62,17 @@ erase_if(std::map<Key, Item>& map, const Condition& condition)
     }
 }
 
+template<typename... Args>
+std::string
+concat(Args&&... args)
+{
+    static_assert((std::is_constructible_v<std::string_view, Args&&> && ...));
+    std::string s;
+    s.reserve((std::string_view {args}.size() + ...));
+    (s.append(std::forward<Args>(args)), ...);
+    return s;
+}
+
 /**
  * Split "[host]:port" or "host:port" to pair<"host", "port">.
  */

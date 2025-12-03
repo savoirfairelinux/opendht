@@ -26,7 +26,8 @@
 
 namespace test {
 
-class CryptoTester : public CppUnit::TestFixture {
+class CryptoTester : public CppUnit::TestFixture
+{
     CPPUNIT_TEST_SUITE(CryptoTester);
     CPPUNIT_TEST(testSignatureEncryption);
     CPPUNIT_TEST(testCertificateRevocation);
@@ -36,9 +37,11 @@ class CryptoTester : public CppUnit::TestFixture {
     CPPUNIT_TEST(testAesEncryption);
     CPPUNIT_TEST(testAesEncryptionWithMultipleKeySizes);
     CPPUNIT_TEST(testOaep);
+    CPPUNIT_TEST(testWebPushEncryption);
+    CPPUNIT_TEST(testWebPushRFC8291);
     CPPUNIT_TEST_SUITE_END();
 
- public:
+public:
     /**
      * Method automatically called before each test by CppUnit
      */
@@ -74,6 +77,8 @@ class CryptoTester : public CppUnit::TestFixture {
     void testAesEncryptionWithMultipleKeySizes();
 
     void testOaep();
+    void testWebPushEncryption();
+    void testWebPushRFC8291();
 };
 
-}  // namespace test
+} // namespace test
