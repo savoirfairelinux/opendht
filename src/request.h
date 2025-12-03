@@ -89,7 +89,8 @@ struct Request {
     void setExpired() {
         if (pending()) {
             state_ = Request::State::EXPIRED;
-            on_expired(*this, true);
+            if (on_expired)
+                on_expired(*this, true);
             clear();
         }
     }

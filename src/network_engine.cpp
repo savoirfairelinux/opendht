@@ -749,11 +749,7 @@ NetworkEngine::sendPing(const Sp<Node>& node, RequestCb&& on_done, RequestExpire
                 on_done(req_status, {});
             }
         },
-        [=](const Request& req_status, bool done) { /* on expired */
-            if (on_expired) {
-                on_expired(req_status, done);
-            }
-        }
+        std::move(on_expired)
     );
     sendRequest(req);
     ++out_stats.ping;
@@ -819,11 +815,7 @@ NetworkEngine::sendFindNode(const Sp<Node>& n, const InfoHash& target, want_t wa
                 on_done(req_status, {std::forward<ParsedMessage>(msg)});
             }
         },
-        [=](const Request& req_status, bool done) { /* on expired */
-            if (on_expired) {
-                on_expired(req_status, done);
-            }
-        }
+        std::move(on_expired)
     );
     sendRequest(req);
     ++out_stats.find;
@@ -875,11 +867,7 @@ NetworkEngine::sendGetValues(const Sp<Node>& n, const InfoHash& info_hash, const
                 on_done(req_status, {std::forward<ParsedMessage>(msg)});
             }
         },
-        [=](const Request& req_status, bool done) { /* on expired */
-            if (on_expired) {
-                on_expired(req_status, done);
-            }
-        }
+        std::move(on_expired)
     );
     sendRequest(req);
     ++out_stats.get;
@@ -1157,10 +1145,7 @@ NetworkEngine::sendListen(const Sp<Node>& n,
             if (on_done)
                 on_done(req_status, {std::forward<ParsedMessage>(msg)});
         },
-        [=](const Request& req_status, bool done) { /* on expired */
-            if (on_expired)
-                on_expired(req_status, done);
-        }
+        std::move(on_expired)
     );
     sendRequest(req);
     ++out_stats.listen;
@@ -1240,11 +1225,7 @@ NetworkEngine::sendAnnounceValue(const Sp<Node>& n,
                 }
             }
         },
-        [=](const Request& req_status, bool done) { /* on expired */
-            if (on_expired) {
-                on_expired(req_status, done);
-            }
-        }
+        std::move(on_expired)
     );
     req->parts = std::move(v);
     sendRequest(req);
@@ -1372,12 +1353,8 @@ NetworkEngine::sendRefreshValue(const Sp<Node>& n,
                 }
             }
         },
-        on_error,
-        [=](const Request& req_status, bool done) { /* on expired */
-            if (on_expired) {
-                on_expired(req_status, done);
-            }
-        }
+        std::move(on_error),
+        std::move(on_expired)
     );
     sendRequest(req);
     ++out_stats.refresh;
