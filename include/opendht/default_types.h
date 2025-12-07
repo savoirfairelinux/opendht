@@ -69,6 +69,8 @@ public:
         if (v.owner) {
             owner = v.owner;
             from = v.owner->getId();
+        } else {
+            throw std::runtime_error("Value has no owner");
         }
         BaseClass::unpackValue(v);
     }
@@ -89,6 +91,9 @@ public:
 
 public:
     virtual void unpackValue(const Value& v) override {
+        if (!v.recipient) {
+            throw std::runtime_error("Value has no recipient");
+        }
         to = v.recipient;
         BaseClass::unpackValue(v);
     }
@@ -102,9 +107,6 @@ public:
 
     dht::InfoHash to;
 };
-
-
-
 
 class OPENDHT_PUBLIC ImMessage : public SignedValue<ImMessage>
 {
