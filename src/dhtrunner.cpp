@@ -518,6 +518,13 @@ DhtRunner::registerType(const ValueType& type)
 }
 
 void
+DhtRunner::registerInsecureType(const ValueType& type)
+{
+    std::lock_guard<std::mutex> lck(dht_mtx);
+    dht_->registerInsecureType(type);
+}
+
+void
 DhtRunner::importValues(const std::vector<ValuesExport>& values)
 {
     std::lock_guard<std::mutex> lck(dht_mtx);

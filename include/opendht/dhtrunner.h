@@ -366,6 +366,7 @@ public:
     void setLogFilter(const InfoHash& f = {});
 
     void registerType(const ValueType& type);
+    void registerInsecureType(const ValueType& type);
 
     void importValues(const std::vector<ValuesExport>& values);
 
