@@ -29,8 +29,11 @@ deps = [
     jsoncpp,
     simdutf,
     llhttp,
-    io_uring,
 ]
+
+if host_machine.system() == 'linux' and io_uring.found()
+    deps += io_uring
+endif
 conf_data = configuration_data()
 
 add_project_arguments('-DMSGPACK_NO_BOOST', '-DASIO_STANDALONE', language: 'cpp')
@@ -245,7 +248,7 @@ if get_option('tests').enabled()
         'tests/tests_runner.cpp',
         include_directories: opendht_interface_inc,
         link_with: opendht,
-        dependencies: [cppunit, jsoncpp, fmt, openssl, msgpack],
+        dependencies: [cppunit, jsoncpp, fmt, openssl, msgpack, gnutls],
     )
     test('Crypto', test_crypto)
 
