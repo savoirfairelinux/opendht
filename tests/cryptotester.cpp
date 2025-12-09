@@ -316,6 +316,7 @@ CryptoTester::testOaep()
 void
 CryptoTester::testWebPushEncryption()
 {
+#if GNUTLS_VERSION_NUMBER >= 0x030802
     // 1. Generate Receiver P-256 Key Pair
     gnutls_privkey_t receiver_key;
     CPPUNIT_ASSERT_EQUAL(GNUTLS_E_SUCCESS, gnutls_privkey_init(&receiver_key));
@@ -377,11 +378,15 @@ CryptoTester::testWebPushEncryption()
     // Check Key Header
     CPPUNIT_ASSERT_EQUAL((uint8_t) 0x04, encrypted[21]);
     CPPUNIT_ASSERT_EQUAL((uint8_t) 0x04, encryptedLong[21]);
+#else
+    std::cerr << "Skipping Web Push Encryption test, not supported by the current GnuTLS version" << std::endl;
+#endif
 }
 
 void
 CryptoTester::testWebPushRFC8291()
 {
+#if GNUTLS_VERSION_NUMBER >= 0x030802
     // RFC 8291 Example
     // https://www.rfc-editor.org/rfc/rfc8291.html#section-5
 
@@ -457,6 +462,9 @@ CryptoTester::testWebPushRFC8291()
     // Check AS Public Key in header
     dht::Blob outASPub(output.begin() + 16 + 4 + 1, output.begin() + 16 + 4 + 1 + 65);
     CPPUNIT_ASSERT(outASPub == asPubRaw);
+#else
+    std::cerr << "Skipping Web Push RFC8291 test, not supported by the current GnuTLS version" << std::endl;
+#endif
 }
 
 void

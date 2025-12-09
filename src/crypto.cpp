@@ -2050,6 +2050,10 @@ operator<<(std::ostream& o, const TrustList::VerifyResult& h)
     return o;
 }
 
+// check for GnuTLS 3.8.2+:
+
+#if GNUTLS_VERSION_NUMBER >= 0x030802
+
 static Blob
 hkdf_extract(const Blob& salt, const Blob& ikm)
 {
@@ -2082,6 +2086,7 @@ hkdf_expand(const Blob& prk, const uint8_t* info, size_t info_len, size_t len)
     okm.resize(len);
     return okm;
 }
+#endif
 
 Blob
 webPushEncrypt(const Blob& p256dh,
@@ -2091,6 +2096,9 @@ webPushEncrypt(const Blob& p256dh,
                const PrivateKey& privKey,
                const Blob& salt_in)
 {
+#if GNUTLS_VERSION_NUMBER < 0x030802
+    throw CryptoException("webPushEncrypt requires GnuTLS 3.8.2 or newer");
+#else
     // 1. Generate Salt
     Blob salt;
     if (salt_in.empty()) {
@@ -2250,6 +2258,7 @@ webPushEncrypt(const Blob& p256dh,
     output.insert(output.end(), local_pub.begin(), local_pub.end());
     output.insert(output.end(), ciphertext.begin(), ciphertext.end());
     return output;
+#endif
 }
 
 } // namespace crypto
