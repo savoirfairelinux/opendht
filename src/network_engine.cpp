@@ -294,7 +294,8 @@ NetworkEngine::requestStep(Sp<Request> sreq)
             requests.erase(req.tid);
         return;
     } else if (req.attempt_count == 1) {
-        req.on_expired(req, false);
+        if (req.on_expired)
+            req.on_expired(req, false);
     }
 
     auto err = send(node.getAddr(), (char*)req.msg.data(), req.msg.size(), node.getReplyTime() < now - UDP_REPLY_TIME);
