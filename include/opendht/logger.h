@@ -32,45 +32,17 @@ namespace log {
 
 enum class LogLevel { debug, warning, error };
 
-using LogMethod = std::function<void(LogLevel, std::string_view, std::string&&)>;
+using LogMethod = std::function<void(LogLevel, std::string&&)>;
 
 struct OPENDHT_PUBLIC Logger
 {
     Logger() = delete;
-    Logger(LogMethod&& l, std::string tag = "")
-        : logger_(std::move(l))
-        , tag_(std::move(tag))
-        , prefix_(tag_.empty() ? "" : fmt::format("[{}] ", tag_))
+    Logger(LogMethod&& l)
+        : logger(std::move(l))
     {
-        if (!logger_)
-            throw std::invalid_argument {"logger must be set"};
+        if (!logger)
+            throw std::invalid_argument {"logger and loggerf must be set"};
     }
-    Logger(const Logger& parent, std::string tag)
-        : logger_(parent.logger_)
-        , tag_(std::move(tag))
-        , prefix_(fmt::format("{}[{}] ", parent.prefix_, tag_))
-    {}
-
-    std::shared_ptr<Logger> createChild(std::string tag)
-    {
-        auto child = std::make_shared<Logger>(*this, std::move(tag));
-        children_.push_back(child);
-        return child;
-    }
-
-    void setFilter(std::string_view tag)
-    {
-        enable_ = tag.empty() or tag_ == tag;
-        for (auto it = children_.begin(); it != children_.end();) {
-            if (auto c = it->lock()) {
-                c->setFilter(enable_ ? std::string_view {} : tag);
-                ++it;
-            } else {
-                it = children_.erase(it);
-            }
-        }
-    }
-
     void setFilter(const InfoHash& f)
     {
         filter_ = f;
@@ -78,37 +50,34 @@ struct OPENDHT_PUBLIC Logger
     }
     inline void log0(LogLevel level, fmt::string_view format, fmt::printf_args args) const
     {
-        if (enable_ and not filterEnable_)
-            logger_(level, prefix_, fmt::vsprintf(format, args));
+        if (not filterEnable_)
+            logger(level, fmt::vsprintf(format, args));
     }
     inline void log1(LogLevel level, const InfoHash& f, fmt::string_view format, fmt::printf_args args) const
     {
-        if (enable_ and (not filterEnable_ or f == filter_))
-            logger_(level, prefix_, fmt::vsprintf(format, args));
+        if (not filterEnable_ or f == filter_)
+            logger(level, fmt::vsprintf(format, args));
     }
     inline void log2(
         LogLevel level, const InfoHash& f1, const InfoHash& f2, fmt::string_view format, fmt::printf_args args) const
     {
-        if (enable_ and (not filterEnable_ or f1 == filter_ or f2 == filter_))
-            logger_(level, prefix_, fmt::vsprintf(format, args));
+        if (not filterEnable_ or f1 == filter_ or f2 == filter_)
+            logger(level, fmt::vsprintf(format, args));
     }
     template<typename... Args>
     inline void debug(fmt::format_string<Args...> format, Args&&... args) const
     {
-        if (enable_)
-            logger_(LogLevel::debug, prefix_, fmt::format(format, std::forward<Args>(args)...));
+        logger(LogLevel::debug, fmt::format(format, std::forward<Args>(args)...));
     }
     template<typename... Args>
     inline void warn(fmt::format_string<Args...> format, Args&&... args) const
     {
-        if (enable_)
-            logger_(LogLevel::warning, prefix_, fmt::format(format, std::forward<Args>(args)...));
+        logger(LogLevel::warning, fmt::format(format, std::forward<Args>(args)...));
     }
     template<typename... Args>
     inline void error(fmt::format_string<Args...> format, Args&&... args) const
     {
-        if (enable_)
-            logger_(LogLevel::error, prefix_, fmt::format(format, std::forward<Args>(args)...));
+        logger(LogLevel::error, fmt::format(format, std::forward<Args>(args)...));
     }
     template<typename... T>
     inline void d(fmt::format_string<T...> format, T&&... args) const
@@ -157,13 +126,9 @@ struct OPENDHT_PUBLIC Logger
     }
 
 private:
-    const LogMethod logger_ = {};
-    const std::string tag_ {};
-    const std::string prefix_ {};
-    bool enable_ {true};
+    LogMethod logger = {};
     bool filterEnable_ {false};
     InfoHash filter_ {};
-    std::vector<std::weak_ptr<Logger>> children_ {};
 };
 
 } // namespace log

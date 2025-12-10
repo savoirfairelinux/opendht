@@ -30,9 +30,9 @@
 
 namespace dht {
 
-class OPENDHT_PUBLIC SecureDht final : public DhtInterface
-{
+class OPENDHT_PUBLIC SecureDht final : public DhtInterface {
 public:
+
     typedef std::function<void(bool)> SignatureCheckCallback;
 
     using Config = SecureDhtConfig;
@@ -41,7 +41,7 @@ public:
     {
         auto c = conf.node_config;
         if (not c.node_id and conf.id.second)
-            c.node_id = InfoHash::get("node:" + conf.id.second->getId().toString());
+            c.node_id = InfoHash::get("node:"+conf.id.second->getId().toString());
         return c;
     }
 
@@ -51,37 +51,36 @@ public:
      * id:    the identity to use for the crypto layer and to compute
      *        our own hash on the Dht.
      */
-    SecureDht(std::unique_ptr<DhtInterface> dht,
-              Config config,
-              IdentityAnnouncedCb iacb = {},
-              const std::shared_ptr<Logger>& l = {});
+    SecureDht(std::unique_ptr<DhtInterface> dht, Config config, IdentityAnnouncedCb iacb = {}, const std::shared_ptr<Logger>& l = {});
 
     virtual ~SecureDht();
 
-    InfoHash getId() const { return key_ ? key_->getPublicKey().getId() : InfoHash(); }
-    PkId getLongId() const { return key_ ? key_->getPublicKey().getLongId() : PkId(); }
-    Sp<crypto::PublicKey> getPublicKey() const { return key_ ? key_->getSharedPublicKey() : Sp<crypto::PublicKey> {}; }
+    InfoHash getId() const {
+        return key_ ? key_->getPublicKey().getId() : InfoHash();
+    }
+    PkId getLongId() const {
+        return key_ ? key_->getPublicKey().getLongId() : PkId();
+    }
+    Sp<crypto::PublicKey> getPublicKey() const {
+        return key_ ? key_->getSharedPublicKey() : Sp<crypto::PublicKey>{};
+    }
 
     ValueType secureType(ValueType&& type);
 
-    ValueType secureType(const ValueType& type)
-    {
+    ValueType secureType(const ValueType& type) {
         ValueType tmp_type = type;
         return secureType(std::move(tmp_type));
     }
 
-    void registerType(const ValueType& type) override
-    {
+    void registerType(const ValueType& type) override {
         if (dht_)
             dht_->registerType(secureType(type));
     }
-    void registerType(ValueType&& type)
-    {
+    void registerType(ValueType&& type) {
         if (dht_)
             dht_->registerType(secureType(std::forward<ValueType>(type)));
     }
-    void registerInsecureType(const ValueType& type)
-    {
+    void registerInsecureType(const ValueType& type) {
         if (dht_)
             dht_->registerType(type);
     }
@@ -91,29 +90,14 @@ public:
      * If the signature is unable to be checked, or if the data is unable to be decrypted, it is not returned.
      * Public, non-signed & non-encrypted data is retransmitted as-is.
      */
-    void get(const InfoHash& id, GetCallback cb, DoneCallback donecb = {}, Value::Filter&& = {}, Where&& w = {}) override;
-    void get(const InfoHash& id,
-             GetCallback cb,
-             DoneCallbackSimple donecb = {},
-             Value::Filter&& f = {},
-             Where&& w = {}) override
-    {
+    void get(const InfoHash& id, GetCallback cb, DoneCallback donecb={}, Value::Filter&& = {}, Where&& w = {}) override;
+    void get(const InfoHash& id, GetCallback cb, DoneCallbackSimple donecb={}, Value::Filter&& f = {}, Where&& w = {}) override {
         get(id, cb, bindDoneCb(donecb), std::forward<Value::Filter>(f), std::forward<Where>(w));
     }
-    void get(const InfoHash& key,
-             GetCallbackSimple cb,
-             DoneCallback donecb = {},
-             Value::Filter&& f = {},
-             Where&& w = {}) override
-    {
+    void get(const InfoHash& key, GetCallbackSimple cb, DoneCallback donecb={}, Value::Filter&& f={}, Where&& w = {}) override {
         get(key, bindGetCb(cb), donecb, std::forward<Value::Filter>(f), std::forward<Where>(w));
     }
-    void get(const InfoHash& key,
-             GetCallbackSimple cb,
-             DoneCallbackSimple donecb,
-             Value::Filter&& f = {},
-             Where&& w = {}) override
-    {
+    void get(const InfoHash& key, GetCallbackSimple cb, DoneCallbackSimple donecb, Value::Filter&& f={}, Where&& w = {}) override {
         get(key, bindGetCb(cb), bindDoneCb(donecb), std::forward<Value::Filter>(f), std::forward<Where>(w));
     }
 
@@ -121,8 +105,7 @@ public:
      * Will take ownership of the value, sign it using our private key and put it in the DHT.
      */
     void putSigned(const InfoHash& hash, Sp<Value> val, DoneCallback callback, bool permanent = false);
-    void putSigned(const InfoHash& hash, Value&& v, DoneCallback callback, bool permanent = false)
-    {
+    void putSigned(const InfoHash& hash, Value&& v, DoneCallback callback, bool permanent = false) {
         putSigned(hash, std::make_shared<Value>(std::move(v)), callback, permanent);
     }
 
@@ -131,24 +114,16 @@ public:
      * and put it in the DHT.
      * The operation will be immediate if the recipient' public key is known (otherwise it will be retrived first).
      */
-    void putEncrypted(
-        const InfoHash& hash, const InfoHash& to, Sp<Value> val, DoneCallback callback, bool permanent = false);
+    void putEncrypted(const InfoHash& hash, const InfoHash& to, Sp<Value> val, DoneCallback callback, bool permanent = false);
 
     [[deprecated("Use the shared_ptr version instead")]]
-    void putEncrypted(const InfoHash& hash, const InfoHash& to, Value&& v, DoneCallback callback, bool permanent = false)
-    {
+    void putEncrypted(const InfoHash& hash, const InfoHash& to, Value&& v, DoneCallback callback, bool permanent = false) {
         putEncrypted(hash, to, std::make_shared<Value>(std::move(v)), callback, permanent);
     }
-    void putEncrypted(const InfoHash& hash,
-                      const crypto::PublicKey& to,
-                      Sp<Value> val,
-                      DoneCallback callback,
-                      bool permanent = false);
+    void putEncrypted(const InfoHash& hash, const crypto::PublicKey& to, Sp<Value> val, DoneCallback callback, bool permanent = false);
 
     [[deprecated("Use the shared_ptr version instead")]]
-    void putEncrypted(
-        const InfoHash& hash, const crypto::PublicKey& to, Value&& v, DoneCallback callback, bool permanent = false)
-    {
+    void putEncrypted(const InfoHash& hash, const crypto::PublicKey& to, Value&& v, DoneCallback callback, bool permanent = false) {
         putEncrypted(hash, to, std::make_shared<Value>(std::move(v)), callback, permanent);
     }
 
@@ -182,136 +157,201 @@ public:
      * The search key used is the public key ID, so there may be multiple certificates retured, signed with
      * the same private key.
      */
-    void setLocalCertificateStore(CertificateStoreQueryLegacy&& query_method)
-    {
+    void setLocalCertificateStore(CertificateStoreQueryLegacy&& query_method) {
         localQueryMethodLegacy_ = std::move(query_method);
     }
-    void setLocalCertificateStore(CertificateStoreQuery&& query_method) { localQueryMethod_ = std::move(query_method); }
-    void setOnPublicAddressChanged(PublicAddressChangedCb cb) override { dht_->setOnPublicAddressChanged(cb); }
+    void setLocalCertificateStore(CertificateStoreQuery&& query_method) {
+        localQueryMethod_ = std::move(query_method);
+    }
+    void setOnPublicAddressChanged(PublicAddressChangedCb cb) override {
+        dht_->setOnPublicAddressChanged(cb);
+    }
 
     /**
      * SecureDht to Dht proxy
      */
-    void shutdown(ShutdownCallback cb, bool stop = false) override { dht_->shutdown(cb, stop); }
-    void dumpTables() const override { dht_->dumpTables(); }
+    void shutdown(ShutdownCallback cb, bool stop = false) override {
+        dht_->shutdown(cb, stop);
+    }
+    void dumpTables() const override {
+        dht_->dumpTables();
+    }
     inline const InfoHash& getNodeId() const override { return dht_->getNodeId(); }
 
-    std::pair<size_t, size_t> getStoreSize() const override { return dht_->getStoreSize(); }
-    std::string getStorageLog() const override { return dht_->getStorageLog(); }
-    std::string getStorageLog(const InfoHash& h) const override { return dht_->getStorageLog(h); }
-    void setStorageLimit(size_t limit = DEFAULT_STORAGE_LIMIT) override { dht_->setStorageLimit(limit); }
-    size_t getStorageLimit() const override { return dht_->getStorageLimit(); }
+    std::pair<size_t, size_t> getStoreSize() const override {
+        return dht_->getStoreSize();
+    }
+    std::string getStorageLog() const override {
+        return dht_->getStorageLog();
+    }
+    std::string getStorageLog(const InfoHash& h) const override {
+        return dht_->getStorageLog(h);
+    }
+    void setStorageLimit(size_t limit = DEFAULT_STORAGE_LIMIT) override {
+        dht_->setStorageLimit(limit);
+    }
+    size_t getStorageLimit() const override {
+        return dht_->getStorageLimit();
+    }
 
-    std::vector<NodeExport> exportNodes() const override { return dht_->exportNodes(); }
-    std::vector<ValuesExport> exportValues() const override { return dht_->exportValues(); }
-    void importValues(const std::vector<ValuesExport>& v) override { dht_->importValues(v); }
-    NodeStats getNodesStats(sa_family_t af) const override { return dht_->getNodesStats(af); }
-    std::vector<unsigned> getNodeMessageStats(bool in = false) override { return dht_->getNodeMessageStats(in); }
-    std::string getRoutingTablesLog(sa_family_t af) const override { return dht_->getRoutingTablesLog(af); }
-    std::string getSearchesLog(sa_family_t af) const override { return dht_->getSearchesLog(af); }
-    std::string getSearchLog(const InfoHash& h, sa_family_t af = AF_UNSPEC) const override
-    {
+    std::vector<NodeExport> exportNodes() const override {
+        return dht_->exportNodes();
+    }
+    std::vector<ValuesExport> exportValues() const override {
+        return dht_->exportValues();
+    }
+    void importValues(const std::vector<ValuesExport>& v) override {
+        dht_->importValues(v);
+    }
+    NodeStats getNodesStats(sa_family_t af) const override {
+        return dht_->getNodesStats(af);
+    }
+    std::vector<unsigned> getNodeMessageStats(bool in = false) override {
+        return dht_->getNodeMessageStats(in);
+    }
+    std::string getRoutingTablesLog(sa_family_t af) const override {
+        return dht_->getRoutingTablesLog(af);
+    }
+    std::string getSearchesLog(sa_family_t af) const override {
+        return dht_->getSearchesLog(af);
+    }
+    std::string getSearchLog(const InfoHash& h, sa_family_t af = AF_UNSPEC) const override {
         return dht_->getSearchLog(h, af);
     }
-    std::vector<SockAddr> getPublicAddress(sa_family_t family = 0) override { return dht_->getPublicAddress(family); }
-    time_point periodic(const uint8_t* buf, size_t buflen, SockAddr sa, const time_point& now) override
-    {
+    std::vector<SockAddr> getPublicAddress(sa_family_t family = 0) override {
+        return dht_->getPublicAddress(family);
+    }
+    time_point periodic(const uint8_t *buf, size_t buflen, SockAddr sa, const time_point& now) override {
         return dht_->periodic(buf, buflen, std::move(sa), now);
     }
-    time_point periodic(
-        const uint8_t* buf, size_t buflen, const sockaddr* from, socklen_t fromlen, const time_point& now) override
-    {
+    time_point periodic(const uint8_t *buf, size_t buflen, const sockaddr* from, socklen_t fromlen, const time_point& now) override {
         return dht_->periodic(buf, buflen, from, fromlen, now);
     }
-    NodeStatus updateStatus(sa_family_t af) override { return dht_->updateStatus(af); }
-    NodeStatus getStatus(sa_family_t af) const override { return dht_->getStatus(af); }
-    NodeStatus getStatus() const override { return dht_->getStatus(); }
-    net::DatagramSocket* getSocket() const override { return dht_->getSocket(); };
-    bool isRunning(sa_family_t af = 0) const override { return dht_->isRunning(af); }
-    const ValueType& getType(ValueType::Id type_id) const override { return dht_->getType(type_id); }
-    void addBootstrap(const std::string& host, const std::string& service) override
-    {
+    NodeStatus updateStatus(sa_family_t af) override  {
+        return dht_->updateStatus(af);
+    }
+    NodeStatus getStatus(sa_family_t af) const override {
+        return dht_->getStatus(af);
+    }
+    NodeStatus getStatus() const override {
+        return dht_->getStatus();
+    }
+    net::DatagramSocket* getSocket() const override {
+        return dht_->getSocket();
+    };
+    bool isRunning(sa_family_t af = 0) const override {
+        return dht_->isRunning(af);
+    }
+    const ValueType& getType(ValueType::Id type_id) const override {
+        return dht_->getType(type_id);
+    }
+    void addBootstrap(const std::string& host, const std::string& service) override {
         dht_->addBootstrap(host, service);
     }
-    void clearBootstrap() override { dht_->clearBootstrap(); }
-    void insertNode(const InfoHash& id, const SockAddr& sa) override { dht_->insertNode(id, sa); }
-    void insertNode(const NodeExport& n) override { dht_->insertNode(n); }
-    void pingNode(SockAddr sa, DoneCallbackSimple&& cb = {}) override { dht_->pingNode(std::move(sa), std::move(cb)); }
-    void query(const InfoHash& key, QueryCallback cb, DoneCallback done_cb = {}, Query&& q = {}) override
-    {
+    void clearBootstrap() override {
+        dht_->clearBootstrap();
+    }
+    void insertNode(const InfoHash& id, const SockAddr& sa) override {
+        dht_->insertNode(id, sa);
+    }
+    void insertNode(const NodeExport& n) override {
+        dht_->insertNode(n);
+    }
+    void pingNode(SockAddr sa, DoneCallbackSimple&& cb={}) override {
+        dht_->pingNode(std::move(sa), std::move(cb));
+    }
+    void query(const InfoHash& key, QueryCallback cb, DoneCallback done_cb = {}, Query&& q = {}) override {
         dht_->query(key, cb, done_cb, std::move(q));
     }
-    void query(const InfoHash& key, QueryCallback cb, DoneCallbackSimple done_cb = {}, Query&& q = {}) override
-    {
+    void query(const InfoHash& key, QueryCallback cb, DoneCallbackSimple done_cb = {}, Query&& q = {}) override {
         dht_->query(key, cb, done_cb, std::move(q));
     }
-    std::vector<Sp<Value>> getLocal(const InfoHash& key, const Value::Filter& f = {}) const override
-    {
+    std::vector<Sp<Value>> getLocal(const InfoHash& key, const Value::Filter& f = {}) const override {
         return dht_->getLocal(key, f);
     }
-    Sp<Value> getLocalById(const InfoHash& key, Value::Id vid) const override { return dht_->getLocalById(key, vid); }
+    Sp<Value> getLocalById(const InfoHash& key, Value::Id vid) const override {
+        return dht_->getLocalById(key, vid);
+    }
     void put(const InfoHash& key,
-             Sp<Value> v,
-             DoneCallback cb = nullptr,
-             time_point created = time_point::max(),
-             bool permanent = false) override
+            Sp<Value> v,
+            DoneCallback cb=nullptr,
+            time_point created=time_point::max(),
+            bool permanent = false) override
     {
         dht_->put(key, v, cb, created, permanent);
     }
     void put(const InfoHash& key,
-             const Sp<Value>& v,
-             DoneCallbackSimple cb,
-             time_point created = time_point::max(),
-             bool permanent = false) override
+            const Sp<Value>& v,
+            DoneCallbackSimple cb,
+            time_point created=time_point::max(),
+            bool permanent = false) override
     {
         dht_->put(key, v, cb, created, permanent);
     }
 
     void put(const InfoHash& key,
-             Value&& v,
-             DoneCallback cb = nullptr,
-             time_point created = time_point::max(),
-             bool permanent = false) override
+            Value&& v,
+            DoneCallback cb=nullptr,
+            time_point created=time_point::max(),
+            bool permanent = false) override
     {
         dht_->put(key, std::move(v), cb, created, permanent);
     }
     void put(const InfoHash& key,
-             Value&& v,
-             DoneCallbackSimple cb,
-             time_point created = time_point::max(),
-             bool permanent = false) override
+            Value&& v,
+            DoneCallbackSimple cb,
+            time_point created=time_point::max(),
+            bool permanent = false) override
     {
         dht_->put(key, std::move(v), cb, created, permanent);
     }
-    std::vector<Sp<Value>> getPut(const InfoHash& h) const override { return dht_->getPut(h); }
-    Sp<Value> getPut(const InfoHash& h, const Value::Id& vid) const override { return dht_->getPut(h, vid); }
-    bool cancelPut(const InfoHash& h, const Value::Id& vid) override { return dht_->cancelPut(h, vid); }
+    std::vector<Sp<Value>> getPut(const InfoHash& h) const override {
+        return dht_->getPut(h);
+    }
+    Sp<Value> getPut(const InfoHash& h, const Value::Id& vid) const override {
+        return dht_->getPut(h, vid);
+    }
+    bool cancelPut(const InfoHash& h, const Value::Id& vid) override {
+        return dht_->cancelPut(h, vid);
+    }
 
-    size_t listen(const InfoHash& key, ValueCallback, Value::Filter = {}, Where = {}) override;
+    size_t listen(const InfoHash& key, ValueCallback, Value::Filter={}, Where={}) override;
     size_t listen(const InfoHash& key, GetCallback cb, Value::Filter = {}, Where w = {}) override;
-    size_t listen(const InfoHash& key, GetCallbackSimple cb, Value::Filter f = {}, Where w = {}) override
-    {
+    size_t listen(const InfoHash& key, GetCallbackSimple cb, Value::Filter f={}, Where w = {}) override {
         return listen(key, bindGetCb(cb), f, w);
     }
-    bool cancelListen(const InfoHash& h, size_t token) override { return dht_->cancelListen(h, token); }
-    void connectivityChanged(sa_family_t af) override { dht_->connectivityChanged(af); }
-    void connectivityChanged() override { dht_->connectivityChanged(); }
+    bool cancelListen(const InfoHash& h, size_t token) override {
+        return dht_->cancelListen(h, token);
+    }
+    void connectivityChanged(sa_family_t af) override {
+        dht_->connectivityChanged(af);
+    }
+    void connectivityChanged() override {
+        dht_->connectivityChanged();
+    }
 
-    void forwardAllMessages(bool forward) { forward_all_ = forward; }
+    void forwardAllMessages(bool forward) {
+        forward_all_ = forward;
+    }
 
-    void setPushNotificationToken(const std::string& token = "") override { dht_->setPushNotificationToken(token); }
+    void setPushNotificationToken(const std::string& token = "") override {
+        dht_->setPushNotificationToken(token);
+    }
 
     /**
      * Call linked callback with push_notification
      * @param notification to process
      */
-    PushNotificationResult pushNotificationReceived(const std::map<std::string, std::string>& notification) override
-    {
+    PushNotificationResult pushNotificationReceived(const std::map<std::string, std::string>& notification) override {
         return dht_->pushNotificationReceived(notification);
     }
 
-    void setLogger(const std::shared_ptr<Logger>& logger) override
-    {
+    void setLogger(const Logger& logger) override {
+        DhtInterface::setLogger(logger);
+        dht_->setLogger(logger);
+    }
+
+    void setLogger(const std::shared_ptr<Logger>& logger) override {
         DhtInterface::setLogger(logger);
         dht_->setLogger(logger);
     }
@@ -319,8 +359,7 @@ public:
     /**
      * Only print logs related to the given InfoHash (if given), or disable filter (if zeroes).
      */
-    void setLogFilter(const InfoHash& f) override
-    {
+    void setLogFilter(const InfoHash& f) override {
         DhtInterface::setLogFilter(f);
         dht_->setLogFilter(f);
     }
@@ -355,27 +394,23 @@ private:
     bool enableCache_ {false};
 };
 
-const ValueType CERTIFICATE_TYPE = {8,
-                                    "Certificate",
-                                    std::chrono::hours(24 * 7),
-                                    // A certificate can only be stored at its public key ID.
-                                    [](InfoHash id, Sp<Value>& v, const InfoHash&, const SockAddr&) {
-                                        try {
-                                            crypto::Certificate crt(v->data);
-                                            // TODO check certificate signature
-                                            return crt.getPublicKey().getId() == id
-                                                   || InfoHash::get(crt.getPublicKey().getLongId()) == id;
-                                        } catch (const std::exception& e) {
-                                        }
-                                        return false;
-                                    },
-                                    [](InfoHash, const Sp<Value>& o, Sp<Value>& n, const InfoHash&, const SockAddr&) {
-                                        try {
-                                            return crypto::Certificate(o->data).getPublicKey().getLongId()
-                                                   == crypto::Certificate(n->data).getPublicKey().getLongId();
-                                        } catch (const std::exception& e) {
-                                        }
-                                        return false;
-                                    }};
+const ValueType CERTIFICATE_TYPE = {
+    8, "Certificate", std::chrono::hours(24 * 7),
+    // A certificate can only be stored at its public key ID.
+    [](InfoHash id, Sp<Value>& v, const InfoHash&, const SockAddr&) {
+        try {
+            crypto::Certificate crt(v->data);
+            // TODO check certificate signature
+            return crt.getPublicKey().getId() == id || InfoHash::get(crt.getPublicKey().getLongId()) == id;
+        } catch (const std::exception& e) {}
+        return false;
+    },
+    [](InfoHash, const Sp<Value>& o, Sp<Value>& n, const InfoHash&, const SockAddr&) {
+        try {
+            return crypto::Certificate(o->data).getPublicKey().getLongId() == crypto::Certificate(n->data).getPublicKey().getLongId();
+        } catch (const std::exception& e) {}
+        return false;
+    }
+};
 
-} // namespace dht
+}
