@@ -22,7 +22,7 @@
 #include "network_utils.h"
 #include "utils.h"
 
-#ifdef __ANDROID__
+#if defined(__ANDROID__) || defined(__linux__)
 #include "compat/getif_workaround_android.h"
 #endif
 
@@ -101,25 +101,17 @@ PeerDiscovery::DomainPeerDiscovery::DomainPeerDiscovery(asio::ip::udp domain, in
                                                                               : MULTICAST_ADDRESS_IPV6), port)
 {
     try {
+#if defined(__ANDROID__) || defined(__linux__)
+        if(domain.family() == AF_INET6)
+            workaround::try_joingroup_on_all_if_v6(sockAddrSend_.address().to_v6(), sockFd_);
+        else
+            sockFd_.set_option(asio::ip::multicast::join_group(sockAddrSend_.address()));
+#else
         sockFd_.set_option(asio::ip::multicast::join_group(sockAddrSend_.address()));
+#endif
         sockFd_.set_option(asio::ip::udp::socket::reuse_address(true));
         sockFd_.bind({domain, port});
     } catch (const std::exception& e) {
-#ifdef __ANDROID__
-        if(domain.family() == AF_INET && strcmp(e.what(), "set_option: No such device") == 0) {
-            try{
-                sockFd_.set_option(asio::ip::udp::socket::reuse_address(true));
-                auto mc_interface = workaround::get_interface();
-                sockFd_.set_option(asio::ip::multicast::outbound_interface(mc_interface));
-                sockFd_.set_option(asio::ip::multicast::join_group(sockAddrSend_.address().to_v4(), mc_interface));
-                sockFd_.bind({domain, port});
-            } catch(const std::exception& e){
-                if (logger_)
-                    logger_->error("Unable to start peer discovery using android workaround: {}", e.what());
-            }
-        }
-        else
-#endif
         if (logger_)
             logger_->error("Unable to start peer discovery for {}: {}",
                     domain.family() == AF_INET ? "IPv4" : "IPv6", e.what());
@@ -204,7 +196,22 @@ PeerDiscovery::DomainPeerDiscovery::query(const asio::ip::udp::endpoint& peer)
 
     msgpack::sbuffer pbuf_request;
     msgpack::pack(pbuf_request, "q");
-
+#if defined(__ANDROID__) || defined(__linux__)
+    auto addr=peer.address();
+    if(addr.is_v6() && addr.is_multicast()){
+        workaround::try_sendto_on_all_if_v6(peer, asio::buffer(pbuf_request.data(), pbuf_request.size()), sockFd_);
+    }else{
+        sockFd_.async_send_to(asio::buffer(pbuf_request.data(), pbuf_request.size()), peer,
+            [logger=logger_, peer] (const asio::error_code& ec, size_t)
+            {
+                if (ec and (ec != asio::error::operation_aborted) and logger)
+                    logger->w("Error sending packet to: %s with err: %s",
+				    peer.address().to_string().c_str(),
+				    ec.message().c_str());
+            }
+        );
+    }
+#else
     sockFd_.async_send_to(asio::buffer(pbuf_request.data(), pbuf_request.size()), peer,
             [logger=logger_, peer] (const asio::error_code& ec, size_t)
             {
@@ -214,6 +221,7 @@ PeerDiscovery::DomainPeerDiscovery::query(const asio::ip::udp::endpoint& peer)
 				    ec.message().c_str());
             }
     );
+#endif
 }
 
 void
@@ -223,6 +231,22 @@ PeerDiscovery::DomainPeerDiscovery::publish(const asio::ip::udp::endpoint& peer)
     if (not lrunning_)
         return;
 
+#if defined(__ANDROID__) || defined(__linux__)
+    auto addr=peer.address();
+    if(addr.is_v6() && addr.is_multicast()){
+        workaround::try_sendto_on_all_if_v6(peer, asio::buffer(sbuf_.data(), sbuf_.size()), sockFd_);
+    }else{
+        sockFd_.async_send_to(asio::buffer((const void*)sbuf_.data(), sbuf_.size()), peer,
+            [logger=logger_, peer] (const asio::error_code& ec, size_t)
+            {
+                if (ec and (ec != asio::error::operation_aborted) and logger)
+                    logger->w("Error sending packet to: %s with err: %s",
+				    peer.address().to_string().c_str(),
+				    ec.message().c_str());
+            }
+        );
+    }
+#else
     sockFd_.async_send_to(asio::buffer((const void*)sbuf_.data(), sbuf_.size()), peer,
             [logger=logger_, peer] (const asio::error_code& ec, size_t)
             {
@@ -232,6 +256,7 @@ PeerDiscovery::DomainPeerDiscovery::publish(const asio::ip::udp::endpoint& peer)
 				    ec.message().c_str());
             }
     );
+#endif
 }
 
 
@@ -320,11 +345,25 @@ PeerDiscovery::DomainPeerDiscovery::reDiscover()
 {
     asio::error_code ec;
 
+#if defined(__ANDROID__) || defined(__linux__)
+    auto addr=sockAddrSend_.address();
+    if(addr.is_v6()){
+        workaround::try_joingroup_on_all_if_v6(addr.to_v6(), sockFd_);
+    }else{
+        sockFd_.set_option(asio::ip::multicast::join_group(sockAddrSend_.address()), ec);
+        if (ec and logger_)
+            logger_->w("Unable to multicast on %s: %s",
+                   addr.to_string().c_str(),
+                   ec.message().c_str());
+    }
+#else
     sockFd_.set_option(asio::ip::multicast::join_group(sockAddrSend_.address()), ec);
     if (ec and logger_)
         logger_->w("Unable to multicast on %s: %s",
                    sockAddrSend_.address().to_string().c_str(),
                    ec.message().c_str());
+#endif
+
     query(sockAddrSend_);
 }
 
