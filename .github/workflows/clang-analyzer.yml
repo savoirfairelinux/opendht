@@ -19,7 +19,7 @@ jobs:
       - name: expected-lite
         run: |
           sudo mkdir /usr/include/nonstd
-          sudo wget https://raw.githubusercontent.com/martinmoene/expected-lite/master/include/nonstd/expected.hpp
+          sudo wget https://raw.githubusercontent.com/martinmoene/expected-lite/master/include/nonstd/expected.hpp \
             -O /usr/include/nonstd/expected.hpp
 
       - name: restinio
@@ -31,7 +31,7 @@ jobs:
           cmake -DCMAKE_INSTALL_PREFIX=/usr -DRESTINIO_TEST=Off -DRESTINIO_SAMPLE=Off -DRESTINIO_BENCHMARK=Off \
              -DRESTINIO_WITH_SOBJECTIZER=Off -DRESTINIO_DEP_STANDALONE_ASIO=system -DRESTINIO_DEP_LLHTTP=system \
              -DRESTINIO_DEP_FMT=system -DRESTINIO_DEP_EXPECTED_LITE=system .
-          make -j2 && make install
+          make -j2 && sudo make install
           cd ../../ && rm -rf restinio*
 
       - name: cmake
