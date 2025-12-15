@@ -59,6 +59,7 @@ jobs:
   build-and-push-image:
     name: OpenDHT Docker image
     runs-on: ubuntu-latest
+    needs: build-and-push-deps-image
     permissions:
       contents: read
       packages: write
@@ -140,6 +141,7 @@ jobs:
   build-and-push-image-llvm:
     name: OpenDHT Docker image (LLVM)
     runs-on: ubuntu-latest
+    needs: build-and-push-deps-image-llvm
     permissions:
       contents: read
       packages: write
@@ -181,6 +183,7 @@ jobs:
   build-and-push-image-dhtnode:
     name: dhtnode Docker image
     runs-on: ubuntu-latest
+    needs: build-and-push-image
     permissions:
       contents: read
       packages: write
@@ -263,6 +266,7 @@ jobs:
   build-and-push-image-alpine:
     name: Alpine Docker image
     runs-on: ubuntu-latest
+    needs: build-and-push-image-alpine-deps
     permissions:
       contents: read
       packages: write
