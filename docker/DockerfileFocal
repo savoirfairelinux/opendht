@@ -6,6 +6,7 @@ COPY . opendht
 
 RUN cd opendht && mkdir build && cd build \
 	&& cmake .. -DCMAKE_INSTALL_PREFIX=/usr \
+				-DBUILD_TESTING=Off \
 				-DCMAKE_INTERPROCEDURAL_OPTIMIZATION=On \
 				-DOPENDHT_C=On \
 				-DOPENDHT_PEER_DISCOVERY=On \
