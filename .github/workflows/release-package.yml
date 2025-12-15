@@ -334,7 +334,7 @@ jobs:
 
       - name: Cache vcpkg installed packages
         id: cache-vcpkg
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ${{ env.VCPKG_INSTALLED_DIR }}
@@ -432,7 +432,7 @@ jobs:
 
       - name: Cache vcpkg static installed packages
         id: cache-vcpkg-static
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ${{ env.VCPKG_INSTALLED_DIR }}
