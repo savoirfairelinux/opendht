@@ -7,7 +7,7 @@ RUN apk add --no-cache \
         cython python3-dev py3-setuptools \
         ncurses-dev readline-dev nettle-dev \
         cppunit-dev gnutls-dev jsoncpp-dev \
-        argon2-dev openssl-dev fmt-dev \
+        argon2-dev openssl-dev fmt-dev simdutf-dev \
         llhttp-dev asio-dev msgpack-cxx-dev \
     && rm -rf /var/cache/apk/*
 
@@ -17,11 +17,11 @@ RUN mkdir /usr/include/nonstd \
 
 RUN echo "*** Downloading RESTinio ***" \
     && mkdir restinio && cd restinio \
-    && wget https://github.com/Stiffstream/restinio/releases/download/v.0.7.3/restinio-0.7.3.tar.bz2 \
-    && ls -l && tar -xjf restinio-0.7.3.tar.bz2 \
-    && cd restinio-0.7.3/dev \
-    && cmake -DCMAKE_INSTALL_PREFIX=/usr -DRESTINIO_TEST=Off -DRESTINIO_SAMPLE=Off -DRESTINIO_BENCHMARK=Off \
+    && wget https://github.com/Stiffstream/restinio/releases/download/v0.7.8.1/restinio-0.7.8.1.tar.bz2 \
+    && ls -l && tar -xjf restinio-0.7.8.1.tar.bz2 \
+    && cd restinio-0.7.8.1/dev \
+    && cmake -GNinja -DCMAKE_INSTALL_PREFIX=/usr -DRESTINIO_TEST=Off -DRESTINIO_SAMPLE=Off -DRESTINIO_BENCHMARK=Off \
              -DRESTINIO_WITH_SOBJECTIZER=Off -DRESTINIO_DEP_STANDALONE_ASIO=system -DRESTINIO_DEP_LLHTTP=system \
              -DRESTINIO_DEP_FMT=system -DRESTINIO_DEP_EXPECTED_LITE=system . \
-    && make -j2 && make install \
+    && ninja && ninja install \
     && cd ../../ && rm -rf restinio*

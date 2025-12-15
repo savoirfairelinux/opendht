@@ -9,14 +9,14 @@ ENV DESTDIR=/install
 
 RUN cd opendht && mkdir build && cd build \
 	&& cmake .. -DCMAKE_INSTALL_PREFIX=/usr \
-				-DCMAKE_INTERPROCEDURAL_OPTIMIZATION=On \
-				-DOPENDHT_C=On \
-				-DOPENDHT_PEER_DISCOVERY=On \
-				-DOPENDHT_PYTHON=On \
-				-DOPENDHT_TOOLS=On \
-				-DOPENDHT_PROXY_SERVER=On \
-				-DOPENDHT_PROXY_CLIENT=On \
-				-DOPENDHT_SYSTEMD=On \
+                -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=On \
+                -DOPENDHT_C=On \
+                -DOPENDHT_PEER_DISCOVERY=On \
+                -DOPENDHT_PYTHON=On \
+                -DOPENDHT_TOOLS=On \
+                -DOPENDHT_PROXY_SERVER=On \
+                -DOPENDHT_PROXY_CLIENT=On \
+                -DOPENDHT_SYSTEMD=On \
 	&& make -j8 && make install
 
 FROM alpine:3.23 AS install
