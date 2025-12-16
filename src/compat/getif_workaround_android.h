@@ -5,7 +5,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <net/if.h>
-#include <linux/ipv6.h>
+#include <netinet/in.h>
 #include <asio.hpp>
 #include <stdexcept>
 #include <set>
