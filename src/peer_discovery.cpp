@@ -26,6 +26,10 @@
 #include "compat/getif_workaround_android.h"
 #endif
 
+#ifdef __APPLE__
+#include "compat/getif_workaround_darwin.h"
+#endif
+
 #include <asio.hpp>
 
 using namespace std::literals;
@@ -101,7 +105,7 @@ PeerDiscovery::DomainPeerDiscovery::DomainPeerDiscovery(asio::ip::udp domain, in
                                                                               : MULTICAST_ADDRESS_IPV6), port)
 {
     try {
-#if defined(__ANDROID__) || defined(__linux__)
+#if defined(__ANDROID__) || defined(__linux__) || defined(__APPLE__)
         if(domain.family() == AF_INET6)
             workaround::try_joingroup_on_all_if_v6(sockAddrSend_.address().to_v6(), sockFd_);
         else
@@ -196,7 +200,7 @@ PeerDiscovery::DomainPeerDiscovery::query(const asio::ip::udp::endpoint& peer)
 
     msgpack::sbuffer pbuf_request;
     msgpack::pack(pbuf_request, "q");
-#if defined(__ANDROID__) || defined(__linux__)
+#if defined(__ANDROID__) || defined(__linux__) || defined(__APPLE__)
     auto addr=peer.address();
     if(addr.is_v6() && addr.is_multicast()){
         workaround::try_sendto_on_all_if_v6(peer, asio::buffer(pbuf_request.data(), pbuf_request.size()), sockFd_);
@@ -231,7 +235,7 @@ PeerDiscovery::DomainPeerDiscovery::publish(const asio::ip::udp::endpoint& peer)
     if (not lrunning_)
         return;
 
-#if defined(__ANDROID__) || defined(__linux__)
+#if defined(__ANDROID__) || defined(__linux__) || defined(__APPLE__)
     auto addr=peer.address();
     if(addr.is_v6() && addr.is_multicast()){
         workaround::try_sendto_on_all_if_v6(peer, asio::buffer(sbuf_.data(), sbuf_.size()), sockFd_);
@@ -345,7 +349,7 @@ PeerDiscovery::DomainPeerDiscovery::reDiscover()
 {
     asio::error_code ec;
 
-#if defined(__ANDROID__) || defined(__linux__)
+#if defined(__ANDROID__) || defined(__linux__) || defined (__APPLE__)
     auto addr=sockAddrSend_.address();
     if(addr.is_v6()){
         workaround::try_joingroup_on_all_if_v6(addr.to_v6(), sockFd_);
