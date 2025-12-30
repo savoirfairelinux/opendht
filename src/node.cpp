@@ -92,7 +92,7 @@ Node::requested(const Sp<net::Request>& req)
 }
 
 /** To be called when a message was received from the node.
- Req should be true if the message was an aswer to a request we made*/
+ Req should be true if the message was an answer to a request we made*/
 void
 Node::received(time_point now, const Sp<net::Request>& req)
 {
