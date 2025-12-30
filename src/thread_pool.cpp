@@ -66,7 +66,7 @@ ThreadPool::~ThreadPool()
 void
 ThreadPool::run(std::function<void()>&& cb)
 {
-    std::unique_lock<std::mutex> l(lock_);
+    std::unique_lock l(lock_);
     if (not cb or not running_) return;
 
     // launch new thread if necessary
@@ -80,7 +80,7 @@ ThreadPool::run(std::function<void()>&& cb)
 
                     // pick task from queue
                     {
-                        std::unique_lock<std::mutex> l(lock_);
+                        std::unique_lock l(lock_);
                         readyThreads_++;
                         auto waitCond = [&](){ return not running_ or not tasks_.empty(); };
                         if (permanent_thread)
@@ -122,9 +122,9 @@ ThreadPool::run(std::function<void()>&& cb)
 void
 ThreadPool::threadEnded(std::thread& thread)
 {
-    std::lock_guard<std::mutex> l(lock_);
+    std::lock_guard l(lock_);
     tasks_.emplace([this,t=std::reference_wrapper<std::thread>(thread)]{
-        std::lock_guard<std::mutex> l(lock_);
+        std::lock_guard l(lock_);
         for (auto it = threads_.begin(); it != threads_.end(); ++it) {
             if (&*(*it) == &t.get()) {
                 t.get().join();
@@ -147,7 +147,7 @@ ThreadPool::threadEnded(std::thread& thread)
 void
 ThreadPool::stop(bool wait)
 {
-    std::unique_lock<std::mutex> l(lock_);
+    std::unique_lock l(lock_);
     if (wait) {
         cv_.wait(l, [&](){ return tasks_.empty(); });
     }
@@ -179,7 +179,7 @@ ThreadPool::detach()
 void
 Executor::run(std::function<void()>&& task)
 {
-    std::lock_guard<std::mutex> l(lock_);
+    std::lock_guard l(lock_);
     if (current_ < maxConcurrent_) {
         run_(std::move(task));
     } else {
@@ -200,7 +200,7 @@ Executor::run_(std::function<void()>&& task)
         }
         if (auto sthis = w.lock()) {
             auto& this_ = *sthis;
-            std::lock_guard<std::mutex> l(this_.lock_);
+            std::lock_guard l(this_.lock_);
             this_.current_--;
             this_.schedule();
         }
