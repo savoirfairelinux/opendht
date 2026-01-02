@@ -208,12 +208,18 @@ if get_option('tools').enabled()
         install: true,
     )
     if llhttp.found()
+        durl_deps = [msgpack, openssl]
+
+        if io_uring.found()
+            durl_deps += io_uring
+        endif
+
         durl = executable(
             'durl',
             'tools/durl.cpp',
             include_directories: opendht_interface_inc,
             link_with: opendht,
-            dependencies: [msgpack, openssl],
+            dependencies: durl_deps,
         )
     endif
 endif
