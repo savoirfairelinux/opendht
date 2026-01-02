@@ -116,6 +116,13 @@ opendht = library(
     install: true,
 )
 
+# Install library headers.
+install_subdir(
+    'include',
+    install_dir: get_option('includedir'),
+    strip_directory: true
+)
+
 conf_data.set('VERSION', meson.project_version())
 conf_data.set('prefix', get_option('prefix'))
 conf_data.set('exec_prefix', get_option('prefix'))
@@ -143,6 +150,11 @@ if get_option('c').enabled()
         dependencies: [msgpack, jsoncpp, fmt],
         cpp_args: ['-DOPENDHT_C_BUILD', '-Dopendht_c_EXPORTS'],
         install: true,
+    )
+
+    install_headers(
+        'c/opendht_c.h',
+        subdir: 'opendht'
     )
 
     configure_file(
