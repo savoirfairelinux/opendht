@@ -134,11 +134,13 @@ template<class TimePoint>
 static std::string
 print_time_relative(TimePoint now, TimePoint d)
 {
+    using namespace std::literals;
     if (d == TimePoint::min())
-        return "never";
+        return "never"s;
     if (d == now)
-        return "now";
-    return (d > now) ? std::string("in ") + print_duration(d - now) : print_duration(now - d) + std::string(" ago");
+        return "now"s;
+    return (d > now) ? concat("in "sv, print_duration(d - now))
+                     : concat(print_duration(now - d), " ago"sv);
 }
 
 template<typename Duration = duration>
