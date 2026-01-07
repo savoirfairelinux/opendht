@@ -88,30 +88,30 @@ SecureDht::~SecureDht(){
 ValueType
 SecureDht::secureType(ValueType&& type)
 {
-    type.storePolicy = [type](InfoHash id, Sp<Value>& v, const InfoHash& nid, const SockAddr& a) {
+    type.storePolicy = [sp = std::move(type.storePolicy)](InfoHash id, Sp<Value>& v, const InfoHash& nid, const SockAddr& a) {
         if (v->isSigned())
             return v->checkSignature();
-        return type.storePolicy(id, v, nid, a);
+        return sp(id, v, nid, a);
     };
-    type.editPolicy = [this,type](InfoHash id, const Sp<Value>& o, Sp<Value>& n, const InfoHash& nid, const SockAddr& a) {
+    type.editPolicy = [l = logger_, ep = std::move(type.editPolicy)](InfoHash id, const Sp<Value>& o, Sp<Value>& n, const InfoHash& nid, const SockAddr& a) {
         if (not o->isSigned())
-            return type.editPolicy(id, o, n, nid, a);
+            return ep(id, o, n, nid, a);
         if (*o->owner != *n->owner or not n->isSigned()) {
-            if (logger_)
-                logger_->w("Edition forbidden: not signed or incorrect owner.");
+            if (l)
+                l->w("Edition forbidden: not signed or incorrect owner.");
             return false;
         }
         if (not n->checkSignature()) {
-            if (logger_)
-                logger_->w("Edition forbidden: signature verification failed.");
+            if (l)
+                l->w("Edition forbidden: signature verification failed.");
             return false;
         }
         if (o->seq == n->seq) {
             // If the data is exactly the same,
             // it can be reannounced, possibly by someone else.
             if (o->getToSign() != n->getToSign()) {
-                if (logger_)
-                    logger_->w("Edition forbidden: sequence number must be increasing.");
+                if (l)
+                    l->w("Edition forbidden: sequence number must be increasing.");
                 return false;
             }
         }
@@ -427,7 +427,7 @@ SecureDht::getCallbackFilter(const ValueCallback& cb, Value::Filter&& filter)
 GetCallback
 SecureDht::getCallbackFilter(const GetCallback& cb, Value::Filter&& filter)
 {
-    return [=](const std::vector<Sp<Value>>& values) {
+    return [this, cb, filter = std::move(filter)](const std::vector<Sp<Value>>& values) {
         std::vector<Sp<Value>> tmpvals {};
         if (not filter)
             tmpvals.reserve(values.size());
