@@ -922,7 +922,7 @@ if (OPENDHT_CPACK)
     set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "OpenDHT: A lightweight C++17 Distributed Hash Table library.")
     set(CPACK_PACKAGE_HOMEPAGE_URL "https://opendht.net/")
     set(CPACK_PACKAGE_CONTACT "support@savoirfairelinux.com") # Or a relevant contact/mailing list
-    set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_CURRENT_SOURCE_DIR}/COPYING.txt")
+    set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_CURRENT_SOURCE_DIR}/COPYING")
     set(CPACK_PACKAGE_INSTALL_DIRECTORY "OpenDHT")
 
     if(WIN32)
