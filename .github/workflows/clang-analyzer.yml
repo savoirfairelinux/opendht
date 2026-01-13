@@ -12,7 +12,7 @@ jobs:
           sudo apt update && \
           sudo apt install libncurses5-dev libreadline-dev nettle-dev \
           libgnutls28-dev libuv1-dev python3-dev python3-setuptools libcppunit-dev libjsoncpp-dev \
-          autotools-dev autoconf libfmt-dev libmsgpack-dev libargon2-dev libasio-dev \
+          libfmt-dev libmsgpack-dev libargon2-dev libasio-dev \
           llvm llvm-dev clang clang-tools && \
           sudo apt remove gcc g++
 
