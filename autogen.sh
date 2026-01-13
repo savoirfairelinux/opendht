@@ -1,1 +1,0 @@
-autoreconf --install --verbose -Wall

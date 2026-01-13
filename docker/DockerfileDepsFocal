@@ -3,24 +3,24 @@ LABEL maintainer="Adrien Béraud <adrien.beraud@savoirfairelinux.com>"
 LABEL org.opencontainers.image.source=https://github.com/savoirfairelinux/opendht
 
 RUN apt-get update && apt-get install -y \
-        dialog apt-utils \
+    dialog apt-utils \
     && apt-get clean \
     && echo 'debconf debconf/frontend select Noninteractive' | debconf-set-selections
 
 RUN apt-get update && apt-get install -y \
-        build-essential pkg-config cmake git wget \
-        libtool autotools-dev autoconf \
-        python3-dev python3-setuptools python3-pip \
-        libncurses5-dev libreadline-dev nettle-dev libcppunit-dev \
-        libgnutls28-dev libuv1-dev libjsoncpp-dev libargon2-dev \
-        libssl-dev libfmt-dev libasio-dev libmsgpack-dev \
+    build-essential pkg-config cmake git wget \
+    libtool \
+    python3-dev python3-setuptools python3-pip \
+    libncurses5-dev libreadline-dev nettle-dev libcppunit-dev \
+    libgnutls28-dev libuv1-dev libjsoncpp-dev libargon2-dev \
+    libssl-dev libfmt-dev libasio-dev libmsgpack-dev \
     && apt-get clean && rm -rf /var/lib/apt/lists/* /var/cache/apt/*
 
 RUN pip3 install meson Cython
 
 RUN mkdir /usr/include/nonstd \
     && wget https://raw.githubusercontent.com/martinmoene/expected-lite/master/include/nonstd/expected.hpp \
-            -O /usr/include/nonstd/expected.hpp
+    -O /usr/include/nonstd/expected.hpp
 
 RUN echo "*** Downloading RESTinio ***" \
     && mkdir restinio && cd restinio \
@@ -28,7 +28,7 @@ RUN echo "*** Downloading RESTinio ***" \
     && ls -l && tar -xjf restinio-0.7.3.tar.bz2 \
     && cd restinio-0.7.3/dev \
     && cmake -DCMAKE_INSTALL_PREFIX=/usr -DRESTINIO_TEST=Off -DRESTINIO_SAMPLE=Off -DRESTINIO_BENCHMARK=Off \
-             -DRESTINIO_WITH_SOBJECTIZER=Off -DRESTINIO_DEP_STANDALONE_ASIO=system -DRESTINIO_DEP_LLHTTP=system \
-             -DRESTINIO_DEP_FMT=system -DRESTINIO_DEP_EXPECTED_LITE=system . \
+    -DRESTINIO_WITH_SOBJECTIZER=Off -DRESTINIO_DEP_STANDALONE_ASIO=system -DRESTINIO_DEP_LLHTTP=system \
+    -DRESTINIO_DEP_FMT=system -DRESTINIO_DEP_EXPECTED_LITE=system . \
     && make -j2 && make install \
     && cd ../../ && rm -rf restinio*
