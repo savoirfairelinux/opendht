@@ -28,6 +28,7 @@ namespace dht {
 
 constexpr std::chrono::minutes Node::NODE_EXPIRE_TIME;
 constexpr std::chrono::minutes Node::NODE_GOOD_TIME;
+constexpr std::chrono::minutes Node::NODE_UPDATE_TIME;
 constexpr std::chrono::seconds Node::MAX_RESPONSE_TIME;
 
 Node::Node(const InfoHash& id, const SockAddr& addr, std::mt19937_64& rd, bool client)
