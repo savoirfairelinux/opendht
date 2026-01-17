@@ -84,6 +84,6 @@ For more information, examples and documentation, or to repport issues, visit: h
 
 ## License
 
-Copyright (C) 2014-2025 Savoir-faire Linux Inc.
+Copyright (c) 2014-2026 Savoir-faire Linux Inc.
 
 OpenDHT is free software; you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation; either version 3 of the License, or (at your option) any later version.

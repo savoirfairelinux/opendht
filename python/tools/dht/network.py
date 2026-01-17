@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# Copyright (c) 2015-2023 Savoir-faire Linux Inc.
-# Author(s): Adrien Béraud <adrien.beraud@savoirfairelinux.com>
-#            Simon Désaulniers <sim.desaulniers@gmail.com>
+# Copyright (c) 2015-2026 Savoir-faire Linux Inc.
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by

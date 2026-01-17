@@ -1,7 +1,5 @@
 # -*- coding: utf-8 -*-
-# Copyright (C) 2015-2023 Savoir-Faire Linux Inc.
-# Author(s): Adrien Béraud <adrien.beraud@savoirfairelinux.com>
-#            Simon Désaulniers <sim.desaulniers@gmail.com>
+# Copyright (c) 2015-2026 Savoir-faire Linux Inc.
 
 import sys
 import os

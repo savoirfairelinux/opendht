@@ -10,7 +10,7 @@
 #  READLINE_LIBRARIES    - the Readline library plus the libraries it 
 #                          depends on
 
-# Copyright (C) 2009
+# Copyright (c) 2009
 # ASTRON (Netherlands Institute for Radio Astronomy)
 # P.O.Box 2, 7990 AA Dwingeloo, The Netherlands
 #

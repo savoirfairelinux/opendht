@@ -155,7 +155,7 @@ asyncio.run(dht_async_demo("unique_key"))
 IRC: join us on Libera.chat at [`#opendht`](https://web.libera.chat/#opendht).
 
 ## License
-Copyright (C) 2014-2025 Savoir-faire Linux Inc.
+Copyright (c) 2014-2026 Savoir-faire Linux Inc.
 
 OpenDHT is free software; you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation; either version 3 of the License, or (at your option) any later version.
 

@@ -1,7 +1,6 @@
 /*
- *  Copyright (C) 2014-2025 Savoir-faire Linux Inc.
+ *  Copyright (c) 2014-2026 Savoir-faire Linux Inc.
  *
- *  Author: Adrien Béraud <adrien.beraud@savoirfairelinux.com>
  *          Vsevolod Ivanov <vsevolod.ivanov@savoirfairelinux.com>
  *
  *  This program is free software; you can redistribute it and/or modify
