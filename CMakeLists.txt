@@ -115,14 +115,10 @@ if (NOT MSVC)
     find_package (Threads)
     if (OPENDHT_USE_PKGCONFIG)
         find_package (PkgConfig REQUIRED)
-        # GNUTLS
         pkg_search_module (GnuTLS REQUIRED IMPORTED_TARGET gnutls)
-        # libnettle
         pkg_search_module (Nettle REQUIRED IMPORTED_TARGET nettle)
-        # libargon2
         pkg_search_module (argon2 REQUIRED IMPORTED_TARGET libargon2)
         set(argon2_lib ", libargon2")
-        # jsoncpp
         pkg_search_module (Jsoncpp IMPORTED_TARGET jsoncpp)
         if(Jsoncpp_FOUND)
             set(JSONCPP_LIBRARIES PkgConfig::Jsoncpp)
@@ -207,15 +203,11 @@ if (NOT MSVC)
     else ()
         find_package(GnuTLS REQUIRED)
         include_directories(${GNUTLS_INCLUDE_DIR})
-        # jsoncpp
         find_package(jsoncpp CONFIG REQUIRED)
         set(JSONCPP_FOUND TRUE)
-        # libfmt
         find_package(fmt CONFIG REQUIRED)
-        # libargon2
         find_path(ARGON2_INCLUDE_DIR argon2.h REQUIRED)
         set(argon2_lib ", libargon2")
-        # libreadline
         if (OPENDHT_TOOLS)
             find_package (Readline 6 REQUIRED)
         endif ()
@@ -921,8 +913,8 @@ if (OPENDHT_CPACK)
     set(CPACK_PACKAGE_VENDOR "Savoir-faire Linux, Inc.")
     set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "OpenDHT: A lightweight C++17 Distributed Hash Table library.")
     set(CPACK_PACKAGE_HOMEPAGE_URL "https://opendht.net/")
-    set(CPACK_PACKAGE_CONTACT "support@savoirfairelinux.com") # Or a relevant contact/mailing list
-    set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_CURRENT_SOURCE_DIR}/COPYING.txt")
+    set(CPACK_PACKAGE_CONTACT "support@savoirfairelinux.com")
+    set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_CURRENT_SOURCE_DIR}/resources/LICENSE.txt")
     set(CPACK_PACKAGE_INSTALL_DIRECTORY "OpenDHT")
 
     if(WIN32)
