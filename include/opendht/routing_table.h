@@ -1,20 +1,5 @@
-/*
- *  Copyright (c) 2014-2026 Savoir-faire Linux Inc.
- *
- *  This program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 3 of the License, or
- *  (at your option) any later version.
- *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with this program. If not, see <https://www.gnu.org/licenses/>.
- */
-
+// Copyright (c) 2014-2026 Savoir-faire Linux Inc.
+// SPDX-License-Identifier: MIT
 #pragma once
 
 #include "node.h"
@@ -26,28 +11,37 @@ namespace net {
 class NetworkEngine;
 }
 
-struct Bucket {
-    Bucket() : cached() {}
+struct Bucket
+{
+    Bucket()
+        : cached()
+    {}
     Bucket(sa_family_t af, const InfoHash& f = {}, time_point t = time_point::min())
-        : af(af), first(f), time(t), cached() {}
+        : af(af)
+        , first(f)
+        , time(t)
+        , cached()
+    {}
     sa_family_t af {0};
     InfoHash first {};
     time_point time {time_point::min()}; /* time of last reply in this bucket */
     std::list<Sp<Node>> nodes {};
-    Sp<Node> cached;                    /* the address of a likely candidate */
+    Sp<Node> cached; /* the address of a likely candidate */
 
     /** Return a random node in a bucket. */
     Sp<Node> randomNode(std::mt19937_64& rd);
 
     void sendCachedPing(net::NetworkEngine& ne);
-    void connectivityChanged() {
+    void connectivityChanged()
+    {
         time = time_point::min();
         for (auto& node : nodes)
             node->setTime(time_point::min());
     }
 };
 
-class RoutingTable : public std::list<Bucket> {
+class RoutingTable : public std::list<Bucket>
+{
 public:
     using std::list<Bucket>::list;
 
@@ -64,25 +58,26 @@ public:
     /**
      * Return true if the id is in the bucket's range.
      */
-    inline bool contains(const RoutingTable::const_iterator& bucket, const InfoHash& id) const {
+    inline bool contains(const RoutingTable::const_iterator& bucket, const InfoHash& id) const
+    {
         return InfoHash::cmp(bucket->first, id) <= 0
-            && (std::next(bucket) == end() || InfoHash::cmp(id, std::next(bucket)->first) < 0);
+               && (std::next(bucket) == end() || InfoHash::cmp(id, std::next(bucket)->first) < 0);
     }
 
     /**
      * Return true if the table has no bucket ore one empty buket.
      */
-    inline bool isEmpty() const {
-        return empty() || (size() == 1 && front().nodes.empty());
-    }
+    inline bool isEmpty() const { return empty() || (size() == 1 && front().nodes.empty()); }
 
-    void connectivityChanged(const time_point& now) {
+    void connectivityChanged(const time_point& now)
+    {
         grow_time = now;
         for (auto& b : *this)
             b.connectivityChanged();
     }
 
-    bool onNewNode(const Sp<Node>& node, int comfirm, const time_point& now, const InfoHash& myid, net::NetworkEngine& ne);
+    bool onNewNode(
+        const Sp<Node>& node, int comfirm, const time_point& now, const InfoHash& myid, net::NetworkEngine& ne);
 
     /**
      * Return a random id in the bucket's range.
@@ -97,4 +92,4 @@ public:
     bool split(const RoutingTable::iterator& b);
 };
 
-}
+} // namespace dht

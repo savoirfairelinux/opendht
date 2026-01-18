@@ -1,25 +1,12 @@
-/*
- *  Copyright (c) 2014-2026 Savoir-faire Linux Inc.
- *
- *  This program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 3 of the License, or
- *  (at your option) any later version.
- *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with this program. If not, see <https://www.gnu.org/licenses/>.
- */
+// Copyright (c) 2014-2026 Savoir-faire Linux Inc.
+// SPDX-License-Identifier: MIT
 
 #include "default_types.h"
 
 namespace dht {
 
-std::ostream& operator<< (std::ostream& s, const DhtMessage& v)
+std::ostream&
+operator<<(std::ostream& s, const DhtMessage& v)
 {
     s << "DhtMessage: service " << v.service << std::endl;
     return s;
@@ -32,26 +19,25 @@ DhtMessage::storePolicy(InfoHash h, std::shared_ptr<Value>& v, const InfoHash& f
         auto msg = unpackMsg<DhtMessage>(v->data);
         if (msg.service.empty())
             return false;
-    } catch (const std::exception& e) {}
+    } catch (const std::exception& e) {
+    }
     return ValueType::DEFAULT_STORE_POLICY(h, v, f, sa);
 }
 
 Value::Filter
 DhtMessage::ServiceFilter(const std::string& s)
 {
-    return Value::Filter::chain(
-        Value::TypeFilter(TYPE),
-        [s](const Value& v) {
-            try {
-                return unpackMsg<DhtMessage>(v.data).service == s;
-            } catch (const std::exception& e) {
-                return false;
-            }
+    return Value::Filter::chain(Value::TypeFilter(TYPE), [s](const Value& v) {
+        try {
+            return unpackMsg<DhtMessage>(v.data).service == s;
+        } catch (const std::exception& e) {
+            return false;
         }
-    );
+    });
 }
 
-std::ostream& operator<< (std::ostream& s, const IpServiceAnnouncement& v)
+std::ostream&
+operator<<(std::ostream& s, const IpServiceAnnouncement& v)
 {
     if (v.addr) {
         s << "Peer: ";
@@ -76,30 +62,24 @@ IpServiceAnnouncement::storePolicy(InfoHash h, std::shared_ptr<Value>& v, const 
         // argument v is modified (not the value).
         v = std::make_shared<Value>(IpServiceAnnouncement::TYPE, sa_addr, v->id);
         return ValueType::DEFAULT_STORE_POLICY(h, v, f, sa);
-    } catch (const std::exception& e) {}
+    } catch (const std::exception& e) {
+    }
     return false;
 }
 
 const ValueType DhtMessage::TYPE(1, "DHT message", std::chrono::minutes(5), DhtMessage::storePolicy);
-const ValueType IpServiceAnnouncement::TYPE(2, "Internet Service Announcement", std::chrono::minutes(15), IpServiceAnnouncement::storePolicy);
+const ValueType IpServiceAnnouncement::TYPE(2,
+                                            "Internet Service Announcement",
+                                            std::chrono::minutes(15),
+                                            IpServiceAnnouncement::storePolicy);
 const ValueType ImMessage::TYPE = {3, "IM message", std::chrono::minutes(5)};
-const ValueType TrustRequest::TYPE = {4, "Certificate trust request", std::chrono::hours(24*7)};
+const ValueType TrustRequest::TYPE = {4, "Certificate trust request", std::chrono::hours(24 * 7)};
 const ValueType IceCandidates::TYPE = {5, "ICE candidates", std::chrono::minutes(1)};
 
-const std::array<std::reference_wrapper<const ValueType>, 5>
-DEFAULT_TYPES
-{{
-    ValueType::USER_DATA,
-    DhtMessage::TYPE,
-    ImMessage::TYPE,
-    IceCandidates::TYPE,
-    TrustRequest::TYPE
-}};
+const std::array<std::reference_wrapper<const ValueType>, 5> DEFAULT_TYPES {
+    {ValueType::USER_DATA, DhtMessage::TYPE, ImMessage::TYPE, IceCandidates::TYPE, TrustRequest::TYPE}
+};
 
-const std::array<std::reference_wrapper<const ValueType>, 1>
-DEFAULT_INSECURE_TYPES
-{{
-    IpServiceAnnouncement::TYPE
-}};
+const std::array<std::reference_wrapper<const ValueType>, 1> DEFAULT_INSECURE_TYPES {{IpServiceAnnouncement::TYPE}};
 
-}
+} // namespace dht

@@ -3,6 +3,8 @@ project(
     'c',
     'cpp',
     'cython',
+    license: 'MIT',
+    license_files: 'LICENSE',
     version: '3.6.2',
     meson_version: '>=1.1.0',
     default_options: ['cpp_std=c++17', 'warning_level=3'],
@@ -117,11 +119,7 @@ opendht = library(
 )
 
 # Install library headers.
-install_subdir(
-    'include',
-    install_dir: get_option('includedir'),
-    strip_directory: true
-)
+install_subdir('include', install_dir: get_option('includedir'), strip_directory: true)
 
 conf_data.set('VERSION', meson.project_version())
 conf_data.set('prefix', get_option('prefix'))
@@ -152,10 +150,7 @@ if get_option('c').enabled()
         install: true,
     )
 
-    install_headers(
-        'c/opendht_c.h',
-        subdir: 'opendht'
-    )
+    install_headers('c/opendht_c.h', subdir: 'opendht')
 
     configure_file(
         input: 'opendht-c.pc.in',

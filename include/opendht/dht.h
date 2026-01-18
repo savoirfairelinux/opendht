@@ -1,20 +1,5 @@
-/*
- *  Copyright (c) 2014-2026 Savoir-faire Linux Inc.
- *
- *  This program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 3 of the License, or
- *  (at your option) any later version.
- *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with this program. If not, see <https://www.gnu.org/licenses/>.
- */
-
+// Copyright (c) 2014-2026 Savoir-faire Linux Inc.
+// SPDX-License-Identifier: MIT
 #pragma once
 
 #include "infohash.h"
@@ -56,13 +41,17 @@ struct LocalListener;
  * Must be given open UDP sockets and ::periodic must be
  * called regularly.
  */
-class OPENDHT_PUBLIC Dht final : public DhtInterface {
+class OPENDHT_PUBLIC Dht final : public DhtInterface
+{
 public:
     /**
      * Initialise the Dht with two open sockets (for IPv4 and IP6)
      * and an ID for the node.
      */
-    Dht(std::unique_ptr<net::DatagramSocket>&& sock, const Config& config, const Sp<Logger>& l = {}, std::unique_ptr<std::mt19937_64>&& rd = {});
+    Dht(std::unique_ptr<net::DatagramSocket>&& sock,
+        const Config& config,
+        const Sp<Logger>& l = {},
+        std::unique_ptr<std::mt19937_64>&& rd = {});
 
     virtual ~Dht();
 
@@ -70,22 +59,16 @@ public:
      * Get the ID of the node.
      */
     inline const InfoHash& getNodeId() const override { return myid; }
-    void setOnPublicAddressChanged(PublicAddressChangedCb cb) override {
-        publicAddressChangedCb_ = std::move(cb);
-    }
+    void setOnPublicAddressChanged(PublicAddressChangedCb cb) override { publicAddressChangedCb_ = std::move(cb); }
 
     NodeStatus updateStatus(sa_family_t af) override;
 
     /**
      * Get the current status of the node for the given family.
      */
-    NodeStatus getStatus(sa_family_t af) const override {
-        return dht(af).status;
-    }
+    NodeStatus getStatus(sa_family_t af) const override { return dht(af).status; }
 
-    NodeStatus getStatus() const override {
-        return std::max(getStatus(AF_INET), getStatus(AF_INET6));
-    }
+    NodeStatus getStatus() const override { return std::max(getStatus(AF_INET), getStatus(AF_INET6)); }
 
     net::DatagramSocket* getSocket() const override { return network_engine.getSocket(); };
 
@@ -102,21 +85,16 @@ public:
      */
     bool isRunning(sa_family_t af = 0) const override;
 
-    virtual void registerType(const ValueType& type) override {
-        types.registerType(type);
-    }
-    const ValueType& getType(ValueType::Id type_id) const override {
-        return types.getType(type_id);
-    }
+    virtual void registerType(const ValueType& type) override { types.registerType(type); }
+    const ValueType& getType(ValueType::Id type_id) const override { return types.getType(type_id); }
 
-    void addBootstrap(const std::string& host, const std::string& service) override {
+    void addBootstrap(const std::string& host, const std::string& service) override
+    {
         bootstrap_nodes.emplace_back(host, service);
         startBootstrap();
     }
 
-    void clearBootstrap() override {
-        bootstrap_nodes.clear();
-    }
+    void clearBootstrap() override { bootstrap_nodes.clear(); }
 
     /**
      * Insert a node in the main routing table.
@@ -124,14 +102,14 @@ public:
      * used to bootstrap efficiently from previously known nodes.
      */
     void insertNode(const InfoHash& id, const SockAddr&) override;
-    void insertNode(const NodeExport& n) override {
-        insertNode(n.id, n.addr);
-    }
+    void insertNode(const NodeExport& n) override { insertNode(n.id, n.addr); }
 
-    void pingNode(SockAddr, DoneCallbackSimple&& cb={}) override;
+    void pingNode(SockAddr, DoneCallbackSimple&& cb = {}) override;
 
-    time_point periodic(const uint8_t *buf, size_t buflen, SockAddr, const time_point& now) override;
-    time_point periodic(const uint8_t *buf, size_t buflen, const sockaddr* from, socklen_t fromlen, const time_point& now) override {
+    time_point periodic(const uint8_t* buf, size_t buflen, SockAddr, const time_point& now) override;
+    time_point periodic(
+        const uint8_t* buf, size_t buflen, const sockaddr* from, socklen_t fromlen, const time_point& now) override
+    {
         return periodic(buf, buflen, SockAddr(from, fromlen), now);
     }
 
@@ -145,14 +123,30 @@ public:
                      cb and donecb won't be called again afterward.
      * @param f a filter function used to prefilter values.
      */
-    virtual void get(const InfoHash& key, GetCallback cb, DoneCallback donecb={}, Value::Filter&& f={}, Where&& w = {}) override;
-    virtual void get(const InfoHash& key, GetCallback cb, DoneCallbackSimple donecb={}, Value::Filter&& f={}, Where&& w = {}) override {
+    virtual void get(
+        const InfoHash& key, GetCallback cb, DoneCallback donecb = {}, Value::Filter&& f = {}, Where&& w = {}) override;
+    virtual void get(const InfoHash& key,
+                     GetCallback cb,
+                     DoneCallbackSimple donecb = {},
+                     Value::Filter&& f = {},
+                     Where&& w = {}) override
+    {
         get(key, cb, bindDoneCb(donecb), std::forward<Value::Filter>(f), std::forward<Where>(w));
     }
-    virtual void get(const InfoHash& key, GetCallbackSimple cb, DoneCallback donecb={}, Value::Filter&& f={}, Where&& w = {}) override {
+    virtual void get(const InfoHash& key,
+                     GetCallbackSimple cb,
+                     DoneCallback donecb = {},
+                     Value::Filter&& f = {},
+                     Where&& w = {}) override
+    {
         get(key, bindGetCb(cb), donecb, std::forward<Value::Filter>(f), std::forward<Where>(w));
     }
-    virtual void get(const InfoHash& key, GetCallbackSimple cb, DoneCallbackSimple donecb, Value::Filter&& f={}, Where&& w = {}) override {
+    virtual void get(const InfoHash& key,
+                     GetCallbackSimple cb,
+                     DoneCallbackSimple donecb,
+                     Value::Filter&& f = {},
+                     Where&& w = {}) override
+    {
         get(key, bindGetCb(cb), bindDoneCb(donecb), std::forward<Value::Filter>(f), std::forward<Where>(w));
     }
     /**
@@ -166,7 +160,8 @@ public:
      *          response.
      */
     virtual void query(const InfoHash& key, QueryCallback cb, DoneCallback done_cb = {}, Query&& q = {}) override;
-    virtual void query(const InfoHash& key, QueryCallback cb, DoneCallbackSimple done_cb = {}, Query&& q = {}) override {
+    virtual void query(const InfoHash& key, QueryCallback cb, DoneCallbackSimple done_cb = {}, Query&& q = {}) override
+    {
         query(key, cb, bindDoneCb(done_cb), std::forward<Query>(q));
     }
 
@@ -187,32 +182,32 @@ public:
      * The done callback will be called once, when the first announce succeeds, or fails.
      */
     void put(const InfoHash& key,
-            Sp<Value>,
-            DoneCallback cb=nullptr,
-            time_point created=time_point::max(),
-            bool permanent = false) override;
+             Sp<Value>,
+             DoneCallback cb = nullptr,
+             time_point created = time_point::max(),
+             bool permanent = false) override;
     void put(const InfoHash& key,
-            const Sp<Value>& v,
-            DoneCallbackSimple cb,
-            time_point created=time_point::max(),
-            bool permanent = false) override
+             const Sp<Value>& v,
+             DoneCallbackSimple cb,
+             time_point created = time_point::max(),
+             bool permanent = false) override
     {
         put(key, v, bindDoneCb(cb), created, permanent);
     }
 
     void put(const InfoHash& key,
-            Value&& v,
-            DoneCallback cb=nullptr,
-            time_point created=time_point::max(),
-            bool permanent = false) override
+             Value&& v,
+             DoneCallback cb = nullptr,
+             time_point created = time_point::max(),
+             bool permanent = false) override
     {
         put(key, std::make_shared<Value>(std::move(v)), cb, created, permanent);
     }
     void put(const InfoHash& key,
-            Value&& v,
-            DoneCallbackSimple cb,
-            time_point created=time_point::max(),
-            bool permanent = false) override
+             Value&& v,
+             DoneCallbackSimple cb,
+             time_point created = time_point::max(),
+             bool permanent = false) override
     {
         put(key, std::forward<Value>(v), bindDoneCb(cb), created, permanent);
     }
@@ -240,16 +235,22 @@ public:
      *
      * @return a token to cancel the listener later.
      */
-    size_t listen(const InfoHash&, ValueCallback, Value::Filter={}, Where={}) override;
+    size_t listen(const InfoHash&, ValueCallback, Value::Filter = {}, Where = {}) override;
 
-    size_t listen(const InfoHash& key, GetCallback cb, Value::Filter f={}, Where w={}) override {
-        return listen(key, [cb](const std::vector<Sp<Value>>& vals, bool expired){
-            if (not expired)
-                return cb(vals);
-            return true;
-        }, std::forward<Value::Filter>(f), std::forward<Where>(w));
+    size_t listen(const InfoHash& key, GetCallback cb, Value::Filter f = {}, Where w = {}) override
+    {
+        return listen(
+            key,
+            [cb](const std::vector<Sp<Value>>& vals, bool expired) {
+                if (not expired)
+                    return cb(vals);
+                return true;
+            },
+            std::forward<Value::Filter>(f),
+            std::forward<Where>(w));
     }
-    size_t listen(const InfoHash& key, GetCallbackSimple cb, Value::Filter f={}, Where w={}) override {
+    size_t listen(const InfoHash& key, GetCallbackSimple cb, Value::Filter f = {}, Where w = {}) override
+    {
         return listen(key, bindGetCb(cb), std::forward<Value::Filter>(f), std::forward<Where>(w));
     }
 
@@ -261,7 +262,8 @@ public:
      * The DHT will recontact neighbor nodes, re-register for listen ops etc.
      */
     void connectivityChanged(sa_family_t) override;
-    void connectivityChanged() override {
+    void connectivityChanged() override
+    {
         connectivityChanged(AF_INET);
         connectivityChanged(AF_INET6);
     }
@@ -288,37 +290,32 @@ public:
     std::string getSearchLog(const InfoHash&, sa_family_t af = AF_UNSPEC) const override;
 
     void dumpTables() const override;
-    std::vector<unsigned> getNodeMessageStats(bool in = false) override {
+    std::vector<unsigned> getNodeMessageStats(bool in = false) override
+    {
         return network_engine.getNodeMessageStats(in);
     }
 
     /**
      * Set the in-memory storage limit in bytes
      */
-    void setStorageLimit(size_t limit = DEFAULT_STORAGE_LIMIT) override {
-        max_store_size = limit;
-    }
-    size_t getStorageLimit() const override {
-        return max_store_size;
-    }
+    void setStorageLimit(size_t limit = DEFAULT_STORAGE_LIMIT) override { max_store_size = limit; }
+    size_t getStorageLimit() const override { return max_store_size; }
 
     /**
      * Returns the total memory usage of stored values and the number
      * of stored values.
      */
-    std::pair<size_t, size_t> getStoreSize() const override {
-        return {total_store_size, total_values};
-    }
+    std::pair<size_t, size_t> getStoreSize() const override { return {total_store_size, total_values}; }
 
     std::vector<SockAddr> getPublicAddress(sa_family_t family = 0) override;
 
-    PushNotificationResult pushNotificationReceived(const std::map<std::string, std::string>&) override {
+    PushNotificationResult pushNotificationReceived(const std::map<std::string, std::string>&) override
+    {
         return PushNotificationResult::IgnoredDisabled;
     }
     void resubscribe(unsigned) {}
 
 private:
-
     /* When performing a search, we search for up to SEARCH_NODES closest nodes
        to the destination, and use the additional ones to backtrack if any of
        the target 8 turn out to be dead. */
@@ -384,7 +381,8 @@ private:
     using SearchMap = std::map<InfoHash, Sp<Search>>;
     using ReportedAddr = std::pair<unsigned, SockAddr>;
 
-    struct Kad {
+    struct Kad
+    {
         RoutingTable buckets {};
         SearchMap searches {};
         unsigned pending_pings {0};
@@ -399,7 +397,7 @@ private:
     Kad dht6 {};
     PublicAddressChangedCb publicAddressChangedCb_ {};
 
-    std::vector<std::pair<std::string,std::string>> bootstrap_nodes {};
+    std::vector<std::pair<std::string, std::string>> bootstrap_nodes {};
     std::chrono::steady_clock::duration bootstrap_period {BOOTSTRAP_PERIOD};
     Sp<Scheduler::Job> bootstrapJob {};
 
@@ -418,7 +416,6 @@ private:
     std::map<size_t, std::tuple<size_t, size_t, size_t>> listeners {};
     size_t listener_token {1};
 
-
     // timing
     Scheduler scheduler;
     Sp<Scheduler::Job> nextNodesConfirmation {};
@@ -436,7 +433,8 @@ private:
     const bool maintain_storage {false};
     const bool public_stable {false};
 
-    inline const duration& getListenExpiration() const {
+    inline const duration& getListenExpiration() const
+    {
         return public_stable ? LISTEN_EXPIRE_TIME_PUBLIC : LISTEN_EXPIRE_TIME;
     }
 
@@ -449,7 +447,11 @@ private:
 
     // Storage
     void storageAddListener(const InfoHash& id, const Sp<Node>& node, size_t tid, Query&& = {}, int version = 0);
-    bool storageStore(const InfoHash& id, const Sp<Value>& value, time_point created, const SockAddr& sa = {}, bool permanent = false);
+    bool storageStore(const InfoHash& id,
+                      const Sp<Value>& value,
+                      time_point created,
+                      const SockAddr& sa = {},
+                      bool permanent = false);
     bool storageRefresh(const InfoHash& id, Value::Id vid);
     void expireStore();
     void expireStorage(InfoHash h);
@@ -465,19 +467,21 @@ private:
      * nodes.
      */
     void dataPersistence(InfoHash id);
-    size_t maintainStorage(decltype(store)::value_type&, bool force=false, const DoneCallback& donecb={});
+    size_t maintainStorage(decltype(store)::value_type&, bool force = false, const DoneCallback& donecb = {});
 
     // Buckets
     Kad& dht(sa_family_t af) { return af == AF_INET ? dht4 : dht6; }
     const Kad& dht(sa_family_t af) const { return af == AF_INET ? dht4 : dht6; }
     RoutingTable& buckets(sa_family_t af) { return dht(af).buckets; }
     const RoutingTable& buckets(sa_family_t af) const { return dht(af).buckets; }
-    Bucket* findBucket(const InfoHash& id, sa_family_t af) {
+    Bucket* findBucket(const InfoHash& id, sa_family_t af)
+    {
         auto& b = buckets(af);
         auto it = b.findBucket(id);
         return it == b.end() ? nullptr : &(*it);
     }
-    const Bucket* findBucket(const InfoHash& id, sa_family_t af) const {
+    const Bucket* findBucket(const InfoHash& id, sa_family_t af) const
+    {
         return const_cast<Dht*>(this)->findBucket(id, af);
     }
 
@@ -502,9 +506,20 @@ private:
      * Low-level method that will perform a search on the DHT for the specified
      * infohash (id), using the specified IP version (IPv4 or IPv6).
      */
-    Sp<Search> search(const InfoHash& id, sa_family_t af, GetCallback = {}, QueryCallback = {}, DoneCallback = {}, Value::Filter = {}, const Sp<Query>& q = {});
+    Sp<Search> search(const InfoHash& id,
+                      sa_family_t af,
+                      GetCallback = {},
+                      QueryCallback = {},
+                      DoneCallback = {},
+                      Value::Filter = {},
+                      const Sp<Query>& q = {});
 
-    void announce(const InfoHash& id, sa_family_t af, Sp<Value> value, DoneCallback callback, time_point created=time_point::max(), bool permanent = false);
+    void announce(const InfoHash& id,
+                  sa_family_t af,
+                  Sp<Value> value,
+                  DoneCallback callback,
+                  time_point created = time_point::max(),
+                  bool permanent = false);
     size_t listenTo(const InfoHash& id, sa_family_t af, ValueCallback cb, Value::Filter f = {}, const Sp<Query>& q = {});
 
     /**
@@ -532,9 +547,9 @@ private:
      * @param query   The query sent to the node.
      */
     void searchNodeGetDone(const net::Request& status,
-            net::RequestAnswer&& answer,
-            std::weak_ptr<Search> ws,
-            Sp<Query> query);
+                           net::RequestAnswer&& answer,
+                           std::weak_ptr<Search> ws,
+                           Sp<Query> query);
 
     /**
      * Generic function to execute when a 'get' request expires.
@@ -559,7 +574,7 @@ private:
     /**
      * If update is true, this method will also send message to synced but non-updated search nodes.
      */
-    SearchNode* searchSendGetValues(Sp<Search> sr, SearchNode *n = nullptr, bool update = true);
+    SearchNode* searchSendGetValues(Sp<Search> sr, SearchNode* n = nullptr, bool update = true);
 
     /**
      * Forwards an 'announce' request for a list of nodes to the network engine.
@@ -591,41 +606,22 @@ private:
     net::RequestAnswer onPing(Sp<Node> node);
     /* when we receive a "find node" request */
     net::RequestAnswer onFindNode(Sp<Node> node, const InfoHash& hash, want_t want);
-    void onFindNodeDone(const Sp<Node>& status,
-            net::RequestAnswer& a,
-            Sp<Search> sr);
+    void onFindNodeDone(const Sp<Node>& status, net::RequestAnswer& a, Sp<Search> sr);
     /* when we receive a "get values" request */
-    net::RequestAnswer onGetValues(Sp<Node> node,
-            const InfoHash& hash,
-            want_t want,
-            const Query& q);
-    void onGetValuesDone(const Sp<Node>& status,
-            net::RequestAnswer& a,
-            Sp<Search>& sr,
-            const Sp<Query>& orig_query);
+    net::RequestAnswer onGetValues(Sp<Node> node, const InfoHash& hash, want_t want, const Query& q);
+    void onGetValuesDone(const Sp<Node>& status, net::RequestAnswer& a, Sp<Search>& sr, const Sp<Query>& orig_query);
     /* when we receive a listen request */
-    net::RequestAnswer onListen(Sp<Node> node,
-            const InfoHash& hash,
-            const Blob& token,
-            size_t socket_id,
-            const Query& query,
-            int version = 0);
-    void onListenDone(const Sp<Node>& status,
-            net::RequestAnswer& a,
-            Sp<Search>& sr);
+    net::RequestAnswer onListen(
+        Sp<Node> node, const InfoHash& hash, const Blob& token, size_t socket_id, const Query& query, int version = 0);
+    void onListenDone(const Sp<Node>& status, net::RequestAnswer& a, Sp<Search>& sr);
     /* when we receive an announce request */
     net::RequestAnswer onAnnounce(Sp<Node> node,
-            const InfoHash& hash,
-            const Blob& token,
-            const std::vector<Sp<Value>>& v,
-            const time_point& created);
-    net::RequestAnswer onRefresh(Sp<Node> node,
-            const InfoHash& hash,
-            const Blob& token,
-            const Value::Id& vid);
-    void onAnnounceDone(const Sp<Node>& status,
-            net::RequestAnswer& a,
-            Sp<Search>& sr);
+                                  const InfoHash& hash,
+                                  const Blob& token,
+                                  const std::vector<Sp<Value>>& v,
+                                  const time_point& created);
+    net::RequestAnswer onRefresh(Sp<Node> node, const InfoHash& hash, const Blob& token, const Value::Id& vid);
+    void onAnnounceDone(const Sp<Node>& status, net::RequestAnswer& a, Sp<Search>& sr);
 };
 
-}
+} // namespace dht

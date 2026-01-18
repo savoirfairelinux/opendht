@@ -4,7 +4,7 @@
   "port-version": 1,
   "description": "OpenDHT: A lightweight C++17 Distributed Hash Table library.",
   "homepage": "https://opendht.net",
-  "license": "GPL-3.0-or-later",
+  "license": "MIT",
   "dependencies": [
     {
       "name": "vcpkg-cmake",

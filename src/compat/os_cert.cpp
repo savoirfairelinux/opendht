@@ -1,19 +1,5 @@
-/*
- *  Copyright (c) 2014-2026 Savoir-faire Linux Inc.
- *
- *  This program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 3 of the License, or
- *  (at your option) any later version.
- *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with this program. If not, see <https://www.gnu.org/licenses/>.
- */
+// Copyright (c) 2014-2026 Savoir-faire Linux Inc.
+// SPDX-License-Identifier: MIT
 
 #include "os_cert.h"
 #include "logger.h"
@@ -34,7 +20,7 @@ namespace dht {
 namespace http {
 
 PEMCache::PEMCache(const std::shared_ptr<Logger>& l)
- : logger(l)
+    : logger(l)
 {
 #ifdef _WIN32
     PCCERT_CONTEXT pContext = NULL;
@@ -59,8 +45,7 @@ PEMCache::PEMCache(const std::shared_ptr<Logger>& l)
     if ((osStatus = SecTrustCopyAnchorCertificates(&result)) != 0) {
         if (logger) {
             CFStringRef statusString = SecCopyErrorMessageString(osStatus, NULL);
-            logger->d("Error enumerating certificates: %s",
-                    CFStringGetCStringPtr(statusString, kCFStringEncodingASCII));
+            logger->d("Error enumerating certificates: %s", CFStringGetCStringPtr(statusString, kCFStringEncodingASCII));
             CFRelease(statusString);
         }
         if (result != NULL) {

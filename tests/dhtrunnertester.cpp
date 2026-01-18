@@ -1,19 +1,5 @@
-/*
- *  Copyright (c) 2014-2026 Savoir-faire Linux Inc.
- *
- *  This program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 3 of the License, or
- *  (at your option) any later version.
- *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with this program. If not, see <https://www.gnu.org/licenses/>.
- */
+// Copyright (c) 2014-2026 Savoir-faire Linux Inc.
+// SPDX-License-Identifier: MIT
 
 #include "dhtrunnertester.h"
 
@@ -29,7 +15,8 @@ namespace test {
 CPPUNIT_TEST_SUITE_REGISTRATION(DhtRunnerTester);
 
 void
-DhtRunnerTester::setUp() {
+DhtRunnerTester::setUp()
+{
     dht::DhtRunner::Config config;
     config.dht_config.node_config.max_peer_req_per_sec = -1;
     config.dht_config.node_config.max_req_per_sec = -1;
@@ -45,11 +32,12 @@ DhtRunnerTester::setUp() {
 }
 
 void
-DhtRunnerTester::tearDown() {
+DhtRunnerTester::tearDown()
+{
     unsigned done {0};
     std::condition_variable cv;
     std::mutex cv_m;
-    auto shutdown = [&]{
+    auto shutdown = [&] {
         std::lock_guard lk(cv_m);
         done++;
         cv.notify_all();
@@ -57,13 +45,14 @@ DhtRunnerTester::tearDown() {
     node1.shutdown(shutdown);
     node2.shutdown(shutdown);
     std::unique_lock lk(cv_m);
-    CPPUNIT_ASSERT(cv.wait_for(lk, 30s, [&]{ return done == 2u; }));
+    CPPUNIT_ASSERT(cv.wait_for(lk, 30s, [&] { return done == 2u; }));
     node1.join();
     node2.join();
 }
 
 void
-DhtRunnerTester::testConstructors() {
+DhtRunnerTester::testConstructors()
+{
     CPPUNIT_ASSERT(node1.getBoundPort());
     CPPUNIT_ASSERT_EQUAL(node1.getBoundPort(), node1.getBound().getPort());
     CPPUNIT_ASSERT(node2.getBoundPort());
@@ -77,14 +66,13 @@ DhtRunnerTester::testConstructors() {
 }
 
 void
-DhtRunnerTester::testGetPut() {
+DhtRunnerTester::testGetPut()
+{
     auto key = dht::InfoHash::get("123");
     dht::Value val {"hey"};
     auto val_data = val.data;
     std::promise<bool> p;
-    node2.put(key, std::move(val), [&](bool ok){
-        p.set_value(ok);
-    });
+    node2.put(key, std::move(val), [&](bool ok) { p.set_value(ok); });
     CPPUNIT_ASSERT(p.get_future().get());
     auto vals = node1.get(key).get();
     CPPUNIT_ASSERT(not vals.empty());
@@ -92,19 +80,16 @@ DhtRunnerTester::testGetPut() {
 }
 
 void
-DhtRunnerTester::testPutDuplicate() {
+DhtRunnerTester::testPutDuplicate()
+{
     auto key = dht::InfoHash::get("123");
     auto val = std::make_shared<dht::Value>("hey");
     val->id = 42;
     auto val_data = val->data;
     std::promise<bool> p1;
     std::promise<bool> p2;
-    node2.put(key, val, [&](bool ok){
-        p1.set_value(ok);
-    });
-    node2.put(key, val, [&](bool ok){
-        p2.set_value(ok);
-    });
+    node2.put(key, val, [&](bool ok) { p1.set_value(ok); });
+    node2.put(key, val, [&](bool ok) { p2.set_value(ok); });
     auto p1ret = p1.get_future().get();
     auto p2ret = p2.get_future().get();
     CPPUNIT_ASSERT(p1ret);
@@ -115,9 +100,9 @@ DhtRunnerTester::testPutDuplicate() {
     CPPUNIT_ASSERT(vals.front()->data == val_data);
 }
 
-
 void
-DhtRunnerTester::testPutOverride() {
+DhtRunnerTester::testPutOverride()
+{
     auto key = dht::InfoHash::get("123");
     auto val = std::make_shared<dht::Value>("meh");
     val->id = 42;
@@ -127,12 +112,8 @@ DhtRunnerTester::testPutOverride() {
     auto val_data = val2->data;
     std::promise<bool> p1;
     std::promise<bool> p2;
-    node2.put(key, val, [&](bool ok){
-        p1.set_value(ok);
-    });
-    node2.put(key, val2, [&](bool ok){
-        p2.set_value(ok);
-    });
+    node2.put(key, val, [&](bool ok) { p1.set_value(ok); });
+    node2.put(key, val2, [&](bool ok) { p2.set_value(ok); });
     auto p1ret = p1.get_future().get();
     auto p2ret = p2.get_future().get();
     CPPUNIT_ASSERT(!p1ret);
@@ -143,9 +124,9 @@ DhtRunnerTester::testPutOverride() {
     CPPUNIT_ASSERT(vals.front()->data == val_data);
 }
 
-
 void
-DhtRunnerTester::testListen() {
+DhtRunnerTester::testListen()
+{
     std::mutex mutex;
     std::condition_variable cv;
     std::atomic_uint valueCounta(0);
@@ -203,17 +184,19 @@ DhtRunnerTester::testListen() {
     for (size_t i = 0; i < SZ; i++)
         mtu.emplace_back((i % 2) ? 'T' : 'M');
 
-    for (unsigned i=0; i<N; i++) {
+    for (unsigned i = 0; i < N; i++) {
         node2.put(a, dht::Value("v1"), [&](bool ok) {
             std::lock_guard lock(mutex);
             putCount++;
-            if (ok) putOkCount1++;
+            if (ok)
+                putOkCount1++;
             cv.notify_all();
         });
         node2.put(b, dht::Value("v2"), [&](bool ok) {
             std::lock_guard lock(mutex);
             putCount++;
-            if (ok) putOkCount2++;
+            if (ok)
+                putOkCount2++;
             cv.notify_all();
         });
         auto bigVal = std::make_shared<dht::Value>();
@@ -221,14 +204,15 @@ DhtRunnerTester::testListen() {
         node2.put(c, std::move(bigVal), [&](bool ok) {
             std::lock_guard lock(mutex);
             putCount++;
-            if (ok) putOkCount3++;
+            if (ok)
+                putOkCount3++;
             cv.notify_all();
         });
     }
 
     {
         std::unique_lock lk(mutex);
-        CPPUNIT_ASSERT(cv.wait_for(lk, 30s, [&]{ return putCount == N * 3u; }));
+        CPPUNIT_ASSERT(cv.wait_for(lk, 30s, [&] { return putCount == N * 3u; }));
         CPPUNIT_ASSERT_EQUAL(N, putOkCount1);
         CPPUNIT_ASSERT_EQUAL(N, putOkCount2);
         CPPUNIT_ASSERT_EQUAL(N, putOkCount3);
@@ -259,7 +243,8 @@ DhtRunnerTester::testListen() {
 }
 
 void
-DhtRunnerTester::testIdOps() {
+DhtRunnerTester::testIdOps()
+{
     std::mutex mutex;
     std::condition_variable cv;
     unsigned identityCount(0);
@@ -288,10 +273,10 @@ DhtRunnerTester::testIdOps() {
 
     {
         std::unique_lock lk(mutex);
-        CPPUNIT_ASSERT(cv.wait_for(lk, 20s, [&]{ return identityCount == 1; }));
+        CPPUNIT_ASSERT(cv.wait_for(lk, 20s, [&] { return identityCount == 1; }));
     }
 
-    node1.findCertificate(node2.getId(), [&](const std::shared_ptr<dht::crypto::Certificate>& crt){
+    node1.findCertificate(node2.getId(), [&](const std::shared_ptr<dht::crypto::Certificate>& crt) {
         CPPUNIT_ASSERT(crt);
         std::lock_guard lk(mutex);
         valueCount++;
@@ -300,7 +285,7 @@ DhtRunnerTester::testIdOps() {
 
     {
         std::unique_lock lk(mutex);
-        CPPUNIT_ASSERT(cv.wait_for(lk, 20s, [&]{ return valueCount == 1u; }));
+        CPPUNIT_ASSERT(cv.wait_for(lk, 20s, [&] { return valueCount == 1u; }));
         CPPUNIT_ASSERT_EQUAL(1u, identityCount);
     }
 
@@ -321,21 +306,21 @@ DhtRunnerTester::testIdOps() {
     node1.bootstrap(bound);
 
     auto key = dht::InfoHash::get("key");
-    node1.putEncrypted(key, node2.getId(), dht::Value("yo"), [&](bool ok){
+    node1.putEncrypted(key, node2.getId(), dht::Value("yo"), [&](bool ok) {
         CPPUNIT_ASSERT(ok);
         std::lock_guard lk(mutex);
         valueCount++;
         cv.notify_all();
     });
 
-    node1.putEncrypted(key, node2.getPublicKey(), std::make_shared<dht::Value>("yo"), [&](bool ok){
+    node1.putEncrypted(key, node2.getPublicKey(), std::make_shared<dht::Value>("yo"), [&](bool ok) {
         CPPUNIT_ASSERT(ok);
         std::lock_guard lk(mutex);
         valueCount++;
         cv.notify_all();
     });
 
-    node2.listen<std::string>(key, [&](std::string&& value){
+    node2.listen<std::string>(key, [&](std::string&& value) {
         CPPUNIT_ASSERT_EQUAL("yo"s, value);
         std::lock_guard lk(mutex);
         valueCount++;
@@ -345,13 +330,13 @@ DhtRunnerTester::testIdOps() {
 
     auto key2 = dht::InfoHash::get("key2");
     auto editValue = std::make_shared<dht::Value>("v1");
-    node1.putSigned(key2, editValue, [&](bool ok){
+    node1.putSigned(key2, editValue, [&](bool ok) {
         CPPUNIT_ASSERT(ok);
         std::lock_guard lk(mutex);
         valueCountEdit++;
         cv.notify_all();
     });
-    node2.listen(key2, [&](const std::vector<std::shared_ptr<dht::Value>>& values, bool /*expired*/){
+    node2.listen(key2, [&](const std::vector<std::shared_ptr<dht::Value>>& values, bool /*expired*/) {
         for (const auto& v : values) {
             if (v->seq == 0)
                 CPPUNIT_ASSERT_EQUAL("v1"s, dht::unpackMsg<std::string>(v->data));
@@ -367,12 +352,12 @@ DhtRunnerTester::testIdOps() {
 
     {
         std::unique_lock lk(mutex);
-        CPPUNIT_ASSERT(cv.wait_for(lk, 20s, [&]{ return identityCount == 2u; }));
-        CPPUNIT_ASSERT(cv.wait_for(lk, 20s, [&]{ return valueCount == 5u; }));
-        CPPUNIT_ASSERT(cv.wait_for(lk, 20s, [&]{ return valueCountEdit == 2u; }));
+        CPPUNIT_ASSERT(cv.wait_for(lk, 20s, [&] { return identityCount == 2u; }));
+        CPPUNIT_ASSERT(cv.wait_for(lk, 20s, [&] { return valueCount == 5u; }));
+        CPPUNIT_ASSERT(cv.wait_for(lk, 20s, [&] { return valueCountEdit == 2u; }));
     }
 
-    node2.findCertificate(node1.getPublicKey()->getLongId(), [&](const std::shared_ptr<dht::crypto::Certificate>& crt){
+    node2.findCertificate(node1.getPublicKey()->getLongId(), [&](const std::shared_ptr<dht::crypto::Certificate>& crt) {
         CPPUNIT_ASSERT(crt);
         std::lock_guard lk(mutex);
         valueCount++;
@@ -381,24 +366,25 @@ DhtRunnerTester::testIdOps() {
 
     {
         std::unique_lock lk(mutex);
-        CPPUNIT_ASSERT(cv.wait_for(lk, 20s, [&]{ return valueCount == 6u; }));
+        CPPUNIT_ASSERT(cv.wait_for(lk, 20s, [&] { return valueCount == 6u; }));
     }
 
     // editValue->data = dht::packMsg("v2");
     editValue = std::make_shared<dht::Value>(editValue->id);
     editValue->data = dht::packMsg("v2");
-    node1.putSigned(key2, editValue, [&](bool ok){
+    node1.putSigned(key2, editValue, [&](bool ok) {
         CPPUNIT_ASSERT(ok);
         std::lock_guard lk(mutex);
         valueCountEdit++;
         cv.notify_all();
     });
     std::unique_lock lk(mutex);
-    CPPUNIT_ASSERT(cv.wait_for(lk, 20s, [&]{ return valueCountEdit == 4u; }));
+    CPPUNIT_ASSERT(cv.wait_for(lk, 20s, [&] { return valueCountEdit == 4u; }));
 }
 
 void
-DhtRunnerTester::testListenLotOfBytes() {
+DhtRunnerTester::testListenLotOfBytes()
+{
     std::mutex mutex;
     std::condition_variable cv;
     std::atomic_uint valueCount(0);
@@ -410,17 +396,18 @@ DhtRunnerTester::testListenLotOfBytes() {
     auto foo = dht::InfoHash::get("foo");
     constexpr unsigned N = 1024;
 
-    for (unsigned i=0; i<N; i++) {
+    for (unsigned i = 0; i < N; i++) {
         node2.put(foo, data, [&](bool ok) {
             std::lock_guard lock(mutex);
             putCount++;
-            if (ok) putOkCount++;
+            if (ok)
+                putOkCount++;
             cv.notify_all();
         });
     }
     {
         std::unique_lock lk(mutex);
-        CPPUNIT_ASSERT(cv.wait_for(lk, 30s, [&]{ return putCount == N; }));
+        CPPUNIT_ASSERT(cv.wait_for(lk, 30s, [&] { return putCount == N; }));
     }
 
     dht::DhtRunner node3 {};
@@ -441,15 +428,15 @@ DhtRunnerTester::testListenLotOfBytes() {
 
     {
         std::unique_lock lk(mutex);
-        CPPUNIT_ASSERT(cv.wait_for(lk, 30s, [&]{ return valueCount == N; }));
+        CPPUNIT_ASSERT(cv.wait_for(lk, 30s, [&] { return valueCount == N; }));
     }
 
     node3.cancelListen(foo, ftokenfoo.get());
 }
 
-
 void
-DhtRunnerTester::testMultithread() {
+DhtRunnerTester::testMultithread()
+{
     std::mutex mutex;
     std::condition_variable cv;
     unsigned putCount(0);
@@ -457,29 +444,30 @@ DhtRunnerTester::testMultithread() {
 
     constexpr unsigned N = 2048;
 
-    for (unsigned i=0; i<N; i++) {
-        dht::ThreadPool::computation().run([&]{
+    for (unsigned i = 0; i < N; i++) {
+        dht::ThreadPool::computation().run([&] {
             node2.put(dht::InfoHash::get("123" + std::to_string(i)), "hehe", [&](bool ok) {
                 std::lock_guard lock(mutex);
                 putCount++;
-                if (ok) putOkCount++;
+                if (ok)
+                    putOkCount++;
                 cv.notify_all();
             });
-            node2.get(dht::InfoHash::get("123" + std::to_string(N-i-1)), [](const std::shared_ptr<dht::Value>&){
-                return true;
-            }, [&](bool ok) {
-                std::lock_guard lock(mutex);
-                putCount++;
-                if (ok) putOkCount++;
-                cv.notify_all();
-            });
+            node2.get(
+                dht::InfoHash::get("123" + std::to_string(N - i - 1)),
+                [](const std::shared_ptr<dht::Value>&) { return true; },
+                [&](bool ok) {
+                    std::lock_guard lock(mutex);
+                    putCount++;
+                    if (ok)
+                        putOkCount++;
+                    cv.notify_all();
+                });
         });
     }
     std::unique_lock lk(mutex);
-    CPPUNIT_ASSERT(cv.wait_for(lk, 30s, [&]{ return putCount == 2*N; }));
-    CPPUNIT_ASSERT_EQUAL(2*N, putOkCount);
-
+    CPPUNIT_ASSERT(cv.wait_for(lk, 30s, [&] { return putCount == 2 * N; }));
+    CPPUNIT_ASSERT_EQUAL(2 * N, putOkCount);
 }
 
-
-}  // namespace test
+} // namespace test

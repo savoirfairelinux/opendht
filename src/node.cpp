@@ -1,20 +1,5 @@
-/*
- *  Copyright (c) 2014-2026 Savoir-faire Linux Inc.
- *
- *  This program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 3 of the License, or
- *  (at your option) any later version.
- *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with this program. If not, see <https://www.gnu.org/licenses/>.
- */
-
+// Copyright (c) 2014-2026 Savoir-faire Linux Inc.
+// SPDX-License-Identifier: MIT
 
 #include "node.h"
 #include "request.h"
@@ -29,24 +14,28 @@ constexpr std::chrono::minutes Node::NODE_GOOD_TIME;
 constexpr std::chrono::seconds Node::MAX_RESPONSE_TIME;
 
 Node::Node(const InfoHash& id, const SockAddr& addr, std::mt19937_64& rd, bool client)
-: id(id), addr(addr), is_client(client), sockets_()
+    : id(id)
+    , addr(addr)
+    , is_client(client)
+    , sockets_()
 {
-    transaction_id = std::uniform_int_distribution<Tid>{1}(rd);
+    transaction_id = std::uniform_int_distribution<Tid> {1}(rd);
 }
 
 Node::Node(const InfoHash& id, SockAddr&& addr, std::mt19937_64& rd, bool client)
-: id(id), addr(std::move(addr)), is_client(client), sockets_()
+    : id(id)
+    , addr(std::move(addr))
+    , is_client(client)
+    , sockets_()
 {
-    transaction_id = std::uniform_int_distribution<Tid>{1}(rd);
+    transaction_id = std::uniform_int_distribution<Tid> {1}(rd);
 }
 
 /* This is our definition of a known-good node. */
 bool
 Node::isGood(time_point now) const
 {
-    return not expired_ &&
-        reply_time >= now - NODE_GOOD_TIME &&
-        time >= now - NODE_EXPIRE_TIME;
+    return not expired_ && reply_time >= now - NODE_GOOD_TIME && time >= now - NODE_EXPIRE_TIME;
 }
 
 bool
@@ -151,7 +140,7 @@ Node::closeSocket(Tid id)
 {
     if (id) {
         sockets_.erase(id);
-        //DHT_LOG.w("Closing socket (tid: %d), %lu remaining", socket->id, sockets_.size());
+        // DHT_LOG.w("Closing socket (tid: %d), %lu remaining", socket->id, sockets_.size());
     }
 }
 
@@ -163,7 +152,8 @@ Node::toString() const
     return ss.str();
 }
 
-std::ostream& operator<< (std::ostream& s, const Node& h)
+std::ostream&
+operator<<(std::ostream& s, const Node& h)
 {
     s << h.id << " " << h.addr.toString();
     return s;
@@ -186,13 +176,14 @@ NodeExport::msgpack_unpack(msgpack::object o)
     if (maddr.via.bin.size > sizeof(sockaddr_storage))
         throw msgpack::type_error();
     id.msgpack_unpack(o.via.map.ptr[0].val);
-    addr = {(const sockaddr*)maddr.via.bin.ptr, (socklen_t)maddr.via.bin.size};
+    addr = {(const sockaddr*) maddr.via.bin.ptr, (socklen_t) maddr.via.bin.size};
 }
 
-std::ostream& operator<< (std::ostream& s, const NodeExport& h)
+std::ostream&
+operator<<(std::ostream& s, const NodeExport& h)
 {
     msgpack::pack(s, h);
     return s;
 }
 
-}
+} // namespace dht

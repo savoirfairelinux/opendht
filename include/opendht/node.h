@@ -1,20 +1,5 @@
-/*
- *  Copyright (c) 2014-2026 Savoir-faire Linux Inc.
- *
- *  This program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 3 of the License, or
- *  (at your option) any later version.
- *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with this program. If not, see <https://www.gnu.org/licenses/>.
- */
-
+// Copyright (c) 2014-2026 Savoir-faire Linux Inc.
+// SPDX-License-Identifier: MIT
 #pragma once
 
 #include "infohash.h" // includes socket structures
@@ -36,28 +21,28 @@ struct RequestAnswer;
 
 using Tid = uint32_t;
 using SocketCb = std::function<void(const Sp<Node>&, net::RequestAnswer&&)>;
-struct Socket {
+struct Socket
+{
     Socket() {}
-    Socket(SocketCb&& on_receive) :
-        on_receive(std::move(on_receive)) {}
+    Socket(SocketCb&& on_receive)
+        : on_receive(std::move(on_receive))
+    {}
     SocketCb on_receive {};
 };
 
-struct Node {
+struct Node
+{
     const InfoHash id;
 
-    Node(const InfoHash& id, const SockAddr& addr, std::mt19937_64& rd, bool client=false);
-    Node(const InfoHash& id, SockAddr&& addr, std::mt19937_64& rd, bool client=false);
+    Node(const InfoHash& id, const SockAddr& addr, std::mt19937_64& rd, bool client = false);
+    Node(const InfoHash& id, SockAddr&& addr, std::mt19937_64& rd, bool client = false);
     Node(const InfoHash& id, const sockaddr* sa, socklen_t salen, std::mt19937_64& rd)
-        : Node(id, SockAddr(sa, salen), rd) {}
+        : Node(id, SockAddr(sa, salen), rd)
+    {}
 
-    const InfoHash& getId() const {
-        return id;
-    }
+    const InfoHash& getId() const { return id; }
     const SockAddr& getAddr() const { return addr; }
-    std::string getAddrStr() const {
-        return addr.toString();
-    }
+    std::string getAddrStr() const { return addr.toString(); }
     bool isClient() const { return is_client; }
     bool isIncoming() { return time > reply_time; }
 
@@ -70,7 +55,8 @@ struct Node {
      * to MAX_AUTH_ERRORS errors are accepted in order to let the node recover.
      * Upon this limit, the node expires.
      */
-    void authError() {
+    void authError()
+    {
         if (++auth_errors > MAX_AUTH_ERRORS)
             setExpired();
     }
@@ -81,14 +67,11 @@ struct Node {
     bool isPendingMessage() const;
     size_t getPendingMessageCount() const;
 
-    bool isOld(const time_point& now) const {
-        return time + NODE_EXPIRE_TIME < now;
-    }
-    bool isRemovable(const time_point& now) const {
-        return isExpired() and isOld(now);
-    }
+    bool isOld(const time_point& now) const { return time + NODE_EXPIRE_TIME < now; }
+    bool isRemovable(const time_point& now) const { return isExpired() and isOld(now); }
 
-    NodeExport exportNode() const {
+    NodeExport exportNode() const
+    {
         NodeExport ne;
         ne.id = id;
         ne.addr = addr;
@@ -128,21 +111,26 @@ struct Node {
     /**
      * Resets the state of the node so it's not expired anymore.
      */
-    void reset() { expired_ = false; reply_time = time_point::min(); }
+    void reset()
+    {
+        expired_ = false;
+        reply_time = time_point::min();
+    }
 
     /**
      * Generates a new request id, skipping the invalid id.
      *
      * @return the new id.
      */
-    Tid getNewTid() {
+    Tid getNewTid()
+    {
         ++transaction_id;
         return transaction_id ? transaction_id : ++transaction_id;
     }
 
     std::string toString() const;
 
-    OPENDHT_PUBLIC friend std::ostream& operator<< (std::ostream& s, const Node& h);
+    OPENDHT_PUBLIC friend std::ostream& operator<<(std::ostream& s, const Node& h);
 
     static constexpr const std::chrono::minutes NODE_GOOD_TIME {120};
 
@@ -158,8 +146,8 @@ private:
 
     SockAddr addr;
     bool is_client {false};
-    time_point time {time_point::min()};            /* last time eared about */
-    time_point reply_time {time_point::min()};      /* time of last correct reply received */
+    time_point time {time_point::min()};       /* last time eared about */
+    time_point reply_time {time_point::min()}; /* time of last correct reply received */
     unsigned auth_errors {0};
     bool expired_ {false};
     Tid transaction_id;
@@ -169,4 +157,4 @@ private:
     std::map<Tid, Sp<Socket>> sockets_;
 };
 
-}
+} // namespace dht

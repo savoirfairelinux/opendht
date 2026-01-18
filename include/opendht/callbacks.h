@@ -1,20 +1,5 @@
-/*
- *  Copyright (c) 2014-2026 Savoir-faire Linux Inc.
- *
- *  This program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 3 of the License, or
- *  (at your option) any later version.
- *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with this program. If not, see <https://www.gnu.org/licenses/>.
- */
-
+// Copyright (c) 2014-2026 Savoir-faire Linux Inc.
+// SPDX-License-Identifier: MIT
 #pragma once
 
 #include "infohash.h"
@@ -43,17 +28,15 @@ enum class NodeStatus {
 };
 
 inline constexpr const char*
-statusToStr(NodeStatus status) {
-    return status == NodeStatus::Connected  ? "connected"  : (
-           status == NodeStatus::Connecting ? "connecting" :
-                                              "disconnected");
+statusToStr(NodeStatus status)
+{
+    return status == NodeStatus::Connected ? "connected"
+                                           : (status == NodeStatus::Connecting ? "connecting" : "disconnected");
 }
 
-struct OPENDHT_PUBLIC NodeStats {
-    unsigned good_nodes {0},
-             dubious_nodes {0},
-             cached_nodes {0},
-             incoming_nodes {0};
+struct OPENDHT_PUBLIC NodeStats
+{
+    unsigned good_nodes {0}, dubious_nodes {0}, cached_nodes {0}, incoming_nodes {0};
     unsigned table_depth {0};
     unsigned searches {0};
     unsigned node_cache_size {0};
@@ -73,7 +56,8 @@ struct OPENDHT_PUBLIC NodeStats {
     MSGPACK_DEFINE_MAP(good_nodes, dubious_nodes, cached_nodes, incoming_nodes, table_depth, searches, node_cache_size)
 };
 
-struct OPENDHT_PUBLIC NodeInfo {
+struct OPENDHT_PUBLIC NodeInfo
+{
     InfoHash id;
     InfoHash node_id;
     NodeStats ipv4 {};
@@ -99,7 +83,8 @@ struct OPENDHT_PUBLIC NodeInfo {
 /**
  * Dht configuration.
  */
-struct OPENDHT_PUBLIC Config {
+struct OPENDHT_PUBLIC Config
+{
     /** DHT node ID */
     InfoHash node_id {};
 
@@ -160,7 +145,7 @@ struct OPENDHT_PUBLIC SecureDhtConfig
     bool cert_cache_all {false};
 };
 
-enum class OPENDHT_PUBLIC PushNotificationResult: uint8_t {
+enum class OPENDHT_PUBLIC PushNotificationResult : uint8_t {
     /* success codes */
     PutRefresh,
     ListenRefresh,
@@ -186,19 +171,19 @@ using ShutdownCallback = std::function<void()>;
 using IdentityAnnouncedCb = std::function<void(bool)>;
 using PublicAddressChangedCb = std::function<void(std::vector<SockAddr>)>;
 
-using CertificateStoreQueryLegacy = std::function<std::vector<std::shared_ptr<crypto::Certificate>>(const InfoHash& pk_id)>;
+using CertificateStoreQueryLegacy
+    = std::function<std::vector<std::shared_ptr<crypto::Certificate>>(const InfoHash& pk_id)>;
 using CertificateStoreQuery = std::function<std::vector<std::shared_ptr<crypto::Certificate>>(const PkId& pk_id)>;
 
 using DoneCallback = std::function<void(bool success, const std::vector<std::shared_ptr<Node>>& nodes)>;
 using DoneCallbackSimple = std::function<void(bool success)>;
 
-typedef bool (*GetCallbackRaw)(std::shared_ptr<Value>, void *user_data);
-typedef bool (*ValueCallbackRaw)(std::shared_ptr<Value>, bool expired, void *user_data);
-typedef void (*DoneCallbackRaw)(bool, std::vector<std::shared_ptr<Node>>*, void *user_data);
-typedef void (*ShutdownCallbackRaw)(void *user_data);
-typedef void (*DoneCallbackSimpleRaw)(bool, void *user_data);
-typedef bool (*FilterRaw)(const Value&, void *user_data);
-
+typedef bool (*GetCallbackRaw)(std::shared_ptr<Value>, void* user_data);
+typedef bool (*ValueCallbackRaw)(std::shared_ptr<Value>, bool expired, void* user_data);
+typedef void (*DoneCallbackRaw)(bool, std::vector<std::shared_ptr<Node>>*, void* user_data);
+typedef void (*ShutdownCallbackRaw)(void* user_data);
+typedef void (*DoneCallbackSimpleRaw)(bool, void* user_data);
+typedef bool (*FilterRaw)(const Value&, void* user_data);
 
 OPENDHT_PUBLIC GetCallbackSimple bindGetCb(GetCallbackRaw raw_cb, void* user_data);
 OPENDHT_PUBLIC GetCallback bindGetCb(GetCallbackSimple cb);
@@ -209,4 +194,4 @@ OPENDHT_PUBLIC DoneCallback bindDoneCb(DoneCallbackRaw raw_cb, void* user_data);
 OPENDHT_PUBLIC DoneCallbackSimple bindDoneCbSimple(DoneCallbackSimpleRaw raw_cb, void* user_data);
 OPENDHT_PUBLIC Value::Filter bindFilterRaw(FilterRaw raw_filter, void* user_data);
 
-}
+} // namespace dht

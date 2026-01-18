@@ -157,11 +157,7 @@ IRC: join us on Libera.chat at [`#opendht`](https://web.libera.chat/#opendht).
 ## License
 Copyright (c) 2014-2026 Savoir-faire Linux Inc.
 
-OpenDHT is free software; you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation; either version 3 of the License, or (at your option) any later version.
-
-This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for more details.
-
-See COPYING or https://www.gnu.org/licenses/gpl-3.0.en.html for the full GPLv3 license.
+OpenDHT is released under the MIT License. See [LICENSE](LICENSE) for details.
 
 ## Acknowledgements
 This project was originally based on https://github.com/jech/dht by Juliusz Chroboczek.

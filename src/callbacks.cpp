@@ -1,19 +1,5 @@
-/*
- *  Copyright (c) 2014-2026 Savoir-faire Linux Inc.
- *
- *  This program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 3 of the License, or
- *  (at your option) any later version.
- *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with this program. If not, see <https://www.gnu.org/licenses/>.
- */
+// Copyright (c) 2014-2026 Savoir-faire Linux Inc.
+// SPDX-License-Identifier: MIT
 
 #ifdef HAVE_CONFIG_H
 #include "config.h"
@@ -23,11 +9,11 @@
 
 namespace dht {
 
-
 GetCallbackSimple
 bindGetCb(GetCallbackRaw raw_cb, void* user_data)
 {
-    if (not raw_cb) return {};
+    if (not raw_cb)
+        return {};
     return [=](const std::shared_ptr<Value>& value) {
         return raw_cb(value, user_data);
     };
@@ -36,8 +22,9 @@ bindGetCb(GetCallbackRaw raw_cb, void* user_data)
 GetCallback
 bindGetCb(GetCallbackSimple cb)
 {
-    if (not cb) return {};
-    return [cb=std::move(cb)](const std::vector<std::shared_ptr<Value>>& values) {
+    if (not cb)
+        return {};
+    return [cb = std::move(cb)](const std::vector<std::shared_ptr<Value>>& values) {
         for (const auto& v : values)
             if (not cb(v))
                 return false;
@@ -48,7 +35,8 @@ bindGetCb(GetCallbackSimple cb)
 ValueCallback
 bindValueCb(ValueCallbackRaw raw_cb, void* user_data)
 {
-    if (not raw_cb) return {};
+    if (not raw_cb)
+        return {};
     return [=](const std::vector<std::shared_ptr<Value>>& values, bool expired) {
         for (const auto& v : values)
             if (not raw_cb(v, expired, user_data))
@@ -60,13 +48,16 @@ bindValueCb(ValueCallbackRaw raw_cb, void* user_data)
 ShutdownCallback
 bindShutdownCb(ShutdownCallbackRaw shutdown_cb_raw, void* user_data)
 {
-    return [=]() { shutdown_cb_raw(user_data); };
+    return [=]() {
+        shutdown_cb_raw(user_data);
+    };
 }
 
 DoneCallback
 bindDoneCb(DoneCallbackSimple donecb)
 {
-    if (not donecb) return {};
+    if (not donecb)
+        return {};
     using namespace std::placeholders;
     return std::bind(std::move(donecb), _1);
 }
@@ -74,15 +65,18 @@ bindDoneCb(DoneCallbackSimple donecb)
 DoneCallback
 bindDoneCb(DoneCallbackRaw raw_cb, void* user_data)
 {
-    if (not raw_cb) return {};
+    if (not raw_cb)
+        return {};
     return [=](bool success, const std::vector<std::shared_ptr<Node>>& nodes) {
-        raw_cb(success, (std::vector<std::shared_ptr<Node>>*)&nodes, user_data);
+        raw_cb(success, (std::vector<std::shared_ptr<Node>>*) &nodes, user_data);
     };
 }
 
 DoneCallbackSimple
-bindDoneCbSimple(DoneCallbackSimpleRaw raw_cb, void* user_data) {
-    if (not raw_cb) return {};
+bindDoneCbSimple(DoneCallbackSimpleRaw raw_cb, void* user_data)
+{
+    if (not raw_cb)
+        return {};
     return [=](bool success) {
         raw_cb(success, user_data);
     };
@@ -92,7 +86,8 @@ std::string
 NodeStats::toString() const
 {
     std::ostringstream ss;
-    ss << "Known nodes: " << good_nodes << " good, " << dubious_nodes << " dubious, " << incoming_nodes << " incoming." << std::endl;
+    ss << "Known nodes: " << good_nodes << " good, " << dubious_nodes << " dubious, " << incoming_nodes << " incoming."
+       << std::endl;
     ss << searches << " searches, " << node_cache_size << " total cached nodes" << std::endl;
     if (table_depth > 1) {
         ss << "Routing table depth: " << table_depth << std::endl;
@@ -159,5 +154,4 @@ NodeInfo::NodeInfo(const Json::Value& v)
 
 #endif
 
-
-}
+} // namespace dht

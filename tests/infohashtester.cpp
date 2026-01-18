@@ -1,19 +1,5 @@
-/*
- *  Copyright (c) 2014-2026 Savoir-faire Linux Inc.
- *
- *  This program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 3 of the License, or
- *  (at your option) any later version.
- *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with this program. If not, see <https://www.gnu.org/licenses/>.
- */
+// Copyright (c) 2014-2026 Savoir-faire Linux Inc.
+// SPDX-License-Identifier: MIT
 
 #include "infohashtester.h"
 
@@ -28,20 +14,20 @@ namespace test {
 CPPUNIT_TEST_SUITE_REGISTRATION(InfoHashTester);
 
 void
-InfoHashTester::setUp() {
-
-}
+InfoHashTester::setUp()
+{}
 
 void
-InfoHashTester::testConstructors() {
+InfoHashTester::testConstructors()
+{
     // Default constructor creates a null infohash
     auto nullHash = dht::InfoHash();
-    CPPUNIT_ASSERT_EQUAL((size_t)20u, nullHash.size());
+    CPPUNIT_ASSERT_EQUAL((size_t) 20u, nullHash.size());
     CPPUNIT_ASSERT(!nullHash);
     // Build from a uint8_t. if length to short, should get a null infohash
     uint8_t to_short[] = {0x0, 0x1, 0x2, 0x3, 0x4, 0x5, 0x6, 0x7, 0x8};
     auto infohash = dht::InfoHash(to_short, 8);
-    CPPUNIT_ASSERT_EQUAL((size_t)20u, infohash.size());
+    CPPUNIT_ASSERT_EQUAL((size_t) 20u, infohash.size());
     CPPUNIT_ASSERT_EQUAL(std::string("0000000000000000000000000000000000000000"), infohash.toString());
     // Build from a uint8_t. if length is enough, data should contains the uint8_t
     uint8_t enough[] = {0x1, 0x2, 0x3, 0x4, 0x5, 0x6, 0x7, 0x8, 0x9, 0xa,
@@ -53,8 +39,8 @@ InfoHashTester::testConstructors() {
         CPPUNIT_ASSERT_EQUAL(enough[i], data[i]);
     }
     // if too long, should be cutted to 20
-    uint8_t tooLong[] = {0x1, 0x2, 0x3, 0x4, 0x5, 0x6, 0x7, 0x8, 0x9, 0xa,
-                        0x1, 0x2, 0x3, 0x4, 0x5, 0x6, 0x7, 0x8, 0x9, 0xa, 0xb0};
+    uint8_t tooLong[] = {0x1, 0x2, 0x3, 0x4, 0x5, 0x6, 0x7, 0x8, 0x9, 0xa, 0x1,
+                         0x2, 0x3, 0x4, 0x5, 0x6, 0x7, 0x8, 0x9, 0xa, 0xb0};
     infohash = dht::InfoHash(tooLong, 21);
     CPPUNIT_ASSERT(infohash.size() == 20);
     const auto* data2 = infohash.data();
@@ -63,26 +49,27 @@ InfoHashTester::testConstructors() {
     }
     // Build from string
     auto infohashFromStr = dht::InfoHash("0102030405060708090A0102030405060708090A");
-    CPPUNIT_ASSERT_EQUAL((size_t)20u, infohashFromStr.size());
+    CPPUNIT_ASSERT_EQUAL((size_t) 20u, infohashFromStr.size());
     const auto* dataStr = infohashFromStr.data();
     for (auto i = 0; i < 20; ++i) {
-        CPPUNIT_ASSERT_EQUAL((int)dataStr[i], (int)data[i]);
+        CPPUNIT_ASSERT_EQUAL((int) dataStr[i], (int) data[i]);
     }
 }
 
 void
-InfoHashTester::testComparators() {
+InfoHashTester::testComparators()
+{
     auto nullHash = dht::InfoHash();
     auto minHash = dht::InfoHash("0000000000000000000000000000000000111110");
     auto maxHash = dht::InfoHash("0111110000000000000000000000000000000000");
     // operator ==
     CPPUNIT_ASSERT_EQUAL(minHash, minHash);
     CPPUNIT_ASSERT_EQUAL(minHash, dht::InfoHash("0000000000000000000000000000000000111110"));
-	CPPUNIT_ASSERT(!(minHash == maxHash));
+    CPPUNIT_ASSERT(!(minHash == maxHash));
     // operator !=
     CPPUNIT_ASSERT(!(minHash != minHash));
     CPPUNIT_ASSERT(!(minHash != dht::InfoHash("0000000000000000000000000000000000111110")));
-	CPPUNIT_ASSERT(minHash != maxHash);
+    CPPUNIT_ASSERT(minHash != maxHash);
     // operator<
     CPPUNIT_ASSERT(nullHash < minHash);
     CPPUNIT_ASSERT(nullHash < maxHash);
@@ -94,11 +81,11 @@ InfoHashTester::testComparators() {
     // bool()
     CPPUNIT_ASSERT(maxHash);
     CPPUNIT_ASSERT(!nullHash);
-
 }
 
 void
-InfoHashTester::testLowBit() {
+InfoHashTester::testLowBit()
+{
     auto nullHash = dht::InfoHash();
     auto minHash = dht::InfoHash("0000000000000000000000000000000000000010");
     auto maxHash = dht::InfoHash("0100000000000000000000000000000000000000");
@@ -108,18 +95,20 @@ InfoHashTester::testLowBit() {
 }
 
 void
-InfoHashTester::testCommonBits() {
+InfoHashTester::testCommonBits()
+{
     auto nullHash = dht::InfoHash();
     auto minHash = dht::InfoHash("0000000000000000000000000000000000000010");
     auto maxHash = dht::InfoHash("0100000000000000000000000000000000000000");
-    CPPUNIT_ASSERT_EQUAL(dht::InfoHash::commonBits(nullHash, nullHash), (unsigned)160);
-    CPPUNIT_ASSERT_EQUAL(dht::InfoHash::commonBits(nullHash, minHash), (unsigned)155);
-    CPPUNIT_ASSERT_EQUAL(dht::InfoHash::commonBits(nullHash, maxHash), (unsigned)7);
-    CPPUNIT_ASSERT_EQUAL(dht::InfoHash::commonBits(minHash, maxHash), (unsigned)7);
+    CPPUNIT_ASSERT_EQUAL(dht::InfoHash::commonBits(nullHash, nullHash), (unsigned) 160);
+    CPPUNIT_ASSERT_EQUAL(dht::InfoHash::commonBits(nullHash, minHash), (unsigned) 155);
+    CPPUNIT_ASSERT_EQUAL(dht::InfoHash::commonBits(nullHash, maxHash), (unsigned) 7);
+    CPPUNIT_ASSERT_EQUAL(dht::InfoHash::commonBits(minHash, maxHash), (unsigned) 7);
 }
 
 void
-InfoHashTester::testXorCmp() {
+InfoHashTester::testXorCmp()
+{
     auto nullHash = dht::InfoHash();
     auto minHash = dht::InfoHash("0000000000000000000000000000000000000010");
     auto maxHash = dht::InfoHash("0100000000000000000000000000000000000000");
@@ -135,7 +124,8 @@ InfoHashTester::testXorCmp() {
 }
 
 void
-InfoHashTester::testHex() {
+InfoHashTester::testHex()
+{
     const std::string TEST_HASH_STR("01b20304d5060708090a010203e05060708090ae");
     dht::InfoHash TEST_HASH(TEST_HASH_STR);
     CPPUNIT_ASSERT_EQUAL(TEST_HASH_STR, TEST_HASH.toString());
@@ -143,7 +133,6 @@ InfoHashTester::testHex() {
 }
 
 void
-InfoHashTester::tearDown() {
-
-}
-}  // namespace test
+InfoHashTester::tearDown()
+{}
+} // namespace test

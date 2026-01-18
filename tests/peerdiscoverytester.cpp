@@ -1,19 +1,5 @@
-/*
- *  Copyright (c) 2014-2026 Savoir-faire Linux Inc.
- *
- *  This program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 3 of the License, or
- *  (at your option) any later version.
- *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with this program. If not, see <https://www.gnu.org/licenses/>.
- */
+// Copyright (c) 2014-2026 Savoir-faire Linux Inc.
+// SPDX-License-Identifier: MIT
 
 #include "peerdiscoverytester.h"
 #include "opendht/value.h"
@@ -29,13 +15,15 @@ constexpr unsigned MULTICAST_PORT = 2222;
 constexpr auto DHT_NODE_NAME {"dht"sv};
 constexpr auto JAMI_NODE_NAME {"jami"sv};
 
-struct DhtNode {
+struct DhtNode
+{
     dht::InfoHash nodeid;
     in_port_t node_port;
     dht::NetId nid;
     MSGPACK_DEFINE(nodeid, node_port, nid)
 };
-struct JamiNode {
+struct JamiNode
+{
     int num;
     char cha;
     std::string str;
@@ -44,9 +32,12 @@ struct JamiNode {
 
 CPPUNIT_TEST_SUITE_REGISTRATION(PeerDiscoveryTester);
 
-void PeerDiscoveryTester::setUp(){}
+void
+PeerDiscoveryTester::setUp()
+{}
 
-void PeerDiscoveryTester::testMulticastToTwoNodes()
+void
+PeerDiscoveryTester::testMulticastToTwoNodes()
 {
     DhtNode dhtNode;
     dhtNode.nid = 10;
@@ -67,7 +58,7 @@ void PeerDiscoveryTester::testMulticastToTwoNodes()
         dht::PeerDiscovery testDht(MULTICAST_PORT);
         dht::PeerDiscovery testJami(MULTICAST_PORT);
 
-        testJami.startDiscovery<DhtNode>(DHT_NODE_NAME,[&](DhtNode&& v, dht::SockAddr&&){
+        testJami.startDiscovery<DhtNode>(DHT_NODE_NAME, [&](DhtNode&& v, dht::SockAddr&&) {
             CPPUNIT_ASSERT_EQUAL(dhtNode.node_port, v.node_port);
             CPPUNIT_ASSERT_EQUAL(dhtNode.nodeid, v.nodeid);
             CPPUNIT_ASSERT_EQUAL(dhtNode.nid, v.nid);
@@ -78,7 +69,7 @@ void PeerDiscoveryTester::testMulticastToTwoNodes()
             cv.notify_all();
         });
 
-        testJami.startDiscovery(JAMI_NODE_NAME,[&](msgpack::object&& obj, dht::SockAddr&&){
+        testJami.startDiscovery(JAMI_NODE_NAME, [&](msgpack::object&& obj, dht::SockAddr&&) {
             auto v = obj.as<JamiNode>();
             CPPUNIT_ASSERT_EQUAL(jamiNode.num, v.num);
             CPPUNIT_ASSERT_EQUAL(jamiNode.cha, v.cha);
@@ -91,14 +82,10 @@ void PeerDiscoveryTester::testMulticastToTwoNodes()
         });
 
         testDht.startPublish(DHT_NODE_NAME, dhtNode);
-        CPPUNIT_ASSERT(cv.wait_for(l, std::chrono::seconds(5), [&]{
-            return countDht > 0;
-        }));
+        CPPUNIT_ASSERT(cv.wait_for(l, std::chrono::seconds(5), [&] { return countDht > 0; }));
 
         testDht.startPublish(JAMI_NODE_NAME, jamiNode);
-        CPPUNIT_ASSERT(cv.wait_for(l, std::chrono::seconds(5), [&]{
-            return countDht > 1 and countJami > 0;
-        }));
+        CPPUNIT_ASSERT(cv.wait_for(l, std::chrono::seconds(5), [&] { return countDht > 1 and countJami > 0; }));
         // we don't verify count values since its a continious multicasting
 
         l.unlock();
@@ -109,6 +96,8 @@ void PeerDiscoveryTester::testMulticastToTwoNodes()
     }
 }
 
-void PeerDiscoveryTester::tearDown(){}
+void
+PeerDiscoveryTester::tearDown()
+{}
 
-}  // namespace test
+} // namespace test

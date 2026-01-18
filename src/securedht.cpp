@@ -1,19 +1,5 @@
-/*
- *  Copyright (c) 2014-2026 Savoir-faire Linux Inc.
- *
- *  This program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 3 of the License, or
- *  (at your option) any later version.
- *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with this program. If not, see <https://www.gnu.org/licenses/>.
- */
+// Copyright (c) 2014-2026 Savoir-faire Linux Inc.
+// SPDX-License-Identifier: MIT
 #ifdef HAVE_CONFIG_H
 #include "config.h"
 #endif
@@ -33,10 +19,18 @@ extern "C" {
 
 namespace dht {
 
-SecureDht::SecureDht(std::unique_ptr<DhtInterface> dht, SecureDht::Config conf, IdentityAnnouncedCb iacb, const std::shared_ptr<Logger>& l)
-: DhtInterface(l), dht_(std::move(dht)), key_(conf.id.first), certificate_(conf.id.second), enableCache_(conf.cert_cache_all)
+SecureDht::SecureDht(std::unique_ptr<DhtInterface> dht,
+                     SecureDht::Config conf,
+                     IdentityAnnouncedCb iacb,
+                     const std::shared_ptr<Logger>& l)
+    : DhtInterface(l)
+    , dht_(std::move(dht))
+    , key_(conf.id.first)
+    , certificate_(conf.id.second)
+    , enableCache_(conf.cert_cache_all)
 {
-    if (!dht_) return;
+    if (!dht_)
+        return;
     for (const auto& type : DEFAULT_TYPES)
         registerType(type);
 
@@ -63,34 +57,32 @@ SecureDht::SecureDht(std::unique_ptr<DhtInterface> dht, SecureDht::Config conf, 
                 iacb(completedState->second);
         } : iacb;
 
-        dht_->addOnConnectedCallback([this, certId, certLongId, cb=std::move(cb)]{
-            dht_->put(certId, Value {
-                CERTIFICATE_TYPE,
-                *certificate_,
-                1
-            }, cb, {}, true);
-            dht_->put(InfoHash::get(certLongId), Value {
-                CERTIFICATE_TYPE,
-                *certificate_,
-                1
-            }, cb, {}, true);
+        dht_->addOnConnectedCallback([this, certId, certLongId, cb = std::move(cb)] {
+            dht_->put(certId, Value {CERTIFICATE_TYPE, *certificate_, 1}, cb, {}, true);
+            dht_->put(InfoHash::get(certLongId), Value {CERTIFICATE_TYPE, *certificate_, 1}, cb, {}, true);
         });
     }
 }
 
-SecureDht::~SecureDht(){
+SecureDht::~SecureDht()
+{
     dht_.reset();
 }
 
 ValueType
 SecureDht::secureType(ValueType&& type)
 {
-    type.storePolicy = [sp = std::move(type.storePolicy)](InfoHash id, Sp<Value>& v, const InfoHash& nid, const SockAddr& a) {
-        if (v->isSigned())
-            return v->checkSignature();
-        return sp(id, v, nid, a);
-    };
-    type.editPolicy = [l = logger_, ep = std::move(type.editPolicy)](InfoHash id, const Sp<Value>& o, Sp<Value>& n, const InfoHash& nid, const SockAddr& a) {
+    type.storePolicy =
+        [sp = std::move(type.storePolicy)](InfoHash id, Sp<Value>& v, const InfoHash& nid, const SockAddr& a) {
+            if (v->isSigned())
+                return v->checkSignature();
+            return sp(id, v, nid, a);
+        };
+    type.editPolicy = [l = logger_, ep = std::move(type.editPolicy)](InfoHash id,
+                                                                     const Sp<Value>& o,
+                                                                     Sp<Value>& n,
+                                                                     const InfoHash& nid,
+                                                                     const SockAddr& a) {
         if (not o->isSigned())
             return ep(id, o, n, nid, a);
         if (*o->owner != *n->owner or not n->isSigned()) {
@@ -111,8 +103,7 @@ SecureDht::secureType(ValueType&& type)
                     l->w("Edition forbidden: sequence number must be increasing.");
                 return false;
             }
-        }
-        else if (n->seq < o->seq)
+        } else if (n->seq < o->seq)
             return false;
         return true;
     };
@@ -244,22 +235,26 @@ SecureDht::findCertificate(const InfoHash& node, const std::function<void(const 
     }
 
     auto found = std::make_shared<bool>(false);
-    dht_->get(node, [cb,node,found,this](const std::vector<Sp<Value>>& vals) {
-        for (const auto& v : vals) {
-            if (auto cert = registerCertificate(node, v->data)) {
-                *found = true;
-                if (logger_)
-                    logger_->d(node, "Found certificate for %s", node.to_c_str());
-                if (cb)
-                    cb(cert);
-                return false;
+    dht_->get(
+        node,
+        [cb, node, found, this](const std::vector<Sp<Value>>& vals) {
+            for (const auto& v : vals) {
+                if (auto cert = registerCertificate(node, v->data)) {
+                    *found = true;
+                    if (logger_)
+                        logger_->d(node, "Found certificate for %s", node.to_c_str());
+                    if (cb)
+                        cb(cert);
+                    return false;
+                }
             }
-        }
-        return !*found;
-    }, [cb,found](bool) {
-        if (!*found and cb)
-            cb(nullptr);
-    }, Value::TypeFilter(CERTIFICATE_TYPE));
+            return !*found;
+        },
+        [cb, found](bool) {
+            if (!*found and cb)
+                cb(nullptr);
+        },
+        Value::TypeFilter(CERTIFICATE_TYPE));
 }
 
 void
@@ -279,11 +274,13 @@ SecureDht::findPublicKey(const InfoHash& node, const std::function<void(const Sp
             if (*pk) {
                 nodesPubKeys_[pk->getId()] = pk;
                 nodesPubKeysLong_[pk->getLongId()] = pk;
-                if (cb) cb(pk);
+                if (cb)
+                    cb(pk);
                 return;
             }
         }
-        if (cb) cb(nullptr);
+        if (cb)
+            cb(nullptr);
     });
 }
 
@@ -313,22 +310,26 @@ SecureDht::findCertificate(const PkId& node, const std::function<void(const Sp<c
     }
 
     auto found = std::make_shared<bool>(false);
-    dht_->get(InfoHash::get(node), [cb,node,found,this](const std::vector<Sp<Value>>& vals) {
-        for (const auto& v : vals) {
-            if (auto cert = registerCertificate(node, v->data)) {
-                *found = true;
-                if (logger_)
-                    logger_->debug("Found certificate for {}", node.to_c_str());
-                if (cb)
-                    cb(cert);
-                return false;
+    dht_->get(
+        InfoHash::get(node),
+        [cb, node, found, this](const std::vector<Sp<Value>>& vals) {
+            for (const auto& v : vals) {
+                if (auto cert = registerCertificate(node, v->data)) {
+                    *found = true;
+                    if (logger_)
+                        logger_->debug("Found certificate for {}", node.to_c_str());
+                    if (cb)
+                        cb(cert);
+                    return false;
+                }
             }
-        }
-        return !*found;
-    }, [cb,found](bool) {
-        if (!*found and cb)
-            cb(nullptr);
-    }, Value::TypeFilter(CERTIFICATE_TYPE));
+            return !*found;
+        },
+        [cb, found](bool) {
+            if (!*found and cb)
+                cb(nullptr);
+        },
+        Value::TypeFilter(CERTIFICATE_TYPE));
 }
 
 void
@@ -348,11 +349,13 @@ SecureDht::findPublicKey(const PkId& node, const std::function<void(const Sp<cry
             if (*pk) {
                 nodesPubKeys_[pk->getId()] = pk;
                 nodesPubKeysLong_[pk->getLongId()] = pk;
-                if (cb) cb(pk);
+                if (cb)
+                    cb(pk);
                 return;
             }
         }
-        if (cb) cb(nullptr);
+        if (cb)
+            cb(nullptr);
     });
 }
 
@@ -420,7 +423,6 @@ SecureDht::getCallbackFilter(const ValueCallback& cb, Value::Filter&& filter)
     };
 }
 
-
 GetCallback
 SecureDht::getCallbackFilter(const GetCallback& cb, Value::Filter&& filter)
 {
@@ -451,7 +453,6 @@ SecureDht::listen(const InfoHash& id, ValueCallback cb, Value::Filter f, Where w
     return dht_->listen(id, getCallbackFilter(cb, std::forward<Value::Filter>(f)), {}, std::forward<Where>(w));
 }
 
-
 size_t
 SecureDht::listen(const InfoHash& id, GetCallback cb, Value::Filter f, Where w)
 {
@@ -461,7 +462,7 @@ SecureDht::listen(const InfoHash& id, GetCallback cb, Value::Filter f, Where w)
 void
 SecureDht::putSigned(const InfoHash& hash, Sp<Value> val, DoneCallback callback, bool permanent)
 {
-    if (not key_ or not hash or not val)  {
+    if (not key_ or not hash or not val) {
         if (callback)
             callback(false, {});
         return;
@@ -479,8 +480,9 @@ SecureDht::putSigned(const InfoHash& hash, Sp<Value> val, DoneCallback callback,
     }
 
     // Check if data already exists on the dht
-    get(hash,
-        [val,this] (const std::vector<Sp<Value>>& vals) {
+    get(
+        hash,
+        [val, this](const std::vector<Sp<Value>>& vals) {
             if (logger_)
                 logger_->d("Found online previous value being announced.");
             for (const auto& v : vals) {
@@ -495,73 +497,77 @@ SecureDht::putSigned(const InfoHash& hash, Sp<Value> val, DoneCallback callback,
             }
             return true;
         },
-        [hash,val,this,callback,permanent] (bool /* ok */) {
+        [hash, val, this, callback, permanent](bool /* ok */) {
             sign(*val);
             dht_->put(hash, val, callback, time_point::max(), permanent);
         },
         Value::IdFilter(val->id),
-        Where().id(val->id)
-    );
+        Where().id(val->id));
 }
 
 void
 SecureDht::putEncrypted(const InfoHash& hash, const InfoHash& to, Sp<Value> val, DoneCallback callback, bool permanent)
 {
-    if (not key_)  {
+    if (not key_) {
         if (callback)
             callback(false, {});
         return;
     }
-    findPublicKey(to, [this, hash, val = std::move(val), callback = std::move(callback), permanent](const Sp<crypto::PublicKey>& pk) {
-        if(!pk || !*pk) {
-            if (callback)
-                callback(false, {});
-            return;
-        }
-        if (logger_)
-            logger_->w("Encrypting data for PK: %s", pk->getId().toString().c_str());
-        try {
-            dht_->put(hash, encrypt(*val, *pk), callback, time_point::max(), permanent);
-        } catch (const std::exception& e) {
-            if (logger_)
-                logger_->e("Error putting encrypted data: %s", e.what());
-            if (callback)
-                callback(false, {});
-        }
-    });
+    findPublicKey(to,
+                  [this, hash, val = std::move(val), callback = std::move(callback), permanent](
+                      const Sp<crypto::PublicKey>& pk) {
+                      if (!pk || !*pk) {
+                          if (callback)
+                              callback(false, {});
+                          return;
+                      }
+                      if (logger_)
+                          logger_->w("Encrypting data for PK: %s", pk->getId().toString().c_str());
+                      try {
+                          dht_->put(hash, encrypt(*val, *pk), callback, time_point::max(), permanent);
+                      } catch (const std::exception& e) {
+                          if (logger_)
+                              logger_->e("Error putting encrypted data: %s", e.what());
+                          if (callback)
+                              callback(false, {});
+                      }
+                  });
 }
 
 void
 SecureDht::putEncrypted(const InfoHash& hash, const PkId& to, Sp<Value> val, DoneCallback callback, bool permanent)
 {
-    if (not key_)  {
+    if (not key_) {
         if (callback)
             callback(false, {});
         return;
     }
-    findPublicKey(to, [this, hash, val = std::move(val), callback = std::move(callback), permanent](const Sp<crypto::PublicKey>& pk) {
-        if(!pk || !*pk) {
-            if (callback)
-                callback(false, {});
-            return;
-        }
-        if (logger_)
-            logger_->warn("Encrypting data for PK: {}", pk->getLongId());
-        try {
-            dht_->put(hash, encrypt(*val, *pk), callback, time_point::max(), permanent);
-        } catch (const std::exception& e) {
-            if (logger_)
-                logger_->e("Error putting encrypted data: %s", e.what());
-            if (callback)
-                callback(false, {});
-        }
-    });
+    findPublicKey(to,
+                  [this, hash, val = std::move(val), callback = std::move(callback), permanent](
+                      const Sp<crypto::PublicKey>& pk) {
+                      if (!pk || !*pk) {
+                          if (callback)
+                              callback(false, {});
+                          return;
+                      }
+                      if (logger_)
+                          logger_->warn("Encrypting data for PK: {}", pk->getLongId());
+                      try {
+                          dht_->put(hash, encrypt(*val, *pk), callback, time_point::max(), permanent);
+                      } catch (const std::exception& e) {
+                          if (logger_)
+                              logger_->e("Error putting encrypted data: %s", e.what());
+                          if (callback)
+                              callback(false, {});
+                      }
+                  });
 }
 
 void
-SecureDht::putEncrypted(const InfoHash& hash, const crypto::PublicKey& pk, Sp<Value> val, DoneCallback callback, bool permanent)
+SecureDht::putEncrypted(
+    const InfoHash& hash, const crypto::PublicKey& pk, Sp<Value> val, DoneCallback callback, bool permanent)
 {
-    if (not key_)  {
+    if (not key_) {
         if (callback)
             callback(false, {});
         return;
@@ -599,7 +605,7 @@ SecureDht::decrypt(const Value& v)
     auto decrypted = key_->decrypt(v.cypher);
 
     Value ret {v.id};
-    auto msg = msgpack::unpack((const char*)decrypted.data(), decrypted.size());
+    auto msg = msgpack::unpack((const char*) decrypted.data(), decrypted.size());
     ret.msgpack_unpack_body(msg.get());
 
     if (ret.recipient != getId())
@@ -610,4 +616,4 @@ SecureDht::decrypt(const Value& v)
     return ret;
 }
 
-}
+} // namespace dht

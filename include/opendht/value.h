@@ -1,20 +1,5 @@
-/*
- *  Copyright (c) 2014-2026 Savoir-faire Linux Inc.
- *
- *  This program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 3 of the License, or
- *  (at your option) any later version.
- *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with this program. If not, see <https://www.gnu.org/licenses/>.
- */
-
+// Copyright (c) 2014-2026 Savoir-faire Linux Inc.
+// SPDX-License-Identifier: MIT
 #pragma once
 
 #include "infohash.h"
@@ -69,7 +54,8 @@ struct Query;
  * @param form_addr: network address of the incoming request.
  * @param from_len: network address lendth of the incoming request.
  */
-using StorePolicy = std::function<bool(InfoHash key, std::shared_ptr<Value>& value, const InfoHash& from, const SockAddr& addr)>;
+using StorePolicy
+    = std::function<bool(InfoHash key, std::shared_ptr<Value>& value, const InfoHash& from, const SockAddr& addr)>;
 
 /**
  * An edition policy is applied once to every incoming value storage requests,
@@ -85,36 +71,51 @@ using StorePolicy = std::function<bool(InfoHash key, std::shared_ptr<Value>& val
  * @param form_addr: network address of the incoming request.
  * @param from_len: network address lendth of the incoming request.
  */
-using EditPolicy = std::function<bool(InfoHash key, const std::shared_ptr<Value>& old_val, std::shared_ptr<Value>& new_val, const InfoHash& from, const SockAddr& addr)>;
+using EditPolicy = std::function<bool(InfoHash key,
+                                      const std::shared_ptr<Value>& old_val,
+                                      std::shared_ptr<Value>& new_val,
+                                      const InfoHash& from,
+                                      const SockAddr& addr)>;
 
 static constexpr const size_t MAX_VALUE_SIZE {1024 * 64};
 static constexpr const duration DEFAULT_VALUE_EXPIRATION {std::chrono::minutes(10)};
 
-struct ValueType {
+struct ValueType
+{
     typedef uint16_t Id;
 
-    OPENDHT_PUBLIC static bool DEFAULT_STORE_POLICY(InfoHash, const std::shared_ptr<Value>& v, const InfoHash&, const SockAddr&);
-    static inline bool DEFAULT_EDIT_POLICY(InfoHash, const std::shared_ptr<Value>&, std::shared_ptr<Value>&, const InfoHash&, const SockAddr&) {
+    OPENDHT_PUBLIC static bool DEFAULT_STORE_POLICY(InfoHash,
+                                                    const std::shared_ptr<Value>& v,
+                                                    const InfoHash&,
+                                                    const SockAddr&);
+    static inline bool DEFAULT_EDIT_POLICY(
+        InfoHash, const std::shared_ptr<Value>&, std::shared_ptr<Value>&, const InfoHash&, const SockAddr&)
+    {
         return false;
     }
 
-    ValueType () {}
+    ValueType() {}
 
-    ValueType (Id id, std::string name, duration e = DEFAULT_VALUE_EXPIRATION)
-    : id(id), name(name), expiration(e) {}
+    ValueType(Id id, std::string name, duration e = DEFAULT_VALUE_EXPIRATION)
+        : id(id)
+        , name(name)
+        , expiration(e)
+    {}
 
-    ValueType (Id id, std::string name, duration e, StorePolicy sp, EditPolicy ep = DEFAULT_EDIT_POLICY)
-     : id(id), name(name), expiration(e), storePolicy(sp), editPolicy(ep) {}
+    ValueType(Id id, std::string name, duration e, StorePolicy sp, EditPolicy ep = DEFAULT_EDIT_POLICY)
+        : id(id)
+        , name(name)
+        , expiration(e)
+        , storePolicy(sp)
+        , editPolicy(ep)
+    {}
 
     virtual ~ValueType() {}
 
-    bool operator==(const ValueType& o) {
-       return id == o.id;
-    }
+    bool operator==(const ValueType& o) { return id == o.id; }
 
     // Generic value type
     OPENDHT_PUBLIC static const ValueType USER_DATA;
-
 
     Id id {0};
     std::string name {};
@@ -123,15 +124,16 @@ struct ValueType {
     EditPolicy editPolicy {DEFAULT_EDIT_POLICY};
 };
 
-class TypeStore {
+class TypeStore
+{
 public:
-    void registerType(const ValueType& type) {
-        types[type.id] = type;
-    }
-    const ValueType& getType(ValueType::Id type_id) const {
+    void registerType(const ValueType& type) { types[type.id] = type; }
+    const ValueType& getType(ValueType::Id type_id) const
+    {
         const auto& t_it = types.find(type_id);
         return (t_it == types.end()) ? ValueType::USER_DATA : t_it->second;
     }
+
 private:
     std::map<ValueType::Id, ValueType> types {};
 };
@@ -155,43 +157,56 @@ struct OPENDHT_PUBLIC Value
         SeqNum,    /* Value::seq */
         UserType,  /* Value::user_type */
 
-        COUNT      /* the total number of fields */
+        COUNT /* the total number of fields */
     };
 
     typedef uint64_t Id;
     static const constexpr Id INVALID_ID {0};
 
-    class Filter : public std::function<bool(const Value&)> {
+    class Filter : public std::function<bool(const Value&)>
+    {
     public:
         Filter() {}
 
         template<typename Functor>
-        Filter(Functor f) : std::function<bool(const Value&)>::function(f) {}
+        Filter(Functor f)
+            : std::function<bool(const Value&)>::function(f)
+        {}
 
-        inline Filter chain(Filter&& f2) {
+        inline Filter chain(Filter&& f2)
+        {
             auto f1 = *this;
             return chain(std::move(f1), std::move(f2));
         }
-        inline Filter chainOr(Filter&& f2) {
+        inline Filter chainOr(Filter&& f2)
+        {
             auto f1 = *this;
             return chainOr(std::move(f1), std::move(f2));
         }
-        static inline Filter chain(Filter&& f1, Filter&& f2) {
-            if (not f1) return std::move(f2);
-            if (not f2) return std::move(f1);
+        static inline Filter chain(Filter&& f1, Filter&& f2)
+        {
+            if (not f1)
+                return std::move(f2);
+            if (not f2)
+                return std::move(f1);
             return [f1 = std::move(f1), f2 = std::move(f2)](const Value& v) {
                 return f1(v) and f2(v);
             };
         }
-        static inline Filter chain(const Filter& f1, const Filter& f2) {
-            if (not f1) return f2;
-            if (not f2) return f1;
-            return [f1,f2](const Value& v) {
+        static inline Filter chain(const Filter& f1, const Filter& f2)
+        {
+            if (not f1)
+                return f2;
+            if (not f2)
+                return f1;
+            return [f1, f2](const Value& v) {
                 return f1(v) and f2(v);
             };
         }
-        static inline Filter chainAll(std::vector<Filter>&& set) {
-            if (set.empty()) return {};
+        static inline Filter chainAll(std::vector<Filter>&& set)
+        {
+            if (set.empty())
+                return {};
             return [set = std::move(set)](const Value& v) {
                 for (const auto& f : set)
                     if (f and not f(v))
@@ -199,21 +214,31 @@ struct OPENDHT_PUBLIC Value
                 return true;
             };
         }
-        static inline Filter chain(std::initializer_list<Filter> l) {
+        static inline Filter chain(std::initializer_list<Filter> l)
+        {
             return chainAll(std::vector<Filter>(l.begin(), l.end()));
         }
-        static inline Filter chainOr(Filter&& f1, Filter&& f2) {
-            if (not f1 or not f2) return {};
-            return [f1=std::move(f1),f2=std::move(f2)](const Value& v) {
+        static inline Filter chainOr(Filter&& f1, Filter&& f2)
+        {
+            if (not f1 or not f2)
+                return {};
+            return [f1 = std::move(f1), f2 = std::move(f2)](const Value& v) {
                 return f1(v) or f2(v);
             };
         }
-        static inline Filter notFilter(Filter&& f) {
-            if (not f) return [](const Value&) { return false; };
-            return [f = std::move(f)](const Value& v) { return not f(v); };
+        static inline Filter notFilter(Filter&& f)
+        {
+            if (not f)
+                return [](const Value&) {
+                    return false;
+                };
+            return [f = std::move(f)](const Value& v) {
+                return not f(v);
+            };
         }
-        std::vector<Sp<Value>> filter(const std::vector<Sp<Value>>& values) {
-            if (not (*this))
+        std::vector<Sp<Value>> filter(const std::vector<Sp<Value>>& values)
+        {
+            if (not(*this))
                 return values;
             std::vector<Sp<Value>> ret;
             for (const auto& v : values)
@@ -225,50 +250,53 @@ struct OPENDHT_PUBLIC Value
 
     /* Sneaky functions disguised in classes */
 
-    static inline Filter AllFilter() {
-        return {};
-    }
+    static inline Filter AllFilter() { return {}; }
 
-    static inline Filter TypeFilter(const ValueType& t) {
+    static inline Filter TypeFilter(const ValueType& t)
+    {
         return [tid = t.id](const Value& v) {
             return v.type == tid;
         };
     }
-    static inline Filter TypeFilter(const ValueType::Id& tid) {
+    static inline Filter TypeFilter(const ValueType::Id& tid)
+    {
         return [tid](const Value& v) {
             return v.type == tid;
         };
     }
 
-    static inline Filter IdFilter(const Id id) {
+    static inline Filter IdFilter(const Id id)
+    {
         return [id](const Value& v) {
             return v.id == id;
         };
     }
 
-    static inline Filter RecipientFilter(const InfoHash& r) {
+    static inline Filter RecipientFilter(const InfoHash& r)
+    {
         return [r](const Value& v) {
             return v.recipient == r;
         };
     }
 
-    static inline Filter OwnerFilter(const crypto::PublicKey& pk) {
-        return OwnerFilter(pk.getId());
-    }
+    static inline Filter OwnerFilter(const crypto::PublicKey& pk) { return OwnerFilter(pk.getId()); }
 
-    static inline Filter OwnerFilter(const InfoHash& pkh) {
+    static inline Filter OwnerFilter(const InfoHash& pkh)
+    {
         return [pkh](const Value& v) {
             return v.owner and v.owner->getId() == pkh;
         };
     }
 
-    static inline Filter SeqNumFilter(uint16_t seq_no) {
+    static inline Filter SeqNumFilter(uint16_t seq_no)
+    {
         return [seq_no](const Value& v) {
             return v.seq == seq_no;
         };
     }
 
-    static inline Filter UserTypeFilter(std::string ut) {
+    static inline Filter UserTypeFilter(std::string ut)
+    {
         return [ut = std::move(ut)](const Value& v) {
             return v.user_type == ut;
         };
@@ -284,42 +312,36 @@ struct OPENDHT_PUBLIC Value
         virtual Value packValue() const = 0;
     };
 
-    template <typename Derived, typename Base=SerializableBase>
+    template<typename Derived, typename Base = SerializableBase>
     class Serializable : public Base
     {
     public:
         using Base::Base;
 
-        virtual const ValueType& getType() const {
-            return Derived::TYPE;
-        }
+        virtual const ValueType& getType() const { return Derived::TYPE; }
 
-        virtual void unpackValue(const Value& v) {
-            auto msg = msgpack::unpack((const char*)v.data.data(), v.data.size());
+        virtual void unpackValue(const Value& v)
+        {
+            auto msg = msgpack::unpack((const char*) v.data.data(), v.data.size());
             msg.get().convert(*static_cast<Derived*>(this));
         }
 
-        virtual Value packValue() const {
-            return Value {getType(), static_cast<const Derived&>(*this)};
-        }
+        virtual Value packValue() const { return Value {getType(), static_cast<const Derived&>(*this)}; }
     };
 
-    template <typename T,
-              typename std::enable_if<std::is_base_of<SerializableBase, T>::value, T>::type* = nullptr>
+    template<typename T, typename std::enable_if<std::is_base_of<SerializableBase, T>::value, T>::type* = nullptr>
     static Value pack(const T& obj)
     {
         return obj.packValue();
     }
 
-    template <typename T,
-              typename std::enable_if<!std::is_base_of<SerializableBase, T>::value, T>::type* = nullptr>
+    template<typename T, typename std::enable_if<!std::is_base_of<SerializableBase, T>::value, T>::type* = nullptr>
     static Value pack(const T& obj)
     {
         return {ValueType::USER_DATA.id, packMsg<T>(obj)};
     }
 
-    template <typename T,
-              typename std::enable_if<std::is_base_of<SerializableBase, T>::value, T>::type* = nullptr>
+    template<typename T, typename std::enable_if<std::is_base_of<SerializableBase, T>::value, T>::type* = nullptr>
     static T unpack(const Value& v)
     {
         T msg;
@@ -327,25 +349,20 @@ struct OPENDHT_PUBLIC Value
         return msg;
     }
 
-    template <typename T,
-              typename std::enable_if<!std::is_base_of<SerializableBase, T>::value, T>::type* = nullptr>
+    template<typename T, typename std::enable_if<!std::is_base_of<SerializableBase, T>::value, T>::type* = nullptr>
     static T unpack(const Value& v)
     {
         return unpackMsg<T>(v.data);
     }
 
-    template <typename T>
+    template<typename T>
     T unpack()
     {
         return unpack<T>(*this);
     }
 
-    inline bool isEncrypted() const {
-        return not cypher.empty();
-    }
-    inline bool isSigned() const {
-        return owner and not signature.empty();
-    }
+    inline bool isEncrypted() const { return not cypher.empty(); }
+    inline bool isSigned() const { return owner and not signature.empty(); }
 
     /**
      * Sign the value using the provided private key.
@@ -358,13 +375,9 @@ struct OPENDHT_PUBLIC Value
      * Check that the value is signed and that the signature matches.
      * If true, the owner field will contain the signer public key.
      */
-    inline bool checkSignature() const {
-        return isSigned() and owner->checkSignature(getToSign(), signature);
-    }
+    inline bool checkSignature() const { return isSigned() and owner->checkSignature(getToSign(), signature); }
 
-    inline std::shared_ptr<crypto::PublicKey> getOwner() const {
-        return owner;
-    }
+    inline std::shared_ptr<crypto::PublicKey> getOwner() const { return owner; }
 
     /**
      * Sign the value with from and returns the encrypted version for to.
@@ -373,15 +386,26 @@ struct OPENDHT_PUBLIC Value
 
     Value() {}
 
-    Value (Id id) : id(id) {}
+    Value(Id id)
+        : id(id)
+    {}
 
     /** Generic constructor */
     Value(ValueType::Id t, const Blob& data, Id id = INVALID_ID)
-     : id(id), type(t), data(data) {}
+        : id(id)
+        , type(t)
+        , data(data)
+    {}
     Value(ValueType::Id t, Blob&& data, Id id = INVALID_ID)
-     : id(id), type(t), data(std::move(data)) {}
+        : id(id)
+        , type(t)
+        , data(std::move(data))
+    {}
     Value(ValueType::Id t, const uint8_t* dat_ptr, size_t dat_len, Id id = INVALID_ID)
-     : id(id), type(t), data(dat_ptr, dat_ptr+dat_len) {}
+        : id(id)
+        , type(t)
+        , data(dat_ptr, dat_ptr + dat_len)
+    {}
 
 #ifdef OPENDHT_JSONCPP
     /**
@@ -391,87 +415,98 @@ struct OPENDHT_PUBLIC Value
     Value(const Json::Value& json);
 #endif
 
-    template <typename Type>
+    template<typename Type>
     Value(ValueType::Id t, const Type& d, Id id = INVALID_ID)
-     : id(id), type(t), data(packMsg(d)) {}
+        : id(id)
+        , type(t)
+        , data(packMsg(d))
+    {}
 
-    template <typename Type>
+    template<typename Type>
     Value(const ValueType& t, const Type& d, Id id = INVALID_ID)
-     : id(id), type(t.id), data(packMsg(d)) {}
+        : id(id)
+        , type(t.id)
+        , data(packMsg(d))
+    {}
 
     /** Custom user data constructor */
-    Value(const Blob& userdata) : data(userdata) {}
-    Value(Blob&& userdata) : data(std::move(userdata)) {}
-    Value(const uint8_t* dat_ptr, size_t dat_len) : data(dat_ptr, dat_ptr+dat_len) {}
+    Value(const Blob& userdata)
+        : data(userdata)
+    {}
+    Value(Blob&& userdata)
+        : data(std::move(userdata))
+    {}
+    Value(const uint8_t* dat_ptr, size_t dat_len)
+        : data(dat_ptr, dat_ptr + dat_len)
+    {}
 
     Value(Value&& o) noexcept
-     : id(o.id), owner(std::move(o.owner)), recipient(o.recipient),
-     type(o.type), data(std::move(o.data)), user_type(std::move(o.user_type)), seq(o.seq)
-     , signature(std::move(o.signature)), cypher(std::move(o.cypher))
-     , priority(o.priority) {}
+        : id(o.id)
+        , owner(std::move(o.owner))
+        , recipient(o.recipient)
+        , type(o.type)
+        , data(std::move(o.data))
+        , user_type(std::move(o.user_type))
+        , seq(o.seq)
+        , signature(std::move(o.signature))
+        , cypher(std::move(o.cypher))
+        , priority(o.priority)
+    {}
 
-    template <typename Type>
+    template<typename Type>
     Value(const Type& vs)
-     : Value(pack<Type>(vs)) {}
+        : Value(pack<Type>(vs))
+    {}
 
     /**
      * Unpack a serialized value
      */
-    Value(const msgpack::object& o) {
-        msgpack_unpack(o);
-    }
+    Value(const msgpack::object& o) { msgpack_unpack(o); }
 
     /**
      * Returns true if value contents are equals (not considering the value ID)
      */
-    inline bool contentEquals(const Value& o) const {
-        return isEncrypted() ? cypher == o.cypher :
-            ((owner == o.owner || (owner and o.owner and *owner == *o.owner))
-                && type == o.type
-                && data == o.data
-                && user_type == o.user_type
-                && signature == o.signature);
+    inline bool contentEquals(const Value& o) const
+    {
+        return isEncrypted() ? cypher == o.cypher
+                             : ((owner == o.owner || (owner and o.owner and *owner == *o.owner)) && type == o.type
+                                && data == o.data && user_type == o.user_type && signature == o.signature);
     }
 
-    inline bool operator== (const Value& o) const {
-        return id == o.id and contentEquals(o);
-    }
-    inline bool operator!= (const Value& o) const {
-        return !(*this == o);
-    }
+    inline bool operator==(const Value& o) const { return id == o.id and contentEquals(o); }
+    inline bool operator!=(const Value& o) const { return !(*this == o); }
 
-    inline void setRecipient(const InfoHash& r) {
-        recipient = r;
-    }
+    inline void setRecipient(const InfoHash& r) { recipient = r; }
 
-    inline void setCypher(Blob&& c) {
-        cypher = std::move(c);
-    }
+    inline void setCypher(Blob&& c) { cypher = std::move(c); }
 
     /**
      * Pack part of the data to be signed (must always be done the same way)
      */
-    inline Blob getToSign() const {
+    inline Blob getToSign() const
+    {
         msgpack::sbuffer buffer;
         msgpack::packer<msgpack::sbuffer> pk(&buffer);
         msgpack_pack_to_sign(pk);
-        return {buffer.data(), buffer.data()+buffer.size()};
+        return {buffer.data(), buffer.data() + buffer.size()};
     }
 
     /**
      * Pack part of the data to be encrypted
      */
-    inline Blob getToEncrypt() const {
+    inline Blob getToEncrypt() const
+    {
         msgpack::sbuffer buffer;
         msgpack::packer<msgpack::sbuffer> pk(&buffer);
         msgpack_pack_to_encrypt(pk);
-        return {buffer.data(), buffer.data()+buffer.size()};
+        return {buffer.data(), buffer.data() + buffer.size()};
     }
 
     /** print value for debugging */
-    OPENDHT_PUBLIC friend std::ostream& operator<< (std::ostream& s, const Value& v);
+    OPENDHT_PUBLIC friend std::ostream& operator<<(std::ostream& s, const Value& v);
 
-    inline std::string toString() const {
+    inline std::string toString() const
+    {
         std::ostringstream ss;
         ss << *this;
         return ss.str();
@@ -492,88 +527,100 @@ struct OPENDHT_PUBLIC Value
     /** Return the size in bytes used by this value in memory (minimum). */
     size_t size() const;
 
-    template <typename Packer>
+    template<typename Packer>
     void msgpack_pack_to_sign(Packer& pk) const
     {
         bool has_owner = owner && *owner;
-        pk.pack_map((user_type.empty()?0:1) + (has_owner?(recipient ? 5 : 4):2));
+        pk.pack_map((user_type.empty() ? 0 : 1) + (has_owner ? (recipient ? 5 : 4) : 2));
         if (has_owner) { // isSigned
-            pk.pack(VALUE_KEY_SEQ);   pk.pack(seq);
-            pk.pack(VALUE_KEY_OWNER); owner->msgpack_pack(pk);
+            pk.pack(VALUE_KEY_SEQ);
+            pk.pack(seq);
+            pk.pack(VALUE_KEY_OWNER);
+            owner->msgpack_pack(pk);
             if (recipient) {
-                pk.pack(VALUE_KEY_TO); pk.pack(recipient);
+                pk.pack(VALUE_KEY_TO);
+                pk.pack(recipient);
             }
         }
-        pk.pack(VALUE_KEY_TYPE);  pk.pack(type);
-        pk.pack(VALUE_KEY_DATA);  pk.pack_bin(data.size());
-                                  pk.pack_bin_body((const char*)data.data(), data.size());
+        pk.pack(VALUE_KEY_TYPE);
+        pk.pack(type);
+        pk.pack(VALUE_KEY_DATA);
+        pk.pack_bin(data.size());
+        pk.pack_bin_body((const char*) data.data(), data.size());
         if (not user_type.empty()) {
-            pk.pack(VALUE_KEY_USERTYPE); pk.pack(user_type);
+            pk.pack(VALUE_KEY_USERTYPE);
+            pk.pack(user_type);
         }
     }
 
-    template <typename Packer>
+    template<typename Packer>
     void msgpack_pack_to_encrypt(Packer& pk) const
     {
         if (isEncrypted()) {
             pk.pack_bin(cypher.size());
-            pk.pack_bin_body((const char*)cypher.data(), cypher.size());
+            pk.pack_bin_body((const char*) cypher.data(), cypher.size());
         } else {
             pk.pack_map(isSigned() ? 2 : 1);
-            pk.pack(VALUE_KEY_BODY); msgpack_pack_to_sign(pk);
+            pk.pack(VALUE_KEY_BODY);
+            msgpack_pack_to_sign(pk);
             if (isSigned()) {
-                pk.pack(VALUE_KEY_SIGNATURE); pk.pack_bin(signature.size());
-                                              pk.pack_bin_body((const char*)signature.data(), signature.size());
+                pk.pack(VALUE_KEY_SIGNATURE);
+                pk.pack_bin(signature.size());
+                pk.pack_bin_body((const char*) signature.data(), signature.size());
             }
         }
     }
 
-    template <typename Packer>
+    template<typename Packer>
     void msgpack_pack(Packer& pk) const
     {
-        pk.pack_map(2 + (priority?1:0));
-        pk.pack(VALUE_KEY_ID);  pk.pack(id);
-        pk.pack(VALUE_KEY_DAT); msgpack_pack_to_encrypt(pk);
+        pk.pack_map(2 + (priority ? 1 : 0));
+        pk.pack(VALUE_KEY_ID);
+        pk.pack(id);
+        pk.pack(VALUE_KEY_DAT);
+        msgpack_pack_to_encrypt(pk);
         if (priority) {
-            pk.pack(VALUE_KEY_PRIO);  pk.pack(priority);
+            pk.pack(VALUE_KEY_PRIO);
+            pk.pack(priority);
         }
     }
 
-    template <typename Packer>
+    template<typename Packer>
     void msgpack_pack_fields(const std::set<Value::Field>& fields, Packer& pk) const
     {
         for (const auto& field : fields)
             switch (field) {
-                case Value::Field::Id:
-                    pk.pack(static_cast<uint64_t>(id));
-                    break;
-                case Value::Field::ValueType:
-                    pk.pack(static_cast<uint64_t>(type));
-                    break;
-                case Value::Field::OwnerPk:
-                    if (owner)
-                        owner->msgpack_pack(pk);
-                    else
-                        InfoHash().msgpack_pack(pk);
-                    break;
-                case Value::Field::SeqNum:
-                    pk.pack(static_cast<uint64_t>(seq));
-                    break;
-                case Value::Field::UserType:
-                    pk.pack(user_type);
-                    break;
-                default:
-                    break;
+            case Value::Field::Id:
+                pk.pack(static_cast<uint64_t>(id));
+                break;
+            case Value::Field::ValueType:
+                pk.pack(static_cast<uint64_t>(type));
+                break;
+            case Value::Field::OwnerPk:
+                if (owner)
+                    owner->msgpack_pack(pk);
+                else
+                    InfoHash().msgpack_pack(pk);
+                break;
+            case Value::Field::SeqNum:
+                pk.pack(static_cast<uint64_t>(seq));
+                break;
+            case Value::Field::UserType:
+                pk.pack(user_type);
+                break;
+            default:
+                break;
             }
     }
 
     void msgpack_unpack(const msgpack::object& o);
     void msgpack_unpack_body(const msgpack::object& o);
-    Blob getPacked() const {
+    Blob getPacked() const
+    {
         msgpack::sbuffer buffer;
         msgpack::packer<msgpack::sbuffer> pk(&buffer);
         pk.pack(*this);
-        return {buffer.data(), buffer.data()+buffer.size()};
+        return {buffer.data(), buffer.data() + buffer.size()};
     }
 
     void msgpack_unpack_fields(const std::set<Value::Field>& fields, const msgpack::object& o, unsigned offset);
@@ -625,12 +672,8 @@ struct OPENDHT_PUBLIC Value
      */
     unsigned priority {0};
 
-    inline bool isSignatureChecked() const {
-        return signatureChecked;
-    }
-    inline bool isDecrypted() const {
-        return decrypted;
-    }
+    inline bool isSignatureChecked() const { return signatureChecked; }
+    inline bool isDecrypted() const { return decrypted; }
     bool checkSignature();
     Sp<Value> decrypt(const crypto::PrivateKey& key);
 
@@ -654,9 +697,18 @@ using ValuesExport = std::pair<InfoHash, Blob>;
 struct OPENDHT_PUBLIC FieldValue
 {
     FieldValue() {}
-    FieldValue(Value::Field f, uint64_t int_value) : field(f), intValue(int_value) {}
-    FieldValue(Value::Field f, InfoHash hash_value) : field(f), hashValue(hash_value) {}
-    FieldValue(Value::Field f, Blob blob_value) : field(f), blobValue(std::move(blob_value)) {}
+    FieldValue(Value::Field f, uint64_t int_value)
+        : field(f)
+        , intValue(int_value)
+    {}
+    FieldValue(Value::Field f, InfoHash hash_value)
+        : field(f)
+        , hashValue(hash_value)
+    {}
+    FieldValue(Value::Field f, Blob blob_value)
+        : field(f)
+        , blobValue(std::move(blob_value))
+    {}
 
     bool operator==(const FieldValue& fd) const;
 
@@ -666,35 +718,38 @@ struct OPENDHT_PUBLIC FieldValue
     InfoHash getHash() const { return hashValue; }
     Blob getBlob() const { return blobValue; }
 
-    template <typename Packer>
-    void msgpack_pack(Packer& p) const {
+    template<typename Packer>
+    void msgpack_pack(Packer& p) const
+    {
         p.pack_map(2);
-        p.pack("f"sv); p.pack(static_cast<uint8_t>(field));
+        p.pack("f"sv);
+        p.pack(static_cast<uint8_t>(field));
 
         p.pack("v"sv);
         switch (field) {
-            case Value::Field::Id:
-            case Value::Field::ValueType:
-                p.pack(intValue);
-                break;
-            case Value::Field::OwnerPk:
-                p.pack(hashValue);
-                break;
-            case Value::Field::UserType:
-                p.pack_bin(blobValue.size());
-                p.pack_bin_body((const char*)blobValue.data(), blobValue.size());
-                break;
-            default:
-                throw msgpack::type_error();
+        case Value::Field::Id:
+        case Value::Field::ValueType:
+            p.pack(intValue);
+            break;
+        case Value::Field::OwnerPk:
+            p.pack(hashValue);
+            break;
+        case Value::Field::UserType:
+            p.pack_bin(blobValue.size());
+            p.pack_bin_body((const char*) blobValue.data(), blobValue.size());
+            break;
+        default:
+            throw msgpack::type_error();
         }
     }
 
-    void msgpack_unpack(const msgpack::object& msg) {
+    void msgpack_unpack(const msgpack::object& msg)
+    {
         hashValue = {};
         blobValue.clear();
 
         if (auto f = findMapValue(msg, "f"sv))
-            field = (Value::Field)f->as<unsigned>();
+            field = (Value::Field) f->as<unsigned>();
         else
             throw msgpack::type_error();
 
@@ -703,18 +758,18 @@ struct OPENDHT_PUBLIC FieldValue
             throw msgpack::type_error();
         else
             switch (field) {
-                case Value::Field::Id:
-                case Value::Field::ValueType:
-                    intValue = v->as<decltype(intValue)>();
-                    break;
-                case Value::Field::OwnerPk:
-                    hashValue = v->as<decltype(hashValue)>();
-                    break;
-                case Value::Field::UserType:
-                    blobValue = unpackBlob(*v);
-                    break;
-                default:
-                    throw msgpack::type_error();
+            case Value::Field::Id:
+            case Value::Field::ValueType:
+                intValue = v->as<decltype(intValue)>();
+                break;
+            case Value::Field::OwnerPk:
+                hashValue = v->as<decltype(hashValue)>();
+                break;
+            case Value::Field::UserType:
+                blobValue = unpackBlob(*v);
+                break;
+            default:
+                throw msgpack::type_error();
             }
     }
 
@@ -737,7 +792,7 @@ private:
  */
 struct OPENDHT_PUBLIC Select
 {
-    Select() { }
+    Select() {}
     Select(std::string_view q_str);
 
     bool isSatisfiedBy(const Select& os) const;
@@ -749,7 +804,8 @@ struct OPENDHT_PUBLIC Select
      *
      * @return the resulting Select instance.
      */
-    Select& field(Value::Field field) {
+    Select& field(Value::Field field)
+    {
         if (std::find(fieldSelection_.begin(), fieldSelection_.end(), field) == fieldSelection_.end())
             fieldSelection_.emplace_back(field);
         return *this;
@@ -760,17 +816,17 @@ struct OPENDHT_PUBLIC Select
      *
      * @return the set of fields.
      */
-    std::set<Value::Field> getSelection() const {
-        return {fieldSelection_.begin(), fieldSelection_.end()};
-    }
+    std::set<Value::Field> getSelection() const { return {fieldSelection_.begin(), fieldSelection_.end()}; }
 
-    template <typename Packer>
-    void msgpack_pack(Packer& pk) const { pk.pack(fieldSelection_); }
-    void msgpack_unpack(const msgpack::object& o) {
-        fieldSelection_ = o.as<decltype(fieldSelection_)>();
+    template<typename Packer>
+    void msgpack_pack(Packer& pk) const
+    {
+        pk.pack(fieldSelection_);
     }
+    void msgpack_unpack(const msgpack::object& o) { fieldSelection_ = o.as<decltype(fieldSelection_)>(); }
 
-    std::string toString() const {
+    std::string toString() const
+    {
         std::ostringstream ss;
         ss << *this;
         return ss.str();
@@ -779,6 +835,7 @@ struct OPENDHT_PUBLIC Select
     bool empty() const { return fieldSelection_.empty(); }
 
     OPENDHT_PUBLIC friend std::ostream& operator<<(std::ostream& s, const dht::Select& q);
+
 private:
     std::vector<Value::Field> fieldSelection_ {};
 };
@@ -792,7 +849,7 @@ private:
  */
 struct OPENDHT_PUBLIC Where
 {
-    Where() { }
+    Where() {}
     Where(std::string_view q_str);
 
     bool isSatisfiedBy(const Where& where) const;
@@ -804,7 +861,8 @@ struct OPENDHT_PUBLIC Where
      *
      * @return the resulting Where instance.
      */
-    Where&& id(Value::Id id) {
+    Where&& id(Value::Id id)
+    {
         FieldValue fv {Value::Field::Id, id};
         if (std::find(filters_.begin(), filters_.end(), fv) == filters_.end())
             filters_.emplace_back(std::move(fv));
@@ -818,7 +876,8 @@ struct OPENDHT_PUBLIC Where
      *
      * @return the resulting Where instance.
      */
-    Where&& valueType(ValueType::Id type) {
+    Where&& valueType(ValueType::Id type)
+    {
         FieldValue fv {Value::Field::ValueType, type};
         if (std::find(filters_.begin(), filters_.end(), fv) == filters_.end())
             filters_.emplace_back(std::move(fv));
@@ -832,7 +891,8 @@ struct OPENDHT_PUBLIC Where
      *
      * @return the resulting Where instance.
      */
-    Where&& owner(InfoHash owner_pk_hash) {
+    Where&& owner(InfoHash owner_pk_hash)
+    {
         FieldValue fv {Value::Field::OwnerPk, owner_pk_hash};
         if (std::find(filters_.begin(), filters_.end(), fv) == filters_.end())
             filters_.emplace_back(std::move(fv));
@@ -846,7 +906,8 @@ struct OPENDHT_PUBLIC Where
      *
      * @return the resulting Where instance.
      */
-    Where&& seq(uint16_t seq_no) {
+    Where&& seq(uint16_t seq_no)
+    {
         FieldValue fv {Value::Field::SeqNum, seq_no};
         if (std::find(filters_.begin(), filters_.end(), fv) == filters_.end())
             filters_.emplace_back(std::move(fv));
@@ -860,8 +921,11 @@ struct OPENDHT_PUBLIC Where
      *
      * @return the resulting Where instance.
      */
-    Where&& userType(std::string_view user_type) {
-        FieldValue fv {Value::Field::UserType, Blob {user_type.begin(), user_type.end()}};
+    Where&& userType(std::string_view user_type)
+    {
+        FieldValue fv {
+            Value::Field::UserType, Blob {user_type.begin(), user_type.end()}
+        };
         if (std::find(filters_.begin(), filters_.end(), fv) == filters_.end())
             filters_.emplace_back(std::move(fv));
         return std::move(*this);
@@ -872,7 +936,8 @@ struct OPENDHT_PUBLIC Where
      *
      * @return the resulting Value::Filter.
      */
-    Value::Filter getFilter() const {
+    Value::Filter getFilter() const
+    {
         if (filters_.empty())
             return {};
         if (filters_.size() == 1)
@@ -886,22 +951,25 @@ struct OPENDHT_PUBLIC Where
         return Value::Filter::chainAll(std::move(fset));
     }
 
-    template <typename Packer>
-    void msgpack_pack(Packer& pk) const { pk.pack(filters_); }
-    void msgpack_unpack(const msgpack::object& o) {
+    template<typename Packer>
+    void msgpack_pack(Packer& pk) const
+    {
+        pk.pack(filters_);
+    }
+    void msgpack_unpack(const msgpack::object& o)
+    {
         filters_.clear();
         filters_ = o.as<decltype(filters_)>();
     }
 
-    std::string toString() const {
+    std::string toString() const
+    {
         std::ostringstream ss;
         ss << *this;
         return ss.str();
     }
 
-    bool empty() const {
-        return filters_.empty();
-    }
+    bool empty() const { return filters_.empty(); }
 
     OPENDHT_PUBLIC friend std::ostream& operator<<(std::ostream& s, const dht::Where& q);
 
@@ -921,7 +989,10 @@ struct OPENDHT_PUBLIC Query
 {
     static const std::string QUERY_PARSE_ERROR;
 
-    Query(Select s = {}, Where w = {}, bool none = false) : select(std::move(s)), where(std::move(w)), none(none) { };
+    Query(Select s = {}, Where w = {}, bool none = false)
+        : select(std::move(s))
+        , where(std::move(w))
+        , none(none) {};
 
     /**
      * Initializes a query based on a SQL-ish formatted string. The abstract
@@ -936,13 +1007,14 @@ struct OPENDHT_PUBLIC Query
      *  - $string$: a simple string WITHOUT SPACES.
      *  - $integer$: a simple integer.
      */
-    Query(std::string_view q_str) {
+    Query(std::string_view q_str)
+    {
         auto pos_W = q_str.find("WHERE");
         auto pos_w = q_str.find("where");
         auto pos = std::min(pos_W != std::string_view::npos ? pos_W : q_str.size(),
                             pos_w != std::string_view::npos ? pos_w : q_str.size());
         select = q_str.substr(0, pos);
-        where = q_str.substr(pos, q_str.size()-pos);
+        where = q_str.substr(pos, q_str.size() - pos);
     }
 
     /**
@@ -950,22 +1022,27 @@ struct OPENDHT_PUBLIC Query
      */
     bool isSatisfiedBy(const Query& q) const;
 
-    template <typename Packer>
-    void msgpack_pack(Packer& pk) const {
+    template<typename Packer>
+    void msgpack_pack(Packer& pk) const
+    {
         pk.pack_map(2);
-        pk.pack(std::string("s")); pk.pack(select); /* packing field selectors */
-        pk.pack(std::string("w")); pk.pack(where);  /* packing filters */
+        pk.pack(std::string("s"));
+        pk.pack(select); /* packing field selectors */
+        pk.pack(std::string("w"));
+        pk.pack(where); /* packing filters */
     }
 
     void msgpack_unpack(const msgpack::object& o);
 
-    std::string toString() const {
+    std::string toString() const
+    {
         std::ostringstream ss;
         ss << *this;
         return ss.str();
     }
 
-    friend std::ostream& operator<<(std::ostream& s, const dht::Query& q) {
+    friend std::ostream& operator<<(std::ostream& s, const dht::Query& q)
+    {
         return s << "Query[" << q.select << " " << q.where << "]";
     }
 
@@ -981,7 +1058,8 @@ struct OPENDHT_PUBLIC Query
  * This structures is meant to manipulate a subset of fields normally contained
  * in Value.
  */
-struct OPENDHT_PUBLIC FieldValueIndex {
+struct OPENDHT_PUBLIC FieldValueIndex
+{
     FieldValueIndex() {}
     FieldValueIndex(const Value& v, const Select& s = {});
     /**
@@ -994,61 +1072,50 @@ struct OPENDHT_PUBLIC FieldValueIndex {
 
     OPENDHT_PUBLIC friend std::ostream& operator<<(std::ostream& os, const FieldValueIndex& fvi);
 
-    void msgpack_unpack_fields(const std::set<Value::Field>& fields,
-            const msgpack::object& o,
-            unsigned offset);
+    void msgpack_unpack_fields(const std::set<Value::Field>& fields, const msgpack::object& o, unsigned offset);
 
     std::map<Value::Field, FieldValue> index {};
 };
 
-template <typename T,
-          typename std::enable_if<std::is_base_of<Value::SerializableBase, T>::value, T>::type* = nullptr>
+template<typename T, typename std::enable_if<std::is_base_of<Value::SerializableBase, T>::value, T>::type* = nullptr>
 Value::Filter
 getFilterSet(Value::Filter f)
 {
-    return Value::Filter::chain({
-        Value::TypeFilter(T::TYPE),
-        T::getFilter(),
-        f
-    });
+    return Value::Filter::chain({Value::TypeFilter(T::TYPE), T::getFilter(), f});
 }
 
-template <typename T,
-          typename std::enable_if<!std::is_base_of<Value::SerializableBase, T>::value, T>::type* = nullptr>
+template<typename T, typename std::enable_if<!std::is_base_of<Value::SerializableBase, T>::value, T>::type* = nullptr>
 Value::Filter
 getFilterSet(Value::Filter f)
 {
     return f;
 }
 
-template <typename T,
-          typename std::enable_if<std::is_base_of<Value::SerializableBase, T>::value, T>::type* = nullptr>
+template<typename T, typename std::enable_if<std::is_base_of<Value::SerializableBase, T>::value, T>::type* = nullptr>
 Value::Filter
 getFilterSet()
 {
-    return Value::Filter::chain({
-        Value::TypeFilter(T::TYPE),
-        T::getFilter()
-    });
+    return Value::Filter::chain({Value::TypeFilter(T::TYPE), T::getFilter()});
 }
 
-template <typename T,
-          typename std::enable_if<!std::is_base_of<Value::SerializableBase, T>::value, T>::type* = nullptr>
+template<typename T, typename std::enable_if<!std::is_base_of<Value::SerializableBase, T>::value, T>::type* = nullptr>
 Value::Filter
 getFilterSet()
 {
     return {};
 }
 
-template <class T>
+template<class T>
 std::vector<T>
-unpackVector(const std::vector<std::shared_ptr<Value>>& vals) {
+unpackVector(const std::vector<std::shared_ptr<Value>>& vals)
+{
     std::vector<T> ret;
     ret.reserve(vals.size());
     for (const auto& v : vals) {
         try {
             ret.emplace_back(Value::unpack<T>(*v));
-        } catch (const std::exception&) {}
+        } catch (const std::exception&) {
+        }
     }
     return ret;
 }
@@ -1057,6 +1124,6 @@ unpackVector(const std::vector<std::shared_ptr<Value>>& vals) {
 uint64_t unpackId(const Json::Value& json, const std::string& key);
 #endif
 
-}
+} // namespace dht
 
 MSGPACK_ADD_ENUM(dht::Value::Field)

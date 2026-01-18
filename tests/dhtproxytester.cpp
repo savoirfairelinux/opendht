@@ -1,21 +1,5 @@
-/*
- *  Copyright (c) 2014-2026 Savoir-faire Linux Inc.
- *
- *          Vsevolod Ivanov <vsevolod.ivanov@savoirfairelinux.com>
- *
- *  This program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 3 of the License, or
- *  (at your option) any later version.
- *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with this program. If not, see <https://www.gnu.org/licenses/>.
- */
+// Copyright (c) 2014-2026 Savoir-faire Linux Inc.
+// SPDX-License-Identifier: MIT
 
 #include "dhtproxytester.h"
 
@@ -32,7 +16,8 @@ namespace test {
 CPPUNIT_TEST_SUITE_REGISTRATION(DhtProxyTester);
 
 void
-DhtProxyTester::setUp() {
+DhtProxyTester::setUp()
+{
     clientConfig.dht_config.node_config.max_peer_req_per_sec = -1;
     clientConfig.dht_config.node_config.max_req_per_sec = -1;
 
@@ -46,12 +31,12 @@ DhtProxyTester::setUp() {
         bound.setLoopback();
     nodeProxy->bootstrap(bound);
 
-    //auto serverCAIdentity = dht::crypto::generateEcIdentity("DHT Node CA");
+    // auto serverCAIdentity = dht::crypto::generateEcIdentity("DHT Node CA");
 
     uint16_t port = 1024 + (std::rand() % (65535 - 1024));
 
     dht::ProxyServerConfig serverConfig;
-    //serverConfig.identity = dht::crypto::generateIdentity("DHT Node", serverCAIdentity);
+    // serverConfig.identity = dht::crypto::generateIdentity("DHT Node", serverCAIdentity);
     serverConfig.port = port;
     // serverConfig.pushServer = "127.0.0.1:8090";
     serverProxy = std::make_unique<dht::DhtProxyServer>(nodeProxy, serverConfig);
@@ -59,30 +44,32 @@ DhtProxyTester::setUp() {
     /*clientConfig.server_ca = serverCAIdentity.second;
     clientConfig.client_identity = dht::crypto::generateIdentity("DhtProxyTester");
     clientConfig.push_node_id = "dhtnode";*/
-    clientConfig.proxy_server = "http://127.0.0.1:" + std::to_string(port);//"https://127.0.0.1:8080";
+    clientConfig.proxy_server = "http://127.0.0.1:" + std::to_string(port); //"https://127.0.0.1:8080";
 }
 
 void
-DhtProxyTester::tearDown() {
+DhtProxyTester::tearDown()
+{
     nodePeer.join();
     nodeClient.join();
 
     bool done = false;
     std::condition_variable cv;
     std::mutex cv_m;
-    nodeProxy->shutdown([&]{
+    nodeProxy->shutdown([&] {
         std::lock_guard<std::mutex> lk(cv_m);
         done = true;
         cv.notify_all();
     });
     std::unique_lock<std::mutex> lk(cv_m);
-    CPPUNIT_ASSERT(cv.wait_for(lk, 15s, [&]{ return done; }));
+    CPPUNIT_ASSERT(cv.wait_for(lk, 15s, [&] { return done; }));
     serverProxy.reset();
     nodeProxy.reset();
 }
 
 void
-DhtProxyTester::testGetPut() {
+DhtProxyTester::testGetPut()
+{
     nodeClient.run(0, clientConfig);
 
     bool done = false;
@@ -99,7 +86,7 @@ DhtProxyTester::testGetPut() {
             cv.notify_all();
         });
         std::unique_lock<std::mutex> lk(cv_m);
-        CPPUNIT_ASSERT(cv.wait_for(lk, 10s, [&]{ return done; }));
+        CPPUNIT_ASSERT(cv.wait_for(lk, 10s, [&] { return done; }));
     }
 
     auto vals = nodeClient.get(key).get();
@@ -108,7 +95,8 @@ DhtProxyTester::testGetPut() {
 }
 
 void
-DhtProxyTester::testListen() {
+DhtProxyTester::testListen()
+{
     nodeClient.run(0, clientConfig);
 
     std::condition_variable cv;
@@ -127,7 +115,7 @@ DhtProxyTester::testListen() {
         done = true;
         cv.notify_all();
     });
-    CPPUNIT_ASSERT(cv.wait_for(lk, 10s, [&]{ return done; }));
+    CPPUNIT_ASSERT(cv.wait_for(lk, 10s, [&] { return done; }));
     done = false;
 
     std::vector<dht::Blob> values;
@@ -141,7 +129,7 @@ DhtProxyTester::testListen() {
         }
         return true;
     });
-    CPPUNIT_ASSERT(cv.wait_for(lk, 10s, [&]{ return done; }));
+    CPPUNIT_ASSERT(cv.wait_for(lk, 10s, [&] { return done; }));
     done = false;
     // Here values should contains 1 values
     CPPUNIT_ASSERT_EQUAL(static_cast<int>(values.size()), 1);
@@ -152,7 +140,7 @@ DhtProxyTester::testListen() {
     dht::Value secondVal {"You're a monster"};
     auto secondVal_data = secondVal.data;
     nodePeer.put(key, std::move(secondVal));
-    CPPUNIT_ASSERT(cv.wait_for(lk, 10s, [&]{ return done; }));
+    CPPUNIT_ASSERT(cv.wait_for(lk, 10s, [&] { return done; }));
     nodeClient.cancelListen(key, std::move(token));
     // Here values should contains 2 values
     CPPUNIT_ASSERT_EQUAL(static_cast<int>(values.size()), 2);
@@ -160,7 +148,8 @@ DhtProxyTester::testListen() {
 }
 
 void
-DhtProxyTester::testResubscribeGetValues() {
+DhtProxyTester::testResubscribeGetValues()
+{
     clientConfig.push_token = "atlas";
     nodeClient.run(0, clientConfig);
 
@@ -180,14 +169,12 @@ DhtProxyTester::testResubscribeGetValues() {
         done = true;
         cv.notify_all();
     });
-    CPPUNIT_ASSERT(cv.wait_for(lk, 10s, [&]{ return done; }));
+    CPPUNIT_ASSERT(cv.wait_for(lk, 10s, [&] { return done; }));
     done = false;
 
     // Send a first subscribe, the value is sent via a push notification
     // So ignore values here.
-    nodeClient.listen(key, [&](const std::vector<std::shared_ptr<dht::Value>>&, bool) {
-        return true;
-    });
+    nodeClient.listen(key, [&](const std::vector<std::shared_ptr<dht::Value>>&, bool) { return true; });
     cv.wait_for(lk, std::chrono::seconds(1));
 
     // Reboot node (to avoid cache)
@@ -207,12 +194,12 @@ DhtProxyTester::testResubscribeGetValues() {
         return true;
     });
 
-    CPPUNIT_ASSERT(cv.wait_for(lk, 10s, [&]{ return done; }));
+    CPPUNIT_ASSERT(cv.wait_for(lk, 10s, [&] { return done; }));
     auto token = ftoken.get();
     CPPUNIT_ASSERT(token);
     nodeClient.cancelListen(key, token);
     // Here values should still contains 1 values
-    CPPUNIT_ASSERT_EQUAL((size_t)1u, values.size());
+    CPPUNIT_ASSERT_EQUAL((size_t) 1u, values.size());
     CPPUNIT_ASSERT(firstVal_data == values.front()->data);
 }
 
@@ -242,21 +229,24 @@ DhtProxyTester::testPutGet40KChars()
         done_put = ok;
         cv.notify_all();
     });
-    CPPUNIT_ASSERT(cv.wait_for(lk, 10s, [&]{ return done_put; }));
+    CPPUNIT_ASSERT(cv.wait_for(lk, 10s, [&] { return done_put; }));
 
-    nodeClient.get(key, [&](const std::vector<std::shared_ptr<dht::Value>>& vals){
-        values.insert(values.end(), vals.begin(), vals.end());
-        return true;
-    },[&](bool ok){
-        std::lock_guard<std::mutex> lk(cv_m);
-        done_get = ok;
-        cv.notify_all();
-    });
-    CPPUNIT_ASSERT(cv.wait_for(lk, 10s, [&]{ return done_get; }));
+    nodeClient.get(
+        key,
+        [&](const std::vector<std::shared_ptr<dht::Value>>& vals) {
+            values.insert(values.end(), vals.begin(), vals.end());
+            return true;
+        },
+        [&](bool ok) {
+            std::lock_guard<std::mutex> lk(cv_m);
+            done_get = ok;
+            cv.notify_all();
+        });
+    CPPUNIT_ASSERT(cv.wait_for(lk, 10s, [&] { return done_get; }));
 
     // Assert
-    CPPUNIT_ASSERT_EQUAL((size_t)1u, values.size());
-    for (const auto &value: values)
+    CPPUNIT_ASSERT_EQUAL((size_t) 1u, values.size());
+    for (const auto& value : values)
         CPPUNIT_ASSERT(value->data == mtu);
 }
 
@@ -277,20 +267,19 @@ DhtProxyTester::testFuzzy()
     for (size_t i = 0; i < 100; i++) {
         auto nodeTest = std::make_shared<dht::DhtRunner>();
         nodeTest->run(0, clientConfig);
-        nodeTest->put(key, dht::Value(mtu), [&](bool ok) {
-            CPPUNIT_ASSERT(ok);
-        });
-        nodeTest->get(key, [&](const std::vector<std::shared_ptr<dht::Value>>& vals){
-            values.insert(values.end(), vals.begin(), vals.end());
-            return true;
-        },[&](bool ok){
-            CPPUNIT_ASSERT(ok);
-        });
+        nodeTest->put(key, dht::Value(mtu), [&](bool ok) { CPPUNIT_ASSERT(ok); });
+        nodeTest->get(
+            key,
+            [&](const std::vector<std::shared_ptr<dht::Value>>& vals) {
+                values.insert(values.end(), vals.begin(), vals.end());
+                return true;
+            },
+            [&](bool ok) { CPPUNIT_ASSERT(ok); });
         std::this_thread::sleep_for(5ms);
     }
 
     // Assert
-    for (const auto &value: values)
+    for (const auto& value : values)
         CPPUNIT_ASSERT(value->data == mtu);
 }
 
@@ -314,27 +303,28 @@ DhtProxyTester::testShutdownStop()
     for (size_t i = 0; i < C; i++) {
         auto nodeTest = std::make_shared<dht::DhtRunner>();
         nodeTest->run(0, clientConfig);
-        nodeTest->put(key, dht::Value(mtu), [&](bool /*ok*/) {
-            callback_count++;
-        });
-        nodeTest->get(key, [&](const std::vector<std::shared_ptr<dht::Value>>& vals){
-            values.insert(values.end(), vals.begin(), vals.end());
-            return true;
-        },[&](bool /*ok*/){
-            callback_count++;
-        });
+        nodeTest->put(key, dht::Value(mtu), [&](bool /*ok*/) { callback_count++; });
+        nodeTest->get(
+            key,
+            [&](const std::vector<std::shared_ptr<dht::Value>>& vals) {
+                values.insert(values.end(), vals.begin(), vals.end());
+                return true;
+            },
+            [&](bool /*ok*/) { callback_count++; });
         bool done = false;
         std::condition_variable cv;
         std::mutex cv_m;
-        nodeTest->shutdown([&]{
-            std::lock_guard<std::mutex> lk(cv_m);
-            done = true;
-            cv.notify_all();
-        }, true);
+        nodeTest->shutdown(
+            [&] {
+                std::lock_guard<std::mutex> lk(cv_m);
+                done = true;
+                cv.notify_all();
+            },
+            true);
         std::unique_lock<std::mutex> lk(cv_m);
-        CPPUNIT_ASSERT(cv.wait_for(lk, 10s, [&]{ return done; }));
+        CPPUNIT_ASSERT(cv.wait_for(lk, 10s, [&] { return done; }));
     }
-    CPPUNIT_ASSERT_EQUAL(2*C, callback_count.load());
+    CPPUNIT_ASSERT_EQUAL(2 * C, callback_count.load());
 }
 
-}  // namespace test
+} // namespace test

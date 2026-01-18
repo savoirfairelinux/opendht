@@ -1,22 +1,5 @@
-/*
- *  Copyright (c) 2014-2026 Savoir-faire Linux Inc.
- *          Adrien Béraud <adrien.beraud@savoirfairelinux.com>
- *          Vsevolod Ivanov <vsevolod.ivanov@savoirfairelinux.com>
- *
- *  This program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 3 of the License, or
- *  (at your option) any later version.
- *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with this program. If not, see <https://www.gnu.org/licenses/>.
- */
-
+// Copyright (c) 2014-2026 Savoir-faire Linux Inc.
+// SPDX-License-Identifier: MIT
 #pragma once
 
 #include <functional>
@@ -42,33 +25,32 @@ class Value;
 namespace http {
 class Resolver;
 class Request;
-}
+} // namespace http
 
 namespace dht {
 
-class OPENDHT_PUBLIC DhtProxyClient final : public DhtInterface {
+class OPENDHT_PUBLIC DhtProxyClient final : public DhtInterface
+{
 public:
-
     DhtProxyClient();
 
-    explicit DhtProxyClient(
-        std::shared_ptr<crypto::Certificate> serverCA,
-        crypto::Identity clientIdentity,
-        std::function<void()> loopSignal,
-        const std::string& serverHost,
-        const std::string& userAgent = "",
-        const std::string& pushClientId = "",
-        const std::string& pushToken = "",
-        const std::string& pushTopic = "",
-        const std::string& pushPlatform = "",
-        std::shared_ptr<Logger> logger = {}
-    );
+    explicit DhtProxyClient(std::shared_ptr<crypto::Certificate> serverCA,
+                            crypto::Identity clientIdentity,
+                            std::function<void()> loopSignal,
+                            const std::string& serverHost,
+                            const std::string& userAgent = "",
+                            const std::string& pushClientId = "",
+                            const std::string& pushToken = "",
+                            const std::string& pushTopic = "",
+                            const std::string& pushPlatform = "",
+                            std::shared_ptr<Logger> logger = {});
 
     void setHeaderFields(http::Request& request);
 
     virtual void setPushNotificationToken(const std::string& token) override;
 
-    virtual void setPushNotificationTopic(const std::string& topic) override {
+    virtual void setPushNotificationTopic(const std::string& topic) override
+    {
 #ifdef OPENDHT_PUSH_NOTIFICATIONS
         notificationTopic_ = topic;
 #else
@@ -76,7 +58,8 @@ public:
 #endif
     }
 
-    virtual void setPushNotificationPlatform(const std::string& platform) override {
+    virtual void setPushNotificationPlatform(const std::string& platform) override
+    {
 #ifdef OPENDHT_PUSH_NOTIFICATIONS
         platform_ = platform;
 #else
@@ -90,17 +73,13 @@ public:
      * Get the ID of the node.
      */
     inline const InfoHash& getNodeId() const override { return myid; }
-    void setOnPublicAddressChanged(PublicAddressChangedCb cb) override {
-        publicAddressChangedCb_ = std::move(cb);
-    }
+    void setOnPublicAddressChanged(PublicAddressChangedCb cb) override { publicAddressChangedCb_ = std::move(cb); }
 
     /**
      * Get the current status of the node for the given family.
      */
     NodeStatus getStatus(sa_family_t af) const override;
-    NodeStatus getStatus() const override {
-        return std::max(getStatus(AF_INET), getStatus(AF_INET6));
-    }
+    NodeStatus getStatus() const override { return std::max(getStatus(AF_INET), getStatus(AF_INET6)); }
 
     /**
      * Performs final operations before quitting.
@@ -125,14 +104,30 @@ public:
                      cb and donecb won't be called again afterward.
      * @param f a filter function used to prefilter values.
      */
-    virtual void get(const InfoHash& key, GetCallback cb, DoneCallback donecb={}, Value::Filter&& f={}, Where&& w = {}) override;
-    virtual void get(const InfoHash& key, GetCallback cb, DoneCallbackSimple donecb={}, Value::Filter&& f={}, Where&& w = {}) override {
+    virtual void get(
+        const InfoHash& key, GetCallback cb, DoneCallback donecb = {}, Value::Filter&& f = {}, Where&& w = {}) override;
+    virtual void get(const InfoHash& key,
+                     GetCallback cb,
+                     DoneCallbackSimple donecb = {},
+                     Value::Filter&& f = {},
+                     Where&& w = {}) override
+    {
         get(key, cb, bindDoneCb(std::move(donecb)), std::forward<Value::Filter>(f), std::forward<Where>(w));
     }
-    virtual void get(const InfoHash& key, GetCallbackSimple cb, DoneCallback donecb={}, Value::Filter&& f={}, Where&& w = {}) override {
+    virtual void get(const InfoHash& key,
+                     GetCallbackSimple cb,
+                     DoneCallback donecb = {},
+                     Value::Filter&& f = {},
+                     Where&& w = {}) override
+    {
         get(key, bindGetCb(cb), std::move(donecb), std::forward<Value::Filter>(f), std::forward<Where>(w));
     }
-    virtual void get(const InfoHash& key, GetCallbackSimple cb, DoneCallbackSimple donecb, Value::Filter&& f={}, Where&& w = {}) override {
+    virtual void get(const InfoHash& key,
+                     GetCallbackSimple cb,
+                     DoneCallbackSimple donecb,
+                     Value::Filter&& f = {},
+                     Where&& w = {}) override
+    {
         get(key, bindGetCb(cb), bindDoneCb(std::move(donecb)), std::forward<Value::Filter>(f), std::forward<Where>(w));
     }
 
@@ -144,32 +139,32 @@ public:
      * NOTE: For now, created parameter is ignored.
      */
     void put(const InfoHash& key,
-            Sp<Value>,
-            DoneCallback cb=nullptr,
-            time_point created=time_point::max(),
-            bool permanent = false) override;
+             Sp<Value>,
+             DoneCallback cb = nullptr,
+             time_point created = time_point::max(),
+             bool permanent = false) override;
     void put(const InfoHash& key,
-            const Sp<Value>& v,
-            DoneCallbackSimple cb,
-            time_point created=time_point::max(),
-            bool permanent = false) override
+             const Sp<Value>& v,
+             DoneCallbackSimple cb,
+             time_point created = time_point::max(),
+             bool permanent = false) override
     {
         put(key, v, bindDoneCb(std::move(cb)), created, permanent);
     }
 
     void put(const InfoHash& key,
-            Value&& v,
-            DoneCallback cb=nullptr,
-            time_point created=time_point::max(),
-            bool permanent = false) override
+             Value&& v,
+             DoneCallback cb = nullptr,
+             time_point created = time_point::max(),
+             bool permanent = false) override
     {
         put(key, std::make_shared<Value>(std::move(v)), std::move(cb), created, permanent);
     }
     void put(const InfoHash& key,
-            Value&& v,
-            DoneCallbackSimple cb,
-            time_point created=time_point::max(),
-            bool permanent = false) override
+             Value&& v,
+             DoneCallbackSimple cb,
+             time_point created = time_point::max(),
+             bool permanent = false) override
     {
         put(key, std::forward<Value>(v), bindDoneCb(std::move(cb)), created, permanent);
     }
@@ -193,16 +188,22 @@ public:
      *
      * @return a token to cancel the listener later.
      */
-    virtual size_t listen(const InfoHash&, ValueCallback, Value::Filter={}, Where={}) override;
+    virtual size_t listen(const InfoHash&, ValueCallback, Value::Filter = {}, Where = {}) override;
 
-    virtual size_t listen(const InfoHash& key, GetCallback cb, Value::Filter f={}, Where w={}) override {
-        return listen(key, [cb=std::move(cb)](const std::vector<Sp<Value>>& vals, bool expired){
-            if (not expired)
-                return cb(vals);
-            return true;
-        }, std::forward<Value::Filter>(f), std::forward<Where>(w));
+    virtual size_t listen(const InfoHash& key, GetCallback cb, Value::Filter f = {}, Where w = {}) override
+    {
+        return listen(
+            key,
+            [cb = std::move(cb)](const std::vector<Sp<Value>>& vals, bool expired) {
+                if (not expired)
+                    return cb(vals);
+                return true;
+            },
+            std::forward<Value::Filter>(f),
+            std::forward<Where>(w));
     }
-    virtual size_t listen(const InfoHash& key, GetCallbackSimple cb, Value::Filter f={}, Where w={}) override {
+    virtual size_t listen(const InfoHash& key, GetCallbackSimple cb, Value::Filter f = {}, Where w = {}) override
+    {
         return listen(key, bindGetCb(std::move(cb)), std::forward<Value::Filter>(f), std::forward<Where>(w));
     }
     /*
@@ -218,7 +219,9 @@ public:
     PushNotificationResult pushNotificationReceived(const std::map<std::string, std::string>& notification) override;
 
     time_point periodic(const uint8_t*, size_t, SockAddr, const time_point& now) override;
-    time_point periodic(const uint8_t* buf, size_t buflen, const sockaddr* from, socklen_t fromlen, const time_point& now) override {
+    time_point periodic(
+        const uint8_t* buf, size_t buflen, const sockaddr* from, socklen_t fromlen, const time_point& now) override
+    {
         return periodic(buf, buflen, SockAddr(from, fromlen), now);
     }
 
@@ -232,8 +235,13 @@ public:
      * @param q a query used to filter values on the remotes before they send a
      *          response.
      */
-    virtual void query(const InfoHash& /*key*/, QueryCallback /*cb*/, DoneCallback /*done_cb*/ = {}, Query&& /*q*/ = {}) override { }
-    virtual void query(const InfoHash& key, QueryCallback cb, DoneCallbackSimple done_cb = {}, Query&& q = {}) override {
+    virtual void query(const InfoHash& /*key*/,
+                       QueryCallback /*cb*/,
+                       DoneCallback /*done_cb*/ = {},
+                       Query&& /*q*/ = {}) override
+    {}
+    virtual void query(const InfoHash& key, QueryCallback cb, DoneCallbackSimple done_cb = {}, Query&& q = {}) override
+    {
         query(key, cb, bindDoneCb(std::move(done_cb)), std::forward<Query>(q));
     }
 
@@ -253,14 +261,10 @@ public:
      */
     bool cancelPut(const InfoHash&, const Value::Id&) override;
 
-    void pingNode(SockAddr, DoneCallbackSimple&& /*cb*/={}) override { }
+    void pingNode(SockAddr, DoneCallbackSimple&& /*cb*/ = {}) override {}
 
-    virtual void registerType(const ValueType& type) override {
-        types.registerType(type);
-    }
-    const ValueType& getType(ValueType::Id type_id) const override {
-        return types.getType(type_id);
-    }
+    virtual void registerType(const ValueType& type) override { types.registerType(type); }
+    const ValueType& getType(ValueType::Id type_id) const override { return types.getType(type_id); }
 
     std::vector<Sp<Value>> getLocal(const InfoHash& k, const Value::Filter& filter) const override;
     Sp<Value> getLocalById(const InfoHash& k, Value::Id id) const override;
@@ -269,8 +273,8 @@ public:
      * NOTE: The following methods will not be implemented because the
      * DhtProxyClient doesn't have any storage nor synchronization process
      */
-    void insertNode(const InfoHash&, const SockAddr&) override { }
-    void insertNode(const NodeExport&) override { }
+    void insertNode(const InfoHash&, const SockAddr&) override {}
+    void insertNode(const NodeExport&) override {}
     std::pair<size_t, size_t> getStoreSize() const override { return {}; }
     std::vector<NodeExport> exportNodes() const override { return {}; }
     std::vector<ValuesExport> exportValues() const override { return {}; }
@@ -284,17 +288,14 @@ public:
     std::vector<unsigned> getNodeMessageStats(bool) override { return {}; }
     void setStorageLimit(size_t) override {}
     virtual size_t getStorageLimit() const override { return 0; }
-    void connectivityChanged(sa_family_t) override {
-        getProxyInfos();
-    }
-    void connectivityChanged() override {
+    void connectivityChanged(sa_family_t) override { getProxyInfos(); }
+    void connectivityChanged() override
+    {
         getProxyInfos();
         loopSignal_();
     }
 
-    void listenKeepIdle(uint32_t seconds) {
-        listenKeepIdle_ = seconds;
-    }
+    void listenKeepIdle(uint32_t seconds) { listenKeepIdle_ = seconds; }
     inline uint32_t listenKeepIdle() { return listenKeepIdle_; }
 
 private:
@@ -310,13 +311,15 @@ private:
      */
     struct InfoState;
     void getProxyInfos();
-    void queryProxyInfo(const std::shared_ptr<InfoState>& infoState, const std::shared_ptr<http::Resolver>& resolver, sa_family_t family);
+    void queryProxyInfo(const std::shared_ptr<InfoState>& infoState,
+                        const std::shared_ptr<http::Resolver>& resolver,
+                        sa_family_t family);
     void onProxyInfos(const Json::Value& val, const sa_family_t family);
     SockAddr parsePublicAddress(const Json::Value& val);
 
     void opFailed();
 
-    void handleExpireListener(const asio::error_code &ec, const InfoHash& key);
+    void handleExpireListener(const asio::error_code& ec, const InfoHash& key);
 
     struct Listener;
     struct OperationState;
@@ -325,15 +328,21 @@ private:
         SUBSCRIBE,
         RESUBSCRIBE,
     };
-    using CacheValueCallback = std::function<bool(const std::vector<std::shared_ptr<Value>>& values, bool expired, system_clock::time_point)>;
+    using CacheValueCallback
+        = std::function<bool(const std::vector<std::shared_ptr<Value>>& values, bool expired, system_clock::time_point)>;
 
     /**
      * Send Listen with httpClient_
      */
-    void sendListen(const restinio::http_request_header_t& header, const CacheValueCallback& cb,
-                    const Sp<OperationState>& opstate, Listener& listener, ListenMethod method = ListenMethod::LISTEN);
-    void handleResubscribe(const asio::error_code& ec, const InfoHash& key,
-                           const size_t token, std::shared_ptr<OperationState> opstate);
+    void sendListen(const restinio::http_request_header_t& header,
+                    const CacheValueCallback& cb,
+                    const Sp<OperationState>& opstate,
+                    Listener& listener,
+                    ListenMethod method = ListenMethod::LISTEN);
+    void handleResubscribe(const asio::error_code& ec,
+                           const InfoHash& key,
+                           const size_t token,
+                           std::shared_ptr<OperationState> opstate);
 
     void doPut(const InfoHash&, Sp<Value>, DoneCallbackSimple, time_point created, bool permanent);
     void handleRefreshPut(const asio::error_code& ec, InfoHash key, Value::Id id);
@@ -413,14 +422,14 @@ private:
     /**
      * Retrieve if we can connect to the proxy (update statusIpvX_)
      */
-    void handleProxyConfirm(const asio::error_code &ec);
+    void handleProxyConfirm(const asio::error_code& ec);
     std::unique_ptr<asio::steady_timer> nextProxyConfirmationTimer_;
     std::unique_ptr<asio::steady_timer> listenerRestartTimer_;
 
     /**
      * Relaunch LISTEN requests if the client disconnect/reconnect.
      */
-    void restartListeners(const asio::error_code &ec);
+    void restartListeners(const asio::error_code& ec);
 
     /**
      * Refresh a listen via a token
@@ -444,12 +453,12 @@ private:
      */
     std::string platform_
 #ifdef __ANDROID__
-    {"android"};
+        {"android"};
 #else
 #ifdef __APPLE__
-    {"ios"};
+        {"ios"};
 #else
-    {};
+        {};
 #endif
 #endif
 
@@ -466,4 +475,4 @@ private:
     std::shared_ptr<http::Request> buildRequest(const std::string& target = {});
 };
 
-}
+} // namespace dht

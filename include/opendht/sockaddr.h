@@ -1,20 +1,5 @@
-/*
- *  Copyright (c) 2014-2026 Savoir-faire Linux Inc.
- *
- *  This program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 3 of the License, or
- *  (at your option) any later version.
- *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with this program. If not, see <https://www.gnu.org/licenses/>.
- */
-
+// Copyright (c) 2014-2026 Savoir-faire Linux Inc.
+// SPDX-License-Identifier: MIT
 #pragma once
 
 #include "def.h"
@@ -58,30 +43,34 @@ OPENDHT_PUBLIC std::string print_addr(const sockaddr_storage& ss, socklen_t ssle
 /**
  * A Socket Address (sockaddr*), with abstraction for IPv4, IPv6 address families.
  */
-class OPENDHT_PUBLIC SockAddr {
+class OPENDHT_PUBLIC SockAddr
+{
 public:
     SockAddr() {}
-    SockAddr(const SockAddr& o) {
-        set(o.get(), o.getLength());
-    }
-    SockAddr(SockAddr&& o) noexcept : addr(std::move(o.addr)), len(o.len) {
+    SockAddr(const SockAddr& o) { set(o.get(), o.getLength()); }
+    SockAddr(SockAddr&& o) noexcept
+        : addr(std::move(o.addr))
+        , len(o.len)
+    {
         o.len = 0;
     }
 
     /**
      * Build from existing address.
      */
-    SockAddr(const sockaddr* sa, socklen_t length) {
+    SockAddr(const sockaddr* sa, socklen_t length)
+    {
         if (length > static_cast<socklen_t>(sizeof(sockaddr_storage)))
             throw std::runtime_error("Socket address length is too large");
         set(sa, length);
     }
-    SockAddr(const sockaddr* sa) {
+    SockAddr(const sockaddr* sa)
+    {
         socklen_t len = 0;
         if (sa) {
             if (sa->sa_family == AF_INET)
                 len = sizeof(sockaddr_in);
-            else if(sa->sa_family == AF_INET6)
+            else if (sa->sa_family == AF_INET6)
                 len = sizeof(sockaddr_in6);
             else
                 throw std::runtime_error("Unknown address family");
@@ -92,34 +81,37 @@ public:
     /**
      * Build from an existing sockaddr_storage structure.
      */
-    SockAddr(const sockaddr_storage& ss, socklen_t len) : SockAddr((const sockaddr*)&ss, len) {}
+    SockAddr(const sockaddr_storage& ss, socklen_t len)
+        : SockAddr((const sockaddr*) &ss, len)
+    {}
 
     static std::vector<SockAddr> resolve(const std::string& host, const std::string& service = {});
 
-    bool operator<(const SockAddr& o) const {
+    bool operator<(const SockAddr& o) const
+    {
         if (len != o.len)
             return len < o.len;
-        return std::memcmp((const uint8_t*)get(), (const uint8_t*)o.get(), len) < 0;
+        return std::memcmp((const uint8_t*) get(), (const uint8_t*) o.get(), len) < 0;
     }
 
-    bool equals(const SockAddr& o) const {
-        return len == o.len
-            && std::memcmp((const uint8_t*)get(), (const uint8_t*)o.get(), len) == 0;
+    bool equals(const SockAddr& o) const
+    {
+        return len == o.len && std::memcmp((const uint8_t*) get(), (const uint8_t*) o.get(), len) == 0;
     }
-    SockAddr& operator=(const SockAddr& o) {
+    SockAddr& operator=(const SockAddr& o)
+    {
         set(o.get(), o.getLength());
         return *this;
     }
-    SockAddr& operator=(SockAddr&& o) {
+    SockAddr& operator=(SockAddr&& o)
+    {
         len = o.len;
         o.len = 0;
         addr = std::move(o.addr);
         return *this;
     }
 
-    std::string toString() const {
-        return print_addr(get(), getLength());
-    }
+    std::string toString() const { return print_addr(get(), getLength()); }
 
     /**
      * Returns the address family or AF_UNSPEC if the address is not set.
@@ -131,9 +123,10 @@ public:
      * in which case the sockaddr structure is cleared to zero,
      * and set the address family field (sa_family).
      */
-    void setFamily(sa_family_t af) {
+    void setFamily(sa_family_t af)
+    {
         socklen_t new_length;
-        switch(af) {
+        switch (af) {
         case AF_INET:
             new_length = sizeof(sockaddr_in);
             break;
@@ -145,8 +138,10 @@ public:
         }
         if (new_length != len) {
             len = new_length;
-            if (len) addr.reset((sockaddr*)::calloc(len, 1));
-            else     addr.reset();
+            if (len)
+                addr.reset((sockaddr*) ::calloc(len, 1));
+            else
+                addr.reset();
         }
         if (len)
             addr->sa_family = af;
@@ -155,9 +150,10 @@ public:
     /**
      * Set address to any
      */
-    void setAny() {
+    void setAny()
+    {
         auto family = getFamily();
-        switch(family) {
+        switch (family) {
         case AF_INET:
             getIPv4().sin_addr.s_addr = htonl(INADDR_ANY);
             break;
@@ -170,9 +166,10 @@ public:
     /**
      * Set address to loopback.
      */
-    void setLoopback() {
+    void setLoopback()
+    {
         auto family = getFamily();
-        switch(family) {
+        switch (family) {
         case AF_INET:
             getIPv4().sin_addr.s_addr = htonl(INADDR_LOOPBACK);
             break;
@@ -186,8 +183,9 @@ public:
      * Retreive the port (in host byte order) or 0 if the address is not
      * of a supported family.
      */
-    in_port_t getPort() const {
-        switch(getFamily()) {
+    in_port_t getPort() const
+    {
+        switch (getFamily()) {
         case AF_INET:
             return ntohs(getIPv4().sin_port);
         case AF_INET6:
@@ -200,8 +198,9 @@ public:
      * Set the port. The address must be of a supported family.
      * @param p The port in host byte order.
      */
-    void setPort(in_port_t p) {
-        switch(getFamily()) {
+    void setPort(in_port_t p)
+    {
+        switch (getFamily()) {
         case AF_INET:
             getIPv4().sin_port = htons(p);
             break;
@@ -226,9 +225,7 @@ public:
     /**
      * An address is defined to be true if its length is not zero.
      */
-    explicit operator bool() const noexcept {
-        return len;
-    }
+    explicit operator bool() const noexcept { return len; }
 
     /**
      * Returns the address to the managed sockaddr structure.
@@ -242,24 +239,17 @@ public:
      */
     sockaddr* get() { return addr.get(); }
 
-    inline const sockaddr_in& getIPv4() const {
-        return *reinterpret_cast<const sockaddr_in*>(get());
-    }
-    inline const sockaddr_in6& getIPv6() const {
-        return *reinterpret_cast<const sockaddr_in6*>(get());
-    }
-    inline sockaddr_in& getIPv4() {
-        return *reinterpret_cast<sockaddr_in*>(get());
-    }
-    inline sockaddr_in6& getIPv6() {
-        return *reinterpret_cast<sockaddr_in6*>(get());
-    }
+    inline const sockaddr_in& getIPv4() const { return *reinterpret_cast<const sockaddr_in*>(get()); }
+    inline const sockaddr_in6& getIPv6() const { return *reinterpret_cast<const sockaddr_in6*>(get()); }
+    inline sockaddr_in& getIPv4() { return *reinterpret_cast<sockaddr_in*>(get()); }
+    inline sockaddr_in6& getIPv6() { return *reinterpret_cast<sockaddr_in6*>(get()); }
 
-    /** 
+    /**
      * Releases the ownership of the managed object, if any.
      * The caller is responsible for deleting the object with free().
      */
-    inline sockaddr* release() {
+    inline sockaddr* release()
+    {
         len = 0;
         return addr.release();
     }
@@ -284,56 +274,65 @@ public:
      * A comparator to classify IP addresses, only considering the
      * first 64 bits in IPv6.
      */
-    struct ipCmp {
-        bool operator()(const SockAddr& a, const SockAddr& b) const {
+    struct ipCmp
+    {
+        bool operator()(const SockAddr& a, const SockAddr& b) const
+        {
             if (a.len != b.len)
                 return a.len < b.len;
             socklen_t start, len;
-            switch(a.getFamily()) {
-                case AF_INET:
-                    start = offsetof(sockaddr_in, sin_addr);
-                    len = sizeof(in_addr);
-                    break;
-                case AF_INET6:
-                    start = offsetof(sockaddr_in6, sin6_addr);
-                    // don't consider more than 64 bits (IPv6)
-                    len = 8;
-                    break;
-                default:
-                    start = 0;
-                    len = a.len;
-                    break;
+            switch (a.getFamily()) {
+            case AF_INET:
+                start = offsetof(sockaddr_in, sin_addr);
+                len = sizeof(in_addr);
+                break;
+            case AF_INET6:
+                start = offsetof(sockaddr_in6, sin6_addr);
+                // don't consider more than 64 bits (IPv6)
+                len = 8;
+                break;
+            default:
+                start = 0;
+                len = a.len;
+                break;
             }
-            return std::memcmp((uint8_t*)a.get()+start,
-                               (uint8_t*)b.get()+start, len) < 0;
+            return std::memcmp((uint8_t*) a.get() + start, (uint8_t*) b.get() + start, len) < 0;
         }
     };
-    friend std::ostream& operator<< (std::ostream& s, const SockAddr& h) {
+    friend std::ostream& operator<<(std::ostream& s, const SockAddr& h)
+    {
         print_addr(s, h.get(), h.getLength());
         return s;
     }
 
 private:
-    struct free_delete { void operator()(void* p) { ::free(p); } };
+    struct free_delete
+    {
+        void operator()(void* p) { ::free(p); }
+    };
     std::unique_ptr<sockaddr, free_delete> addr {};
     socklen_t len {0};
 
-    void set(const sockaddr* sa, socklen_t length) {
+    void set(const sockaddr* sa, socklen_t length)
+    {
         if (len != length) {
             len = length;
-            if (len) addr.reset((sockaddr*)::malloc(len));
-            else     addr.reset();
+            if (len)
+                addr.reset((sockaddr*) ::malloc(len));
+            else
+                addr.reset();
         }
         if (len)
-            std::memcpy((uint8_t*)get(), (const uint8_t*)sa, len);
+            std::memcpy((uint8_t*) get(), (const uint8_t*) sa, len);
     }
-
 };
 
 OPENDHT_PUBLIC bool operator==(const SockAddr& a, const SockAddr& b);
 
-}
+} // namespace dht
 
 #if FMT_VERSION >= 90000
-template <> struct fmt::formatter<dht::SockAddr> : ostream_formatter {};
+template<>
+struct fmt::formatter<dht::SockAddr> : ostream_formatter
+{};
 #endif

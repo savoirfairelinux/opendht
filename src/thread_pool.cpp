@@ -1,19 +1,5 @@
-/*
- *  Copyright (c) 2014-2026 Savoir-faire Linux Inc.
- *
- *  This program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 3 of the License, or
- *  (at your option) any later version.
- *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with this program. If not, see <http://www.gnu.org/licenses/>.
- */
+// Copyright (c) 2014-2026 Savoir-faire Linux Inc.
+// SPDX-License-Identifier: MIT
 
 #include "thread_pool.h"
 
@@ -21,7 +7,7 @@
 #include <thread>
 #include <iostream>
 #include <ciso646> // fix windows compiler bug
-#include <cmath> // std::pow
+#include <cmath>   // std::pow
 
 namespace dht {
 
@@ -41,10 +27,9 @@ ThreadPool::io()
     return pool;
 }
 
-
 ThreadPool::ThreadPool(unsigned minThreads, unsigned maxThreads)
- : minThreads_(std::max(minThreads, 1u))
- , maxThreads_(maxThreads ? std::max(minThreads_, maxThreads) : minThreads_)
+    : minThreads_(std::max(minThreads, 1u))
+    , maxThreads_(maxThreads ? std::max(minThreads_, maxThreads) : minThreads_)
 {
     threads_.reserve(maxThreads_);
     if (minThreads_ != maxThreads_) {
@@ -53,7 +38,7 @@ ThreadPool::ThreadPool(unsigned minThreads, unsigned maxThreads)
 }
 
 ThreadPool::ThreadPool()
- : ThreadPool(std::max(std::thread::hardware_concurrency(), 4u))
+    : ThreadPool(std::max(std::thread::hardware_concurrency(), 4u))
 {}
 
 ThreadPool::~ThreadPool()
@@ -65,14 +50,15 @@ void
 ThreadPool::run(std::function<void()>&& cb)
 {
     std::unique_lock l(lock_);
-    if (not cb or not running_) return;
+    if (not cb or not running_)
+        return;
 
     // launch new thread if necessary
     if (not readyThreads_ && threads_.size() < maxThreads_) {
         try {
             bool permanent_thread = threads_.size() < minThreads_;
             auto& thread = *threads_.emplace_back(std::make_unique<std::thread>());
-            thread = std::thread([this, permanent_thread, e=threadExpirationDelay, &thread]() {
+            thread = std::thread([this, permanent_thread, e = threadExpirationDelay, &thread]() {
                 while (true) {
                     std::function<void()> task;
 
@@ -80,7 +66,9 @@ ThreadPool::run(std::function<void()>&& cb)
                     {
                         std::unique_lock l(lock_);
                         readyThreads_++;
-                        auto waitCond = [&](){ return not running_ or not tasks_.empty(); };
+                        auto waitCond = [&]() {
+                            return not running_ or not tasks_.empty();
+                        };
                         if (permanent_thread)
                             cv_.wait(l, waitCond);
                         else
@@ -103,7 +91,7 @@ ThreadPool::run(std::function<void()>&& cb)
                 if (not permanent_thread)
                     threadEnded(thread);
             });
-        } catch(const std::exception& e) {
+        } catch (const std::exception& e) {
             std::cerr << "Exception starting thread: " << e.what() << std::endl;
             if (threads_.empty())
                 throw;
@@ -121,7 +109,7 @@ void
 ThreadPool::threadEnded(std::thread& thread)
 {
     std::lock_guard l(lock_);
-    tasks_.emplace([this,t=std::reference_wrapper<std::thread>(thread)]{
+    tasks_.emplace([this, t = std::reference_wrapper<std::thread>(thread)] {
         std::lock_guard l(lock_);
         for (auto it = threads_.begin(); it != threads_.end(); ++it) {
             if (&*(*it) == &t.get()) {
@@ -135,7 +123,7 @@ ThreadPool::threadEnded(std::thread& thread)
     // If new threads start later, increase the expiration delay.
     if (threadExpirationDelay > std::chrono::hours(24 * 7)) {
         // If we reach 7 days, assume the thread is regularly used at full capacity
-        minThreads_ = std::min(minThreads_+1, maxThreads_);
+        minThreads_ = std::min(minThreads_ + 1, maxThreads_);
     } else {
         threadExpirationDelay *= threadDelayRatio_;
     }
@@ -147,7 +135,7 @@ ThreadPool::stop(bool wait)
 {
     std::unique_lock l(lock_);
     if (wait) {
-        cv_.wait(l, [&](){ return tasks_.empty(); });
+        cv_.wait(l, [&]() { return tasks_.empty(); });
     }
     running_ = false;
     tasks_ = {};
@@ -190,7 +178,7 @@ Executor::run_(std::function<void()>&& task)
 {
     current_++;
     std::weak_ptr<Executor> w = shared_from_this();
-    threadPool_.get().run([w,task = std::move(task)] {
+    threadPool_.get().run([w, task = std::move(task)] {
         try {
             task();
         } catch (const std::exception& e) {
@@ -214,4 +202,4 @@ Executor::schedule()
     }
 }
 
-}
+} // namespace dht

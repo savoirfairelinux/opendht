@@ -1,20 +1,5 @@
-/*
- *  Copyright (c) 2014-2026 Savoir-faire Linux Inc.
- *
- *  This program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 3 of the License, or
- *  (at your option) any later version.
- *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with this program. If not, see <https://www.gnu.org/licenses/>.
- */
-
+// Copyright (c) 2014-2026 Savoir-faire Linux Inc.
+// SPDX-License-Identifier: MIT
 #pragma once
 
 #include "infohash.h"
@@ -26,14 +11,19 @@
 namespace dht {
 
 namespace net {
-    class DatagramSocket;
+class DatagramSocket;
 }
 
-class OPENDHT_PUBLIC DhtInterface {
+class OPENDHT_PUBLIC DhtInterface
+{
 public:
     DhtInterface() = default;
-    DhtInterface(const Logger& l) : logger_(std::make_shared<Logger>(l)) {}
-    DhtInterface(const std::shared_ptr<Logger>& l) : logger_(l) {}
+    DhtInterface(const Logger& l)
+        : logger_(std::make_shared<Logger>(l))
+    {}
+    DhtInterface(const std::shared_ptr<Logger>& l)
+        : logger_(l)
+    {}
     virtual ~DhtInterface() = default;
 
     // [[deprecated]]
@@ -48,9 +38,7 @@ public:
     virtual NodeStatus getStatus(sa_family_t af) const = 0;
     virtual NodeStatus getStatus() const = 0;
 
-    void addOnConnectedCallback(std::function<void()> cb) {
-        onConnectCallbacks_.emplace(std::move(cb));
-    }
+    void addOnConnectedCallback(std::function<void()> cb) { onConnectCallbacks_.emplace(std::move(cb)); }
     virtual void setOnPublicAddressChanged(PublicAddressChangedCb) {}
 
     virtual net::DatagramSocket* getSocket() const { return {}; }
@@ -90,10 +78,12 @@ public:
     virtual void insertNode(const InfoHash& id, const SockAddr&) = 0;
     virtual void insertNode(const NodeExport& n) = 0;
 
-    virtual void pingNode(SockAddr, DoneCallbackSimple&& cb={}) = 0;
+    virtual void pingNode(SockAddr, DoneCallbackSimple&& cb = {}) = 0;
 
-    virtual time_point periodic(const uint8_t *buf, size_t buflen, SockAddr, const time_point& now) = 0;
-    virtual time_point periodic(const uint8_t *buf, size_t buflen, const sockaddr* from, socklen_t fromlen, const time_point& now) = 0;
+    virtual time_point periodic(const uint8_t* buf, size_t buflen, SockAddr, const time_point& now) = 0;
+    virtual time_point periodic(
+        const uint8_t* buf, size_t buflen, const sockaddr* from, socklen_t fromlen, const time_point& now)
+        = 0;
 
     /**
      * Get a value by searching on all available protocols (IPv4, IPv6),
@@ -105,10 +95,18 @@ public:
                   cb and donecb won't be called again afterward.
      * @param f a filter function used to prefilter values.
      */
-    virtual void get(const InfoHash& key, GetCallback cb, DoneCallback donecb={}, Value::Filter&& f={}, Where&& w = {}) = 0;
-    virtual void get(const InfoHash& key, GetCallback cb, DoneCallbackSimple donecb={}, Value::Filter&& f={}, Where&& w = {}) = 0;
-    virtual void get(const InfoHash& key, GetCallbackSimple cb, DoneCallback donecb={}, Value::Filter&& f={}, Where&& w = {}) = 0;
-    virtual void get(const InfoHash& key, GetCallbackSimple cb, DoneCallbackSimple donecb, Value::Filter&& f={}, Where&& w = {}) = 0;
+    virtual void get(
+        const InfoHash& key, GetCallback cb, DoneCallback donecb = {}, Value::Filter&& f = {}, Where&& w = {})
+        = 0;
+    virtual void get(
+        const InfoHash& key, GetCallback cb, DoneCallbackSimple donecb = {}, Value::Filter&& f = {}, Where&& w = {})
+        = 0;
+    virtual void get(
+        const InfoHash& key, GetCallbackSimple cb, DoneCallback donecb = {}, Value::Filter&& f = {}, Where&& w = {})
+        = 0;
+    virtual void get(
+        const InfoHash& key, GetCallbackSimple cb, DoneCallbackSimple donecb, Value::Filter&& f = {}, Where&& w = {})
+        = 0;
 
     /**
       * Similar to Dht::get, but sends a Query to filter data remotely.
@@ -140,25 +138,29 @@ public:
      * The done callback will be called once, when the first announce succeeds, or fails.
      */
     virtual void put(const InfoHash& key,
-           Sp<Value>,
-           DoneCallback cb=nullptr,
-           time_point created=time_point::max(),
-           bool permanent = false) = 0;
+                     Sp<Value>,
+                     DoneCallback cb = nullptr,
+                     time_point created = time_point::max(),
+                     bool permanent = false)
+        = 0;
     virtual void put(const InfoHash& key,
-           const Sp<Value>& v,
-           DoneCallbackSimple cb,
-           time_point created=time_point::max(),
-           bool permanent = false) = 0;
+                     const Sp<Value>& v,
+                     DoneCallbackSimple cb,
+                     time_point created = time_point::max(),
+                     bool permanent = false)
+        = 0;
     virtual void put(const InfoHash& key,
-           Value&& v,
-           DoneCallback cb=nullptr,
-           time_point created=time_point::max(),
-           bool permanent = false) = 0;
+                     Value&& v,
+                     DoneCallback cb = nullptr,
+                     time_point created = time_point::max(),
+                     bool permanent = false)
+        = 0;
     virtual void put(const InfoHash& key,
-           Value&& v,
-           DoneCallbackSimple cb,
-           time_point created=time_point::max(),
-           bool permanent = false) = 0;
+                     Value&& v,
+                     DoneCallbackSimple cb,
+                     time_point created = time_point::max(),
+                     bool permanent = false)
+        = 0;
 
     /**
      * Get data currently being put at the given hash.
@@ -183,9 +185,9 @@ public:
      *
      * @return a token to cancel the listener later.
      */
-    virtual size_t listen(const InfoHash&, GetCallback, Value::Filter={}, Where w = {}) = 0;
-    virtual size_t listen(const InfoHash& key, GetCallbackSimple cb, Value::Filter f={}, Where w = {}) = 0;
-    virtual size_t listen(const InfoHash&, ValueCallback, Value::Filter={}, Where w = {}) = 0;
+    virtual size_t listen(const InfoHash&, GetCallback, Value::Filter = {}, Where w = {}) = 0;
+    virtual size_t listen(const InfoHash& key, GetCallbackSimple cb, Value::Filter f = {}, Where w = {}) = 0;
+    virtual size_t listen(const InfoHash&, ValueCallback, Value::Filter = {}, Where w = {}) = 0;
 
     virtual bool cancelListen(const InfoHash&, size_t token) = 0;
 
@@ -232,16 +234,15 @@ public:
 
     virtual std::vector<SockAddr> getPublicAddress(sa_family_t family = 0) = 0;
 
-    virtual void setLogger(const Logger& l) {
+    virtual void setLogger(const Logger& l)
+    {
         if (logger_)
             *logger_ = l;
         else
-            logger_= std::make_shared<Logger>(l);
+            logger_ = std::make_shared<Logger>(l);
     }
 
-    virtual void setLogger(const std::shared_ptr<Logger>& l) {
-        logger_ = l;
-    }
+    virtual void setLogger(const std::shared_ptr<Logger>& l) { logger_ = l; }
 
     /**
      * Only print logs related to the given InfoHash (if given), or disable filter (if zeroes).

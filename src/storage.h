@@ -1,20 +1,5 @@
-/*
- *  Copyright (c) 2014-2026 Savoir-faire Linux Inc.
- *
- *  This program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 3 of the License, or
- *  (at your option) any later version.
- *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with this program. If not, see <https://www.gnu.org/licenses/>.
- */
-
+// Copyright (c) 2014-2026 Savoir-faire Linux Inc.
+// SPDX-License-Identifier: MIT
 #pragma once
 
 #include "infohash.h"
@@ -29,13 +14,16 @@ namespace dht {
 /**
  * Tracks storage usage per IP or IP range
  */
-class StorageBucket {
+class StorageBucket
+{
 public:
-    void insert(const InfoHash& id, const Value& value, time_point expiration) {
+    void insert(const InfoHash& id, const Value& value, time_point expiration)
+    {
         totalSize_ += value.size();
         storedValues_.emplace(expiration, std::pair<InfoHash, Value::Id>(id, value.id));
     }
-    void erase(const InfoHash& id, const Value& value, time_point expiration) {
+    void erase(const InfoHash& id, const Value& value, time_point expiration)
+    {
         auto range = storedValues_.equal_range(expiration);
         for (auto rit = range.first; rit != range.second;) {
             if (rit->second.first == id && rit->second.second == value.id) {
@@ -47,7 +35,8 @@ public:
         }
         // printf("StorageBucket::erase unable to find value %s %016" PRIx64 "\n", id.to_c_str(), value.id);
     }
-    void refresh(const InfoHash& id, const Value& value, time_point old_expiration, time_point expiration) {
+    void refresh(const InfoHash& id, const Value& value, time_point old_expiration, time_point expiration)
+    {
         auto range = storedValues_.equal_range(old_expiration);
         for (auto rit = range.first; rit != range.second;) {
             if (rit->second.first == id && rit->second.second == value.id) {
@@ -61,13 +50,18 @@ public:
         insert(id, value, expiration);
     }
     size_t size() const { return totalSize_; }
-    std::pair<InfoHash, Value::Id> getOldest() const { return storedValues_.empty() ? std::pair<InfoHash, Value::Id>{} : storedValues_.begin()->second; }
+    std::pair<InfoHash, Value::Id> getOldest() const
+    {
+        return storedValues_.empty() ? std::pair<InfoHash, Value::Id> {} : storedValues_.begin()->second;
+    }
+
 private:
     std::multimap<time_point, std::pair<InfoHash, Value::Id>> storedValues_;
     size_t totalSize_ {0};
 };
 
-struct ValueStorage {
+struct ValueStorage
+{
     Sp<Value> data {};
     time_point created {};
     time_point expiration {};
@@ -76,11 +70,14 @@ struct ValueStorage {
 
     ValueStorage() {}
     ValueStorage(const Sp<Value>& v, time_point t, time_point e)
-     : data(v), created(t), expiration(e) {}
+        : data(v)
+        , created(t)
+        , expiration(e)
+    {}
 };
 
-
-struct Storage {
+struct Storage
+{
     time_point maintenance_time {};
     std::map<Sp<Node>, std::map<size_t, Listener>> listeners;
     std::map<size_t, LocalListener> local_listeners {};
@@ -92,7 +89,8 @@ struct Storage {
     /**
      * Changes caused by an operation on the storage.
      */
-    struct StoreDiff {
+    struct StoreDiff
+    {
         /** Difference in stored size caused by the op */
         ssize_t size_diff;
         /** Difference in number of values */
@@ -104,35 +102,35 @@ struct Storage {
     };
 
     Storage() {}
-    Storage(time_point t) : maintenance_time(t) {}
+    Storage(time_point t)
+        : maintenance_time(t)
+    {}
     Storage(Storage&& o) noexcept = default;
     Storage& operator=(Storage&& o) = default;
 
-    bool empty() const {
-        return values.empty();
-    }
+    bool empty() const { return values.empty(); }
 
     StoreDiff clear();
 
-    size_t valueCount() const {
-        return values.size();
-    }
+    size_t valueCount() const { return values.size(); }
 
-    size_t totalSize() const {
-        return total_size;
-    }
+    size_t totalSize() const { return total_size; }
 
     const std::vector<ValueStorage>& getValues() const { return values; }
 
-    Sp<Value> getById(Value::Id vid) const {
+    Sp<Value> getById(Value::Id vid) const
+    {
         for (auto& v : values)
-            if (v.data->id == vid) return v.data;
+            if (v.data->id == vid)
+                return v.data;
         return {};
     }
 
-    std::vector<Sp<Value>> get(const Value::Filter& f = {}) const {
+    std::vector<Sp<Value>> get(const Value::Filter& f = {}) const
+    {
         std::vector<Sp<Value>> newvals {};
-        if (not f) newvals.reserve(values.size());
+        if (not f)
+            newvals.reserve(values.size());
         for (auto& v : values) {
             if (not f || f(*v.data))
                 newvals.push_back(v.data);
@@ -148,8 +146,8 @@ struct Storage {
      *      change_size: size difference
      *      change_value_num: change of value number (0 or 1)
      */
-    std::pair<ValueStorage*, StoreDiff>
-    store(const InfoHash& id, const Sp<Value>&, time_point created, time_point expiration, StorageBucket*);
+    std::pair<ValueStorage*, StoreDiff> store(
+        const InfoHash& id, const Sp<Value>&, time_point created, time_point expiration, StorageBucket*);
 
     /**
      * Refreshes the time point of the value's lifetime begining.
@@ -158,8 +156,11 @@ struct Storage {
      * @param vid  The value id
      * @return time of the next expiration, time_point::max() if no expiration
      */
-    std::pair<ValueStorage*, time_point>
-    refresh(const InfoHash& id, const time_point& now, const Value::Id& vid, const TypeStore& types) {
+    std::pair<ValueStorage*, time_point> refresh(const InfoHash& id,
+                                                 const time_point& now,
+                                                 const Value::Id& vid,
+                                                 const TypeStore& types)
+    {
         for (auto& vs : values)
             if (vs.data->id == vid) {
                 vs.created = now;
@@ -174,9 +175,7 @@ struct Storage {
 
     size_t listen(ValueCallback& cb, Value::Filter& f, const Sp<Query>& q);
 
-    void cancelListen(size_t token) {
-        local_listeners.erase(token);
-    }
+    void cancelListen(size_t token) { local_listeners.erase(token); }
 
     Sp<Value> remove(const InfoHash& id, Value::Id);
 
@@ -190,7 +189,6 @@ private:
     size_t total_size {};
 };
 
-
 size_t
 Storage::listen(ValueCallback& gcb, Value::Filter& filter, const Sp<Query>& query)
 {
@@ -202,15 +200,14 @@ Storage::listen(ValueCallback& gcb, Value::Filter& filter, const Sp<Query>& quer
         }
     }
     auto tokenlocal = ++listener_token;
-    local_listeners.emplace(tokenlocal, LocalListener{query, filter, gcb});
+    local_listeners.emplace(tokenlocal, LocalListener {query, filter, gcb});
     return tokenlocal;
 }
-
 
 std::pair<ValueStorage*, Storage::StoreDiff>
 Storage::store(const InfoHash& id, const Sp<Value>& value, time_point created, time_point expiration, StorageBucket* sb)
 {
-    auto it = std::find_if (values.begin(), values.end(), [&](const ValueStorage& vr) {
+    auto it = std::find_if(values.begin(), values.end(), [&](const ValueStorage& vr) {
         return vr.data == value || vr.data->id == value->id;
     });
     ssize_t size_new = value->size();
@@ -219,9 +216,9 @@ Storage::store(const InfoHash& id, const Sp<Value>& value, time_point created, t
         it->created = created;
         if (it->data != value) {
             size_t size_old = it->data->size();
-            ssize_t size_diff = size_new - (ssize_t)size_old;
-            //DHT_LOG.DEBUG("Updating %s -> %s", id.toString().c_str(), value->toString().c_str());
-            // clear quota for previous value
+            ssize_t size_diff = size_new - (ssize_t) size_old;
+            // DHT_LOG.DEBUG("Updating %s -> %s", id.toString().c_str(), value->toString().c_str());
+            //  clear quota for previous value
             if (it->store_bucket)
                 it->store_bucket->erase(id, *it->data, it->expiration);
             it->expiration = expiration;
@@ -231,28 +228,26 @@ Storage::store(const InfoHash& id, const Sp<Value>& value, time_point created, t
                 sb->insert(id, *value, expiration);
             it->data = value;
             total_size += size_diff;
-            return std::make_pair(&(*it), StoreDiff{size_diff, 0, 0, 1});
+            return std::make_pair(&(*it), StoreDiff {size_diff, 0, 0, 1});
         }
     } else {
-        //DHT_LOG.DEBUG("Storing %s -> %s", id.toString().c_str(), value->toString().c_str());
+        // DHT_LOG.DEBUG("Storing %s -> %s", id.toString().c_str(), value->toString().c_str());
         if (values.size() < MAX_VALUES) {
             total_size += size_new;
             values.emplace_back(value, created, expiration);
             values.back().store_bucket = sb;
             if (sb)
                 sb->insert(id, *value, expiration);
-            return std::make_pair(&values.back(), StoreDiff{size_new, 1, 0, 0});
+            return std::make_pair(&values.back(), StoreDiff {size_new, 1, 0, 0});
         }
     }
-    return std::make_pair(nullptr, StoreDiff{});
+    return std::make_pair(nullptr, StoreDiff {});
 }
 
 Sp<Value>
 Storage::remove(const InfoHash& id, Value::Id vid)
 {
-    auto it = std::find_if (values.begin(), values.end(), [&](const ValueStorage& vr) {
-        return vr.data->id == vid;
-    });
+    auto it = std::find_if(values.begin(), values.end(), [&](const ValueStorage& vr) { return vr.data->id == vid; });
     if (it == values.end())
         return {};
     ssize_t size = it->data->size();
@@ -291,15 +286,12 @@ Storage::expire(const InfoHash& id, time_point now)
         }
         if (node_listeners.empty()) {
             nl_it = listeners.erase(nl_it);
-        }
-        else
+        } else
             ++nl_it;
     }
 
     // expire values
-    auto r = std::partition(values.begin(), values.end(), [&](const ValueStorage& v) {
-        return v.expiration > now;
-    });
+    auto r = std::partition(values.begin(), values.end(), [&](const ValueStorage& v) { return v.expiration > now; });
     std::vector<Sp<Value>> ret;
     ret.reserve(std::distance(r, values.end()));
     ssize_t size_diff {0};
@@ -316,4 +308,4 @@ Storage::expire(const InfoHash& id, time_point now)
     return {size_diff, std::move(ret)};
 }
 
-}
+} // namespace dht

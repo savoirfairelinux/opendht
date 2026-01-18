@@ -1,19 +1,5 @@
-/*
- *  Copyright (c) 2014-2026 Savoir-faire Linux Inc.
- *
- *  This program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 3 of the License, or
- *  (at your option) any later version.
- *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with this program. If not, see <https://www.gnu.org/licenses/>.
- */
+// Copyright (c) 2014-2026 Savoir-faire Linux Inc.
+// SPDX-License-Identifier: MIT
 
 #include "dhtproxy_stress_tester.h"
 
@@ -28,7 +14,8 @@ namespace test {
 CPPUNIT_TEST_SUITE_REGISTRATION(DhtProxyStressTester);
 
 void
-DhtProxyStressTester::setUp() {
+DhtProxyStressTester::setUp()
+{
     logger = dht::log::getStdLogger();
 
     dht::DhtRunner::Context ctx;
@@ -55,26 +42,28 @@ DhtProxyStressTester::setUp() {
 }
 
 void
-DhtProxyStressTester::tearDown() {
+DhtProxyStressTester::tearDown()
+{
     nodePeer.join();
     nodeClient.join();
 
     bool done = false;
     std::condition_variable cv;
     std::mutex cv_m;
-    nodeProxy->shutdown([&]{
+    nodeProxy->shutdown([&] {
         std::lock_guard<std::mutex> lk(cv_m);
         done = true;
         cv.notify_all();
     });
     std::unique_lock<std::mutex> lk(cv_m);
-    CPPUNIT_ASSERT(cv.wait_for(lk, 15s, [&]{ return done; }));
+    CPPUNIT_ASSERT(cv.wait_for(lk, 15s, [&] { return done; }));
     serverProxy.reset();
     nodeProxy.reset();
 }
 
 void
-DhtProxyStressTester::testRepeatValues() {
+DhtProxyStressTester::testRepeatValues()
+{
     dht::DhtRunner::Context ctx;
     ctx.logger = logger;
     nodeClient.run(0, clientConfig, std::move(ctx));
@@ -95,7 +84,7 @@ DhtProxyStressTester::testRepeatValues() {
         done = true;
         cv.notify_all();
     });
-    CPPUNIT_ASSERT(cv.wait_for(lk, 10s, [&]{ return done; }));
+    CPPUNIT_ASSERT(cv.wait_for(lk, 10s, [&] { return done; }));
     done = false;
 
     std::vector<dht::Blob> values;
@@ -109,7 +98,7 @@ DhtProxyStressTester::testRepeatValues() {
         }
         return true;
     });
-    CPPUNIT_ASSERT(cv.wait_for(lk, 10s, [&]{ return done; }));
+    CPPUNIT_ASSERT(cv.wait_for(lk, 10s, [&] { return done; }));
     done = false;
     // Here values should contains 1 values
     CPPUNIT_ASSERT_EQUAL(static_cast<int>(values.size()), 1);
@@ -119,7 +108,7 @@ DhtProxyStressTester::testRepeatValues() {
     dht::Value secondVal {"You're a monster"};
     auto secondVal_data = secondVal.data;
     nodePeer.put(key, std::move(secondVal));
-    CPPUNIT_ASSERT(cv.wait_for(lk, 10s, [&]{ return done; }));
+    CPPUNIT_ASSERT(cv.wait_for(lk, 10s, [&] { return done; }));
     nodeClient.cancelListen(key, std::move(token));
     CPPUNIT_ASSERT_EQUAL(static_cast<int>(values.size()), 2);
     CPPUNIT_ASSERT(values.back() == secondVal_data);
@@ -147,7 +136,7 @@ DhtProxyStressTester::testRepeatValues() {
             done = true;
             cv.notify_all();
         });
-        CPPUNIT_ASSERT(cv.wait_for(lk, 20s, [&]{ return done; }));
+        CPPUNIT_ASSERT(cv.wait_for(lk, 20s, [&] { return done; }));
         done = false;
         // temporary node to make sure the value is retrieved
         auto tmpValues = tmpNode->get(key);
@@ -165,7 +154,7 @@ DhtProxyStressTester::testRepeatValues() {
             }
             return true;
         });
-        CPPUNIT_ASSERT(cv.wait_for(lk, 25s, [&]{ return done; }));
+        CPPUNIT_ASSERT(cv.wait_for(lk, 25s, [&] { return done; }));
         done = false;
 
         bool found_value = false;
@@ -182,4 +171,4 @@ DhtProxyStressTester::testRepeatValues() {
     }
 }
 
-}  // namespace test
+} // namespace test

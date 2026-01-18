@@ -1,21 +1,5 @@
-/*
- *  Copyright (c) 2014-2026 Savoir-faire Linux Inc.
- *
- *  This program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 3 of the License, or
- *  (at your option) any later version.
- *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with this program. If not, see <https://www.gnu.org/licenses/>.
- */
-
-
+// Copyright (c) 2014-2026 Savoir-faire Linux Inc.
+// SPDX-License-Identifier: MIT
 #pragma once
 
 #include "utils.h"
@@ -31,10 +15,15 @@ namespace dht {
  * @details
  * Maintains the timings upon which to execute a job.
  */
-class Scheduler {
+class Scheduler
+{
 public:
-    struct Job {
-        Job(std::function<void()>&& f, time_point t) : do_(std::move(f)), t_(t) {}
+    struct Job
+    {
+        Job(std::function<void()>&& f, time_point t)
+            : do_(std::move(f))
+            , t_(t)
+        {}
         std::function<void()> do_;
         const time_point t_;
         void cancel() { do_ = {}; }
@@ -48,7 +37,8 @@ public:
      *
      * @return pointer to the newly scheduled job.
      */
-    Sp<Scheduler::Job> add(time_point t, std::function<void()>&& job_func) {
+    Sp<Scheduler::Job> add(time_point t, std::function<void()>&& job_func)
+    {
         auto job = std::make_shared<Job>(std::move(job_func), t);
         if (t != time_point::max())
             timers.emplace(std::move(t), job);
@@ -61,7 +51,8 @@ public:
      * @param job  The job to edit.
      * @param t  The time at which the job shall be rescheduled.
      */
-    void edit(Sp<Scheduler::Job>& job, time_point t) {
+    void edit(Sp<Scheduler::Job>& job, time_point t)
+    {
         if (not job)
             return;
         // std::function move doesn't garantee to leave the object empty.
@@ -71,7 +62,8 @@ public:
         job = add(t, std::move(task));
     }
 
-    bool cancel(Sp<Scheduler::Job>& job) {
+    bool cancel(Sp<Scheduler::Job>& job)
+    {
         if (job) {
             job->cancel();
             for (auto r = timers.equal_range(job->t_); r.first != r.second; ++r.first) {
@@ -90,7 +82,8 @@ public:
      *
      * @return The time for the next job to run.
      */
-    time_point run() {
+    time_point run()
+    {
         while (not timers.empty()) {
             auto timer = timers.begin();
             /*
@@ -110,9 +103,7 @@ public:
         return getNextJobTime();
     }
 
-    inline time_point getNextJobTime() const {
-        return timers.empty() ? time_point::max() : timers.begin()->first;
-    }
+    inline time_point getNextJobTime() const { return timers.empty() ? time_point::max() : timers.begin()->first; }
 
     /**
      * Accessors for the common time reference used for synchronizing
@@ -127,4 +118,4 @@ private:
     std::multimap<time_point, Sp<Job>> timers {}; /* the jobs ordered by time */
 };
 
-}
+} // namespace dht

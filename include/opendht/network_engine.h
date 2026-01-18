@@ -1,20 +1,5 @@
-/*
- *  Copyright (c) 2014-2026 Savoir-faire Linux Inc.
- *
- *  This program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 3 of the License, or
- *  (at your option) any later version.
- *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with this program. If not, see <https://www.gnu.org/licenses/>.
- */
-
+// Copyright (c) 2014-2026 Savoir-faire Linux Inc.
+// SPDX-License-Identifier: MIT
 #pragma once
 
 #include "node_cache.h"
@@ -46,23 +31,25 @@ struct TransId;
 #define MSG_CONFIRM 0
 #endif
 
-struct NetworkConfig {
+struct NetworkConfig
+{
     NetId network {0};
     ssize_t max_req_per_sec {0};
     ssize_t max_peer_req_per_sec {0};
     bool is_client {false};
 };
 
-class DhtProtocolException : public DhtException {
+class DhtProtocolException : public DhtException
+{
 public:
     // sent to another peer (http-like).
     static const constexpr uint16_t NON_AUTHORITATIVE_INFORMATION {203}; /* incomplete request packet. */
     static const constexpr uint16_t UNAUTHORIZED {401};                  /* incorrect tokens. */
     static const constexpr uint16_t NOT_FOUND {404};                     /* storage not found */
     // for internal use (custom).
-    static const constexpr uint16_t INVALID_TID_SIZE {421};              /* id was truncated. */
-    static const constexpr uint16_t UNKNOWN_TID {422};                   /* unknown tid */
-    static const constexpr uint16_t WRONG_NODE_INFO_BUF_LEN {423};       /* node info length is incorrect */
+    static const constexpr uint16_t INVALID_TID_SIZE {421};        /* id was truncated. */
+    static const constexpr uint16_t UNKNOWN_TID {422};             /* unknown tid */
+    static const constexpr uint16_t WRONG_NODE_INFO_BUF_LEN {423}; /* node info length is incorrect */
 
     static const std::string GET_NO_INFOHASH;    /* received "get" request with no infohash */
     static const std::string LISTEN_NO_INFOHASH; /* got "listen" request without infohash */
@@ -72,8 +59,12 @@ public:
     static const std::string STORAGE_NOT_FOUND;  /* got access request for an unknown storage */
     static const std::string PUT_INVALID_ID;     /* invalid id in "put" request */
 
-    DhtProtocolException(uint16_t code, const std::string& msg="", InfoHash failing_node_id={})
-        : DhtException(msg), msg(msg), code(code), failing_node_id(failing_node_id) {}
+    DhtProtocolException(uint16_t code, const std::string& msg = "", InfoHash failing_node_id = {})
+        : DhtException(msg)
+        , msg(msg)
+        , code(code)
+        , failing_node_id(failing_node_id)
+    {}
 
     const std::string& getMsg() const { return msg; }
     uint16_t getCode() const { return code; }
@@ -90,7 +81,8 @@ struct ParsedMessage;
 /**
  * Answer for a request.
  */
-struct RequestAnswer {
+struct RequestAnswer
+{
     Blob ntoken {};
     Value::Id vid {};
     std::vector<Sp<Value>> values {};
@@ -175,12 +167,7 @@ private:
      * @param token (type: Blob) security token.
      * @param rid (type: uint16_t) request id.
      */
-    std::function<RequestAnswer(Sp<Node>,
-            const InfoHash&,
-            const Blob&,
-            Tid,
-            const Query&,
-            int)> onListen {};
+    std::function<RequestAnswer(Sp<Node>, const InfoHash&, const Blob&, Tid, const Query&, int)> onListen {};
     /**
      * Called on announce request.
      *
@@ -190,11 +177,8 @@ private:
      * @param values (type: std::vector<Sp<Value>>) values to store.
      * @param created (type: time_point) time when the value was created.
      */
-    std::function<RequestAnswer(Sp<Node>,
-            const InfoHash&,
-            const Blob&,
-            const std::vector<Sp<Value>>&,
-            const time_point&)> onAnnounce {};
+    std::function<RequestAnswer(Sp<Node>, const InfoHash&, const Blob&, const std::vector<Sp<Value>>&, const time_point&)>
+        onAnnounce {};
     /**
      * Called on refresh request.
      *
@@ -203,32 +187,28 @@ private:
      * @param token (type: Blob) security token.
      * @param vid (type: Value::id) the value id.
      */
-    std::function<RequestAnswer(Sp<Node>,
-            const InfoHash&,
-            const Blob&,
-            const Value::Id&)> onRefresh {};
+    std::function<RequestAnswer(Sp<Node>, const InfoHash&, const Blob&, const Value::Id&)> onRefresh {};
 
 public:
     using RequestCb = std::function<void(const Request&, RequestAnswer&&)>;
     using RequestErrorCb = std::function<bool(const Request&, DhtProtocolException&&)>;
     using RequestExpiredCb = std::function<void(const Request&, bool)>;
 
-    NetworkEngine(
-            InfoHash& myid,
-            NetworkConfig config,
-            std::unique_ptr<DatagramSocket>&& sock,
-            const Sp<Logger>& log,
-            std::mt19937_64& rd,
-            Scheduler& scheduler,
-            decltype(NetworkEngine::onError)&& onError,
-            decltype(NetworkEngine::onNewNode)&& onNewNode,
-            decltype(NetworkEngine::onReportedAddr)&& onReportedAddr,
-            decltype(NetworkEngine::onPing)&& onPing,
-            decltype(NetworkEngine::onFindNode)&& onFindNode,
-            decltype(NetworkEngine::onGetValues)&& onGetValues,
-            decltype(NetworkEngine::onListen)&& onListen,
-            decltype(NetworkEngine::onAnnounce)&& onAnnounce,
-            decltype(NetworkEngine::onRefresh)&& onRefresh);
+    NetworkEngine(InfoHash& myid,
+                  NetworkConfig config,
+                  std::unique_ptr<DatagramSocket>&& sock,
+                  const Sp<Logger>& log,
+                  std::mt19937_64& rd,
+                  Scheduler& scheduler,
+                  decltype(NetworkEngine::onError)&& onError,
+                  decltype(NetworkEngine::onNewNode)&& onNewNode,
+                  decltype(NetworkEngine::onReportedAddr)&& onReportedAddr,
+                  decltype(NetworkEngine::onPing)&& onPing,
+                  decltype(NetworkEngine::onFindNode)&& onFindNode,
+                  decltype(NetworkEngine::onGetValues)&& onGetValues,
+                  decltype(NetworkEngine::onListen)&& onListen,
+                  decltype(NetworkEngine::onAnnounce)&& onAnnounce,
+                  decltype(NetworkEngine::onRefresh)&& onRefresh);
 
     ~NetworkEngine();
 
@@ -251,15 +231,32 @@ public:
      * @param values      The values to send.
      * @param version     If version = 1, a request will be used to answer to the listener
      */
-    void tellListener(const Sp<Node>& n, Tid socket_id, const InfoHash& hash, want_t want, const Blob& ntoken,
-            std::vector<Sp<Node>>&& nodes, std::vector<Sp<Node>>&& nodes6,
-            std::vector<Sp<Value>>&& values, const Query& q, int version);
+    void tellListener(const Sp<Node>& n,
+                      Tid socket_id,
+                      const InfoHash& hash,
+                      want_t want,
+                      const Blob& ntoken,
+                      std::vector<Sp<Node>>&& nodes,
+                      std::vector<Sp<Node>>&& nodes6,
+                      std::vector<Sp<Value>>&& values,
+                      const Query& q,
+                      int version);
 
-    void tellListenerRefreshed(const Sp<Node>& n, Tid socket_id, const InfoHash& hash, const Blob& ntoken, const std::vector<Value::Id>& values, int version);
-    void tellListenerExpired(const Sp<Node>& n, Tid socket_id, const InfoHash& hash, const Blob& ntoken, const std::vector<Value::Id>& values, int version);
+    void tellListenerRefreshed(const Sp<Node>& n,
+                               Tid socket_id,
+                               const InfoHash& hash,
+                               const Blob& ntoken,
+                               const std::vector<Value::Id>& values,
+                               int version);
+    void tellListenerExpired(const Sp<Node>& n,
+                             Tid socket_id,
+                             const InfoHash& hash,
+                             const Blob& ntoken,
+                             const std::vector<Value::Id>& values,
+                             int version);
 
     bool isRunning(sa_family_t af) const;
-    inline want_t want () const { return dht_socket->hasIPv4() and dht_socket->hasIPv6() ? (WANT4 | WANT6) : -1; }
+    inline want_t want() const { return dht_socket->hasIPv4() and dht_socket->hasIPv6() ? (WANT4 | WANT6) : -1; }
 
     void connectivityChanged(sa_family_t);
 
@@ -276,8 +273,7 @@ public:
      *
      * @return the request with information concerning its success.
      */
-    Sp<Request>
-    sendPing(const Sp<Node>& n, RequestCb&& on_done, RequestExpiredCb&& on_expired);
+    Sp<Request> sendPing(const Sp<Node>& n, RequestCb&& on_done, RequestExpiredCb&& on_expired);
 
     /**
      * Send a "ping" request to a given node.
@@ -289,11 +285,11 @@ public:
      *
      * @return the request with information concerning its success.
      */
-    Sp<Request>
-    sendPing(SockAddr&& sa, RequestCb&& on_done, RequestExpiredCb&& on_expired) {
+    Sp<Request> sendPing(SockAddr&& sa, RequestCb&& on_done, RequestExpiredCb&& on_expired)
+    {
         return sendPing(std::make_shared<Node>(InfoHash::zero(), std::move(sa), rd),
-                std::forward<RequestCb>(on_done),
-                std::forward<RequestExpiredCb>(on_expired));
+                        std::forward<RequestCb>(on_done),
+                        std::forward<RequestExpiredCb>(on_expired));
     }
 
     /**
@@ -416,11 +412,11 @@ public:
      * @return the request with information concerning its success.
      */
     void sendUpdateValues(const Sp<Node>& n,
-                                 const InfoHash& infohash,
-                                 std::vector<Sp<Value>>&& values,
-                                 time_point created,
-                                 const Blob& token,
-                                 size_t sid);
+                          const InfoHash& infohash,
+                          std::vector<Sp<Value>>&& values,
+                          time_point created,
+                          const Blob& token,
+                          size_t sid);
     Sp<Request> sendUpdateValues(const Sp<Node>& n,
                                  const InfoHash& infohash,
                                  std::vector<Sp<Value>>::iterator begin,
@@ -438,44 +434,38 @@ public:
      * @param fromlen  The length of the corresponding sockaddr structure.
      * @param now  The time to adjust the clock in the network engine.
      */
-    void processMessage(const uint8_t *buf, size_t buflen, SockAddr addr);
+    void processMessage(const uint8_t* buf, size_t buflen, SockAddr addr);
 
-    Sp<Node> insertNode(const InfoHash& id, const SockAddr& addr) {
+    Sp<Node> insertNode(const InfoHash& id, const SockAddr& addr)
+    {
         auto n = cache.getNode(id, addr, scheduler.time(), 0);
         onNewNode(n, 0);
         return n;
     }
 
-    std::vector<unsigned> getNodeMessageStats(bool in) {
+    std::vector<unsigned> getNodeMessageStats(bool in)
+    {
         auto& st = in ? in_stats : out_stats;
-        std::vector<unsigned> stats {st.ping,  st.find,  st.get,  st.listen,  st.put};
+        std::vector<unsigned> stats {st.ping, st.find, st.get, st.listen, st.put};
         st = {};
         return stats;
     }
 
     void blacklistNode(const Sp<Node>& n);
 
-    std::vector<Sp<Node>> getCachedNodes(const InfoHash& id, sa_family_t sa_f, size_t count) {
+    std::vector<Sp<Node>> getCachedNodes(const InfoHash& id, sa_family_t sa_f, size_t count)
+    {
         return cache.getCachedNodes(id, sa_f, count);
     }
 
-    size_t getNodeCacheSize() const {
-        return cache.size();
-    }
-    size_t getNodeCacheSize(sa_family_t af) const {
-        return cache.size(af);
-    }
+    size_t getNodeCacheSize() const { return cache.size(); }
+    size_t getNodeCacheSize(sa_family_t af) const { return cache.size(af); }
 
-    size_t getRateLimiterSize() const {
-        return address_rate_limiter.size();
-    }
+    size_t getRateLimiterSize() const { return address_rate_limiter.size(); }
 
-    size_t getPartialCount() const {
-        return partial_messages.size();
-    }
+    size_t getPartialCount() const { return partial_messages.size(); }
 
 private:
-
     struct PartialMessage;
 
     /***************
@@ -515,23 +505,26 @@ private:
      */
     void sendRequest(const Sp<Request>& request);
 
-    struct MessageStats {
-        unsigned ping         {0};
-        unsigned find         {0};
-        unsigned get          {0};
-        unsigned put          {0};
-        unsigned listen       {0};
-        unsigned refresh      {0};
-        unsigned updateValue  {0};
+    struct MessageStats
+    {
+        unsigned ping {0};
+        unsigned find {0};
+        unsigned get {0};
+        unsigned put {0};
+        unsigned listen {0};
+        unsigned refresh {0};
+        unsigned updateValue {0};
     };
 
-
     // basic wrapper for socket sendto function
-    int send(const SockAddr& addr, const char *buf, size_t len, bool confirmed = false);
+    int send(const SockAddr& addr, const char* buf, size_t len, bool confirmed = false);
 
     void sendValueParts(Tid tid, const std::vector<Blob>& svals, const SockAddr& addr);
-    std::vector<Blob> packValueHeader(msgpack::sbuffer&, std::vector<Sp<Value>>::const_iterator, std::vector<Sp<Value>>::const_iterator) const;
-    std::vector<Blob> packValueHeader(msgpack::sbuffer& buf, const std::vector<Sp<Value>>& values) const {
+    std::vector<Blob> packValueHeader(msgpack::sbuffer&,
+                                      std::vector<Sp<Value>>::const_iterator,
+                                      std::vector<Sp<Value>>::const_iterator) const;
+    std::vector<Blob> packValueHeader(msgpack::sbuffer& buf, const std::vector<Sp<Value>>& values) const
+    {
         return packValueHeader(buf, values.begin(), values.end());
     }
     void maintainRxBuffer(Tid tid);
@@ -543,29 +536,22 @@ private:
     void sendPong(const SockAddr& addr, Tid tid);
     /* answer to findnodes/getvalues request */
     void sendNodesValues(const SockAddr& addr,
-            Tid tid,
-            const Blob& nodes,
-            const Blob& nodes6,
-            const std::vector<Sp<Value>>& st,
-            const Query& query,
-            const Blob& token);
+                         Tid tid,
+                         const Blob& nodes,
+                         const Blob& nodes6,
+                         const std::vector<Sp<Value>>& st,
+                         const Query& query,
+                         const Blob& token);
     Blob bufferNodes(sa_family_t af, const InfoHash& id, std::vector<Sp<Node>>& nodes);
 
-    std::pair<Blob, Blob> bufferNodes(sa_family_t af,
-            const InfoHash& id,
-            want_t want,
-            std::vector<Sp<Node>>& nodes,
-            std::vector<Sp<Node>>& nodes6);
+    std::pair<Blob, Blob> bufferNodes(
+        sa_family_t af, const InfoHash& id, want_t want, std::vector<Sp<Node>>& nodes, std::vector<Sp<Node>>& nodes6);
     /* answer to a listen request */
     void sendListenConfirmation(const SockAddr& addr, Tid tid);
     /* answer to put request */
     void sendValueAnnounced(const SockAddr& addr, Tid, Value::Id);
     /* answer in case of error */
-    void sendError(const SockAddr& addr,
-            Tid tid,
-            uint16_t code,
-            const std::string& message,
-            bool include_id=false);
+    void sendError(const SockAddr& addr, Tid tid, uint16_t code, const std::string& message, bool include_id = false);
 
     void deserializeNodes(ParsedMessage& msg, const SockAddr& from);
 

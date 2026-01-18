@@ -1,20 +1,5 @@
-/*
- *  Copyright (c) 2014-2026 Savoir-faire Linux Inc.
- *
- *  This program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 3 of the License, or
- *  (at your option) any later version.
- *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with this program. If not, see <http://www.gnu.org/licenses/>.
- */
-
+// Copyright (c) 2014-2026 Savoir-faire Linux Inc.
+// SPDX-License-Identifier: MIT
 #pragma once
 
 #include "def.h"
@@ -29,7 +14,8 @@
 
 namespace dht {
 
-class OPENDHT_PUBLIC ThreadPool {
+class OPENDHT_PUBLIC ThreadPool
+{
 public:
     static ThreadPool& computation();
     static ThreadPool& io();
@@ -41,7 +27,8 @@ public:
     void run(std::function<void()>&& cb);
 
     template<class T>
-    std::future<T> get(std::function<T()>&& cb) {
+    std::future<T> get(std::function<T()>&& cb)
+    {
         auto ret = std::make_shared<std::promise<T>>();
         run([cb = std::move(cb), ret]() mutable {
             try {
@@ -49,13 +36,15 @@ public:
             } catch (...) {
                 try {
                     ret->set_exception(std::current_exception());
-                } catch(...) {}
+                } catch (...) {
+                }
             }
         });
         return ret->get_future();
     }
     template<class T>
-    std::shared_future<T> getShared(std::function<T()>&& cb) {
+    std::shared_future<T> getShared(std::function<T()>&& cb)
+    {
         return get(std::move(cb));
     }
 
@@ -79,10 +68,12 @@ private:
     void threadEnded(std::thread&);
 };
 
-class OPENDHT_PUBLIC Executor : public std::enable_shared_from_this<Executor> {
+class OPENDHT_PUBLIC Executor : public std::enable_shared_from_this<Executor>
+{
 public:
     Executor(ThreadPool& pool, unsigned maxConcurrent = 1)
-     : threadPool_(pool), maxConcurrent_(maxConcurrent)
+        : threadPool_(pool)
+        , maxConcurrent_(maxConcurrent)
     {}
 
     void run(std::function<void()>&& task);
@@ -98,32 +89,31 @@ private:
     void schedule();
 };
 
-class OPENDHT_PUBLIC ExecutionContext {
+class OPENDHT_PUBLIC ExecutionContext
+{
 public:
     ExecutionContext(ThreadPool& pool)
-     : threadPool_(pool), state_(std::make_shared<SharedState>())
+        : threadPool_(pool)
+        , state_(std::make_shared<SharedState>())
     {}
 
-    ~ExecutionContext() {
-        state_->destroy();
-    }
+    ~ExecutionContext() { state_->destroy(); }
 
     /** Wait for ongoing tasks to complete execution and drop other pending tasks */
-    void stop() {
-        state_->destroy(false);
-    }
+    void stop() { state_->destroy(false); }
 
-    void run(std::function<void()>&& task) {
+    void run(std::function<void()>&& task)
+    {
         std::lock_guard<std::mutex> lock(state_->mtx);
-        if (state_->shutdown_) return;
+        if (state_->shutdown_)
+            return;
         state_->pendingTasks++;
-        threadPool_.get().run([task = std::move(task), state = state_] {
-            state->run(task);
-        });
+        threadPool_.get().run([task = std::move(task), state = state_] { state->run(task); });
     }
 
 private:
-    struct SharedState {
+    struct SharedState
+    {
         std::mutex mtx {};
         std::condition_variable cv {};
         unsigned pendingTasks {0};
@@ -133,9 +123,11 @@ private:
         /** When true, prevents scheduled tasks to be executed */
         std::atomic_bool destroyed {false};
 
-        void destroy(bool wait = true) {
+        void destroy(bool wait = true)
+        {
             std::unique_lock<std::mutex> lock(mtx);
-            if (destroyed) return;
+            if (destroyed)
+                return;
             if (wait) {
                 cv.wait(lock, [this] { return pendingTasks == 0 && ongoingTasks == 0; });
             }
@@ -146,14 +138,16 @@ private:
             destroyed = true;
         }
 
-        void run(const std::function<void()>& task) {
+        void run(const std::function<void()>& task)
+        {
             {
                 std::lock_guard<std::mutex> lock(mtx);
                 pendingTasks--;
                 ongoingTasks++;
             }
-                if (destroyed) return;
-                task();
+            if (destroyed)
+                return;
+            task();
             {
                 std::lock_guard<std::mutex> lock(mtx);
                 ongoingTasks--;
@@ -165,4 +159,4 @@ private:
     std::shared_ptr<SharedState> state_;
 };
 
-}
+} // namespace dht

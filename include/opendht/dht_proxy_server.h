@@ -1,22 +1,5 @@
-/*
- *  Copyright (c) 2014-2026 Savoir-faire Linux Inc.
- *          Adrien Béraud <adrien.beraud@savoirfairelinux.com>
- *          Vsevolod Ivanov <vsevolod.ivanov@savoirfairelinux.com>
- *
- *  This program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 3 of the License, or
- *  (at your option) any later version.
- *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with this program. If not, see <https://www.gnu.org/licenses/>.
- */
-
+// Copyright (c) 2014-2026 Savoir-faire Linux Inc.
+// SPDX-License-Identifier: MIT
 #pragma once
 
 #include "callbacks.h"
@@ -36,12 +19,7 @@
 #include <mutex>
 
 namespace dht {
-enum class PushType {
-    None = 0,
-    Android,
-    iOS,
-    UnifiedPush
-};
+enum class PushType { None = 0, Android, iOS, UnifiedPush };
 }
 MSGPACK_ADD_ENUM(dht::PushType)
 
@@ -54,14 +32,15 @@ namespace dht {
 namespace http {
 class Request;
 struct ListenerSession;
-}
+} // namespace http
 
 class DhtRunner;
 
 using RestRouter = restinio::router::express_router_t<>;
 using RequestStatus = restinio::request_handling_status_t;
 
-struct OPENDHT_PUBLIC ProxyServerConfig {
+struct OPENDHT_PUBLIC ProxyServerConfig
+{
     std::string address {};
     in_port_t port {8000};
     std::string pushServer {};
@@ -85,8 +64,8 @@ public:
      * it will fails silently
      */
     DhtProxyServer(const std::shared_ptr<DhtRunner>& dht,
-        const ProxyServerConfig& config = {},
-        const std::shared_ptr<log::Logger>& logger = {});
+                   const ProxyServerConfig& config = {},
+                   const std::shared_ptr<log::Logger>& logger = {});
 
     virtual ~DhtProxyServer();
 
@@ -100,30 +79,35 @@ public:
     using clock = std::chrono::steady_clock;
     using time_point = clock::time_point;
 
-    struct PushStats {
+    struct PushStats
+    {
         uint64_t highPriorityCount {0};
         uint64_t normalPriorityCount {0};
 
-        void increment(bool highPriority) {
+        void increment(bool highPriority)
+        {
             if (highPriority)
                 highPriorityCount++;
             else
                 normalPriorityCount++;
         }
 
-        Json::Value toJson() const {
+        Json::Value toJson() const
+        {
             Json::Value val;
             val["highPriorityCount"] = static_cast<Json::UInt64>(highPriorityCount);
             val["normalPriorityCount"] = static_cast<Json::UInt64>(normalPriorityCount);
             return val;
         }
 
-        std::string toString() const {
+        std::string toString() const
+        {
             return fmt::format("{} high priority, {} normal priority", highPriorityCount, normalPriorityCount);
         }
     };
 
-    struct OPENDHT_PUBLIC ServerStats {
+    struct OPENDHT_PUBLIC ServerStats
+    {
         /** Current number of listen operations */
         size_t listenCount {0};
         /** Current number of permanent put operations (hash used) */
@@ -138,7 +122,7 @@ public:
         /** Last time at which the stats were updated */
         time_point lastUpdated;
         /** Total number of push notification requests that the server attempted to
-          * send since being started, broken down by type and priority level */
+         * send since being started, broken down by type and priority level */
         PushStats androidPush;
         PushStats iosPush;
         PushStats unifiedPush;
@@ -167,13 +151,12 @@ private:
     struct RestRouterTraitsTls;
     struct RestRouterTraits;
 
-    template <typename HttpResponse>
+    template<typename HttpResponse>
     static HttpResponse initHttpResponse(HttpResponse response);
     static restinio::request_handling_status_t serverError(restinio::request_t& request);
 
-    template< typename ServerSettings >
-    void addServerSettings(ServerSettings& serverSettings,
-                           const unsigned int max_pipelined_requests = 16);
+    template<typename ServerSettings>
+    void addServerSettings(ServerSettings& serverSettings, const unsigned int max_pipelined_requests = 16);
 
     std::unique_ptr<RestRouter> createRestRouter();
 
@@ -186,8 +169,7 @@ private:
      * On error: HTTP 503, body: {"err":"xxxx"}
      * @param session
      */
-    RequestStatus getNodeInfo(restinio::request_handle_t request,
-                               restinio::router::route_params_t params) const;
+    RequestStatus getNodeInfo(restinio::request_handle_t request, restinio::router::route_params_t params) const;
 
     /**
      * Return ServerStats in JSON format
@@ -195,8 +177,7 @@ private:
      * Result: HTTP 200, body: Node infos in JSON format
      * @param session
      */
-    RequestStatus getStats(restinio::request_handle_t request,
-                           restinio::router::route_params_t params);
+    RequestStatus getStats(restinio::request_handle_t request, restinio::router::route_params_t params);
 
     /**
      * Return Values of an infoHash
@@ -208,8 +189,7 @@ private:
      * On error: HTTP 503, body: {"err":"xxxx"}
      * @param session
      */
-    RequestStatus get(restinio::request_handle_t request,
-                       restinio::router::route_params_t params);
+    RequestStatus get(restinio::request_handle_t request, restinio::router::route_params_t params);
 
     /**
      * Listen incoming Values of an infoHash.
@@ -221,8 +201,7 @@ private:
      * On error: HTTP 503, body: {"err":"xxxx"}
      * @param session
      */
-    RequestStatus listen(restinio::request_handle_t request,
-                         restinio::router::route_params_t params);
+    RequestStatus listen(restinio::request_handle_t request, restinio::router::route_params_t params);
 
     /**
      * Put a value on the DHT
@@ -233,10 +212,9 @@ private:
      * HTTP 400, body: {"err":"xxxx"} if bad json or HTTP 502 if put fails
      * @param session
      */
-    RequestStatus put(restinio::request_handle_t request,
-                      restinio::router::route_params_t params);
+    RequestStatus put(restinio::request_handle_t request, restinio::router::route_params_t params);
 
-    void handleCancelPermamentPut(const asio::error_code &ec, const InfoHash& key, Value::Id vid);
+    void handleCancelPermamentPut(const asio::error_code& ec, const InfoHash& key, Value::Id vid);
 
 #ifdef OPENDHT_PROXY_SERVER_IDENTITY
     /**
@@ -248,8 +226,7 @@ private:
      * HTTP 400, body: {"err":"xxxx"} if bad json
      * @param session
      */
-    RequestStatus putSigned(restinio::request_handle_t request,
-                            restinio::router::route_params_t params) const;
+    RequestStatus putSigned(restinio::request_handle_t request, restinio::router::route_params_t params) const;
 
     /**
      * Put a value to encrypt by the proxy on the DHT
@@ -260,8 +237,7 @@ private:
      * HTTP 400, body: {"err":"xxxx"} if bad json
      * @param session
      */
-    RequestStatus putEncrypted(restinio::request_handle_t request,
-                               restinio::router::route_params_t params);
+    RequestStatus putEncrypted(restinio::request_handle_t request, restinio::router::route_params_t params);
 
 #endif // OPENDHT_PROXY_SERVER_IDENTITY
 
@@ -275,8 +251,7 @@ private:
      * On error: HTTP 503, body: {"err":"xxxx"}
      * @param session
      */
-    RequestStatus getFiltered(restinio::request_handle_t request,
-                              restinio::router::route_params_t params);
+    RequestStatus getFiltered(restinio::request_handle_t request, restinio::router::route_params_t params);
 
     /**
      * Respond allowed Methods
@@ -285,21 +260,22 @@ private:
      * See https://developer.mozilla.org/en-US/docs/Web/HTTP/Methods/OPTIONS
      * @param session
      */
-    RequestStatus options(restinio::request_handle_t request,
-                           restinio::router::route_params_t params);
+    RequestStatus options(restinio::request_handle_t request, restinio::router::route_params_t params);
 
-    struct PushSessionContext {
+    struct PushSessionContext
+    {
         std::mutex lock;
         std::string sessionId;
-        PushSessionContext(const std::string& id) : sessionId(id) {}
+        PushSessionContext(const std::string& id)
+            : sessionId(id)
+        {}
     };
 
 #ifdef OPENDHT_PUSH_NOTIFICATIONS
     PushType getTypeFromString(const std::string& type);
     std::string getDefaultTopic(PushType type);
 
-    RequestStatus pingPush(restinio::request_handle_t request,
-                         restinio::router::route_params_t /*params*/);
+    RequestStatus pingPush(restinio::request_handle_t request, restinio::router::route_params_t /*params*/);
     /**
      * Subscribe to push notifications for an iOS or Android device.
      * Method: SUBSCRIBE "/{InfoHash: .*}"
@@ -309,8 +285,7 @@ private:
      * so you need to refresh the operation each six hours.
      * @param session
      */
-    RequestStatus subscribe(restinio::request_handle_t request,
-                            restinio::router::route_params_t params);
+    RequestStatus subscribe(restinio::request_handle_t request, restinio::router::route_params_t params);
 
     /**
      * Unsubscribe to push notifications for an iOS or Android device.
@@ -319,15 +294,15 @@ private:
      * Return: nothing
      * @param session
      */
-    RequestStatus unsubscribe(restinio::request_handle_t request,
-                              restinio::router::route_params_t params);
+    RequestStatus unsubscribe(restinio::request_handle_t request, restinio::router::route_params_t params);
 
     /**
      * Send a push notification via a gorush push gateway
      * @param key of the device
      * @param json, the content to send
      */
-    void sendPushNotification(const std::string& key, Json::Value&& json, PushType type, bool highPriority, const std::string& topic);
+    void sendPushNotification(
+        const std::string& key, Json::Value&& json, PushType type, bool highPriority, const std::string& topic);
 
     /**
      * Send push notification with an expire timeout.
@@ -337,8 +312,11 @@ private:
      * @param type
      * @param topic
      */
-    void handleNotifyPushListenExpire(const asio::error_code &ec, const std::string pushToken,
-                                      std::function<Json::Value()> json, PushType type, const std::string& topic);
+    void handleNotifyPushListenExpire(const asio::error_code& ec,
+                                      const std::string pushToken,
+                                      std::function<Json::Value()> json,
+                                      PushType type,
+                                      const std::string& topic);
 
     /**
      * Remove a push listener between a client and a hash
@@ -347,8 +325,10 @@ private:
      * @param key
      * @param clientId
      */
-    void handleCancelPushListen(const asio::error_code &ec, const std::string pushToken,
-                                const InfoHash key, const std::string clientId);
+    void handleCancelPushListen(const asio::error_code& ec,
+                                const std::string pushToken,
+                                const InfoHash key,
+                                const std::string clientId);
 
     /**
      * Handles a push listen request.
@@ -363,20 +343,24 @@ private:
      * @param expired A boolean indicating whether the push listen request has expired.
      * @return true.
      */
-    bool handlePushListen(const InfoHash& infoHash, const std::string& pushToken,
-                          PushType type, const std::string& clientId,
-                          const std::shared_ptr<DhtProxyServer::PushSessionContext>& sessionCtx, const std::string& topic,
-                          const std::vector<std::shared_ptr<Value>>& values, bool expired);
+    bool handlePushListen(const InfoHash& infoHash,
+                          const std::string& pushToken,
+                          PushType type,
+                          const std::string& clientId,
+                          const std::shared_ptr<DhtProxyServer::PushSessionContext>& sessionCtx,
+                          const std::string& topic,
+                          const std::vector<std::shared_ptr<Value>>& values,
+                          bool expired);
 
-#endif //OPENDHT_PUSH_NOTIFICATIONS
+#endif // OPENDHT_PUSH_NOTIFICATIONS
 
-    void handlePrintStats(const asio::error_code &ec);
+    void handlePrintStats(const asio::error_code& ec);
     void updateStats();
 
-    template <typename Os>
+    template<typename Os>
     void saveState(Os& stream);
 
-    template <typename Is>
+    template<typename Is>
     void loadState(Is& is, size_t size);
 
     std::shared_ptr<asio::io_context> ioContext_;
@@ -415,7 +399,8 @@ private:
     std::map<restinio::connection_id_t, http::ListenerSession> listeners_;
     // Connection Listener observing conn state changes.
     std::shared_ptr<ConnectionListener> connListener_;
-    struct PermanentPut {
+    struct PermanentPut
+    {
         time_point expiration;
         std::string pushToken;
         std::string clientId;
@@ -426,31 +411,40 @@ private:
         PushType type;
         std::string topic;
 
-        template <typename Packer>
+        template<typename Packer>
         void msgpack_pack(Packer& p) const
         {
-            p.pack_map(2 + (sessionCtx ? 1 : 0) + (clientId.empty() ? 0 : 1) + (type == PushType::None ? 0 : 2) + (topic.empty() ? 0 : 1));
-            p.pack("value"); p.pack(value);
-            p.pack("exp"); p.pack(to_time_t(expiration));
+            p.pack_map(2 + (sessionCtx ? 1 : 0) + (clientId.empty() ? 0 : 1) + (type == PushType::None ? 0 : 2)
+                       + (topic.empty() ? 0 : 1));
+            p.pack("value");
+            p.pack(value);
+            p.pack("exp");
+            p.pack(to_time_t(expiration));
             if (not clientId.empty()) {
-                p.pack("cid"); p.pack(clientId);
+                p.pack("cid");
+                p.pack(clientId);
             }
             if (sessionCtx) {
                 std::lock_guard<std::mutex> l(sessionCtx->lock);
-                p.pack("sid"); p.pack(sessionCtx->sessionId);
+                p.pack("sid");
+                p.pack(sessionCtx->sessionId);
             }
             if (type != PushType::None) {
-                p.pack("t"); p.pack(type);
-                p.pack("token"); p.pack(pushToken);
+                p.pack("t");
+                p.pack(type);
+                p.pack("token");
+                p.pack(pushToken);
             }
             if (not topic.empty()) {
-                p.pack("top"); p.pack(topic);
+                p.pack("top");
+                p.pack(topic);
             }
         }
 
         void msgpack_unpack(const msgpack::object& o);
     };
-    struct SearchPuts {
+    struct SearchPuts
+    {
         std::map<dht::Value::Id, PermanentPut> puts;
         MSGPACK_DEFINE_ARRAY(puts)
     };
@@ -464,7 +458,8 @@ private:
     std::string bundleId_;
 
 #ifdef OPENDHT_PUSH_NOTIFICATIONS
-    struct Listener {
+    struct Listener
+    {
         time_point expiration;
         std::string clientId;
         std::shared_ptr<PushSessionContext> sessionCtx;
@@ -474,30 +469,36 @@ private:
         PushType type;
         std::string topic;
 
-        template <typename Packer>
+        template<typename Packer>
         void msgpack_pack(Packer& p) const
         {
             p.pack_map(3 + (sessionCtx ? 1 : 0) + (topic.empty() ? 0 : 1));
-            p.pack("cid"); p.pack(clientId);
-            p.pack("exp"); p.pack(to_time_t(expiration));
+            p.pack("cid");
+            p.pack(clientId);
+            p.pack("exp");
+            p.pack(to_time_t(expiration));
             if (sessionCtx) {
                 std::lock_guard<std::mutex> l(sessionCtx->lock);
-                p.pack("sid"); p.pack(sessionCtx->sessionId);
+                p.pack("sid");
+                p.pack(sessionCtx->sessionId);
             }
-            p.pack("t"); p.pack(type);
+            p.pack("t");
+            p.pack(type);
             if (!topic.empty()) {
-                p.pack("top"); p.pack(topic);
+                p.pack("top");
+                p.pack(topic);
             }
         }
 
         void msgpack_unpack(const msgpack::object& o);
     };
-    struct PushListener {
+    struct PushListener
+    {
         std::map<InfoHash, std::vector<Listener>> listeners;
         MSGPACK_DEFINE_ARRAY(listeners)
     };
     std::map<std::string, PushListener> pushListeners_;
-#endif //OPENDHT_PUSH_NOTIFICATIONS
+#endif // OPENDHT_PUSH_NOTIFICATIONS
 };
 
-}
+} // namespace dht

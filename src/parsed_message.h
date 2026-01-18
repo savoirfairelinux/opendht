@@ -1,20 +1,6 @@
-/*
- *  Copyright (c) 2014-2026 Savoir-faire Linux Inc.
- *
- *  This program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 3 of the License, or
- *  (at your option) any later version.
- *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with this program. If not, see <https://www.gnu.org/licenses/>.
- */
- #pragma once
+// Copyright (c) 2014-2026 Savoir-faire Linux Inc.
+// SPDX-License-Identifier: MIT
+#pragma once
 
 #include "infohash.h"
 #include "sockaddr.h"
@@ -66,7 +52,9 @@ static constexpr auto QUERY_PUT = "put"sv;
 static constexpr auto QUERY_LISTEN = "listen"sv;
 static constexpr auto QUERY_REFRESH = "refresh"sv;
 
-Tid unpackTid(const msgpack::object& o) {
+Tid
+unpackTid(const msgpack::object& o)
+{
     switch (o.type) {
     case msgpack::type::POSITIVE_INTEGER:
         return o.as<Tid>();
@@ -75,7 +63,8 @@ Tid unpackTid(const msgpack::object& o) {
     }
 }
 
-struct ParsedMessage {
+struct ParsedMessage
+{
     MessageType type;
     /* Node ID of the sender */
     InfoHash id;
@@ -96,7 +85,7 @@ struct ParsedMessage {
     /* the value id (announce confirmation) */
     Value::Id value_id {0};
     /* time when value was first created */
-    time_point created { time_point::max() };
+    time_point created {time_point::max()};
     /* IPv4 nodes in response to a 'find' request */
     Blob nodes4_raw, nodes6_raw;
     std::vector<Sp<Node>> nodes4, nodes6;
@@ -131,18 +120,15 @@ ParsedMessage::append(const ParsedMessage& block)
     bool ret(false);
     for (const auto& ve : block.value_parts) {
         auto part_val = value_parts.find(ve.first);
-        if (part_val == value_parts.end()
-            || part_val->second.second.size() >= part_val->second.first)
+        if (part_val == value_parts.end() || part_val->second.second.size() >= part_val->second.first)
             continue;
         // TODO: handle out-of-order packets
         if (ve.second.first != part_val->second.second.size()) {
-            //std::cout << "skipping out-of-order packet" << std::endl;
+            // std::cout << "skipping out-of-order packet" << std::endl;
             continue;
         }
         ret = true;
-        part_val->second.second.insert(part_val->second.second.end(),
-                                       ve.second.second.begin(),
-                                       ve.second.second.end());
+        part_val->second.second.insert(part_val->second.second.end(), ve.second.second.begin(), ve.second.second.end());
     }
     return ret;
 }
@@ -152,13 +138,14 @@ ParsedMessage::complete()
 {
     for (auto& e : value_parts) {
         if (e.second.first > e.second.second.size()) {
-            //std::cout << "uncomplete part " << e.first << ": " << e.second.second.size() << "/" << e.second.first << std::endl;
+            // std::cout << "uncomplete part " << e.first << ": " << e.second.second.size() << "/" << e.second.first <<
+            // std::endl;
             return false;
         }
     }
     for (auto& e : value_parts) {
         msgpack::unpacked msg;
-        msgpack::unpack(msg, (const char*)e.second.second.data(), e.second.second.size());
+        msgpack::unpack(msg, (const char*) e.second.second.data(), e.second.second.size());
         values.emplace_back(std::make_shared<Value>(msg.get()));
     }
     return true;
@@ -167,9 +154,11 @@ ParsedMessage::complete()
 void
 ParsedMessage::msgpack_unpack(const msgpack::object& msg)
 {
-    if (msg.type != msgpack::type::MAP) throw msgpack::type_error();
+    if (msg.type != msgpack::type::MAP)
+        throw msgpack::type_error();
 
-    struct ParsedMsg {
+    struct ParsedMsg
+    {
         msgpack::object* y;
         msgpack::object* r;
         msgpack::object* u;
@@ -259,7 +248,8 @@ ParsedMessage::msgpack_unpack(const msgpack::object& msg)
         error_code = parsed.e->via.array.ptr[0].as<uint16_t>();
     }
 
-    struct ParsedReq {
+    struct ParsedReq
+    {
         msgpack::object* values;
         msgpack::object* fields;
         msgpack::object* sa;
@@ -315,12 +305,12 @@ ParsedMessage::msgpack_unpack(const msgpack::object& msg)
             addr.setFamily(AF_INET);
             auto& a = addr.getIPv4();
             a.sin_port = 0;
-            std::copy_n(parsedReq.sa->via.bin.ptr, l, (char*)&a.sin_addr);
+            std::copy_n(parsedReq.sa->via.bin.ptr, l, (char*) &a.sin_addr);
         } else if (l == sizeof(in6_addr)) {
             addr.setFamily(AF_INET6);
             auto& a = addr.getIPv6();
             a.sin6_port = 0;
-            std::copy_n(parsedReq.sa->via.bin.ptr, l, (char*)&a.sin6_addr);
+            std::copy_n(parsedReq.sa->via.bin.ptr, l, (char*) &a.sin6_addr);
         }
     } else
         addr = {};
@@ -334,12 +324,12 @@ ParsedMessage::msgpack_unpack(const msgpack::object& msg)
                 // Skip oversize values with a small margin for header overhead
                 if (packed_v.via.u64 > MAX_VALUE_SIZE + 32)
                     continue;
-                value_parts.emplace(i, std::make_pair(packed_v.via.u64, Blob{}));
+                value_parts.emplace(i, std::make_pair(packed_v.via.u64, Blob {}));
             } else {
                 try {
                     values.emplace_back(std::make_shared<Value>(parsedReq.values->via.array.ptr[i]));
                 } catch (const std::exception& e) {
-                     //DHT_LOG_WARN("Error reading value: %s", e.what());
+                    // DHT_LOG_WARN("Error reading value: %s", e.what());
                 }
             }
         }
@@ -353,9 +343,10 @@ ParsedMessage::msgpack_unpack(const msgpack::object& msg)
                 for (size_t i = 0; i < val_num; ++i) {
                     try {
                         auto v = std::make_shared<FieldValueIndex>();
-                        v->msgpack_unpack_fields(vfields, *rvalues, i*vfields.size());
+                        v->msgpack_unpack_fields(vfields, *rvalues, i * vfields.size());
                         fields.emplace_back(std::move(v));
-                    } catch (const std::exception& e) { }
+                    } catch (const std::exception& e) {
+                    }
                 }
             }
         } else {
@@ -367,15 +358,16 @@ ParsedMessage::msgpack_unpack(const msgpack::object& msg)
         if (parsedReq.want->type != msgpack::type::ARRAY)
             throw msgpack::type_error();
         want = 0;
-        for (unsigned i=0; i<parsedReq.want->via.array.size; i++) {
+        for (unsigned i = 0; i < parsedReq.want->via.array.size; i++) {
             auto& val = parsedReq.want->via.array.ptr[i];
             try {
                 auto w = val.as<sa_family_t>();
                 if (w == AF_INET)
                     want |= WANT4;
-                else if(w == AF_INET6)
+                else if (w == AF_INET6)
                     want |= WANT6;
-            } catch (const std::exception& e) {};
+            } catch (const std::exception& e) {
+            };
         }
     } else {
         want = -1;

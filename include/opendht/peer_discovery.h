@@ -1,21 +1,5 @@
-/*
- *  Copyright (c) 2014-2026 Savoir-faire Linux Inc.
- *              Vsevolod Ivanov <vsevolod.ivanov@savoirfairelinux.com>
- *
- *  This program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 3 of the License, or
- *  (at your option) any later version.
- *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with this program. If not, see <https://www.gnu.org/licenses/>.
- */
-
+// Copyright (c) 2014-2026 Savoir-faire Linux Inc.
+// SPDX-License-Identifier: MIT
 #pragma once
 
 #include "def.h"
@@ -37,11 +21,11 @@ class OPENDHT_PUBLIC PeerDiscovery
 {
 public:
     static constexpr in_port_t DEFAULT_PORT = 8888;
-    using ServiceDiscoveredCallback = std::function<void(msgpack::object &&, SockAddr &&)>;
+    using ServiceDiscoveredCallback = std::function<void(msgpack::object&&, SockAddr&&)>;
 
     PeerDiscovery(in_port_t port = DEFAULT_PORT,
-                std::shared_ptr<asio::io_context> ioContext = {},
-                std::shared_ptr<Logger> logger = {});
+                  std::shared_ptr<asio::io_context> ioContext = {},
+                  std::shared_ptr<Logger> logger = {});
     ~PeerDiscovery();
 
     /**
@@ -50,21 +34,21 @@ public:
      */
     void startDiscovery(std::string_view type, ServiceDiscoveredCallback callback);
 
-    template <typename T>
-    void startDiscovery(std::string_view type, std::function<void(T &&, SockAddr &&)> cb) {
-        startDiscovery(type, [cb](msgpack::object &&ob, SockAddr &&addr) {
-            cb(ob.as<T>(), std::move(addr));
-        });
+    template<typename T>
+    void startDiscovery(std::string_view type, std::function<void(T&&, SockAddr&&)> cb)
+    {
+        startDiscovery(type, [cb](msgpack::object&& ob, SockAddr&& addr) { cb(ob.as<T>(), std::move(addr)); });
     }
 
     /**
      * startPublish - Keeping sending data until node is joinned or stop is called
      */
-    void startPublish(std::string_view type, const msgpack::sbuffer &pack_buf);
-    void startPublish(sa_family_t domain, std::string_view type, const msgpack::sbuffer &pack_buf);
+    void startPublish(std::string_view type, const msgpack::sbuffer& pack_buf);
+    void startPublish(sa_family_t domain, std::string_view type, const msgpack::sbuffer& pack_buf);
 
-    template <typename T>
-    void startPublish(std::string_view type, const T &object) {
+    template<typename T>
+    void startPublish(std::string_view type, const T& object)
+    {
         msgpack::sbuffer buf;
         msgpack::pack(buf, object);
         startPublish(type, buf);

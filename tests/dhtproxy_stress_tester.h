@@ -1,20 +1,5 @@
-/*
- *  Copyright (c) 2014-2026 Savoir-faire Linux Inc.
- *
- *  This program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 3 of the License, or
- *  (at your option) any later version.
- *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with this program. If not, see <https://www.gnu.org/licenses/>.
- */
-
+// Copyright (c) 2014-2026 Savoir-faire Linux Inc.
+// SPDX-License-Identifier: MIT
 #pragma once
 
 // cppunit
@@ -27,27 +12,28 @@
 
 namespace test {
 
-class DhtProxyStressTester : public CppUnit::TestFixture {
+class DhtProxyStressTester : public CppUnit::TestFixture
+{
     CPPUNIT_TEST_SUITE(DhtProxyStressTester);
     CPPUNIT_TEST(testRepeatValues);
     CPPUNIT_TEST_SUITE_END();
 
- public:
+public:
     /**
      * Method automatically called before each test by CppUnit
      * Init nodes
      */
-   void setUp();
+    void setUp();
     /**
      * Method automatically called after each test CppUnit
      */
-   void tearDown();
+    void tearDown();
     /**
      * Test get and put methods
      */
-   void testRepeatValues();
+    void testRepeatValues();
 
- private:
+private:
     std::shared_ptr<dht::log::Logger> logger;
     dht::DhtRunner::Config clientConfig {};
     dht::DhtRunner nodePeer;
@@ -56,4 +42,4 @@ class DhtProxyStressTester : public CppUnit::TestFixture {
     std::unique_ptr<dht::DhtProxyServer> serverProxy;
 };
 
-}  // namespace test
+} // namespace test
