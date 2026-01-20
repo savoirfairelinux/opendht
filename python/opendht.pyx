@@ -47,7 +47,9 @@ cdef inline void lookup_callback(cpp.vector[cpp.shared_ptr[cpp.IndexValue]]* val
             v = IndexValue()
             v._value = val
             vals.append(v)
-        cbs['lookup'](vals, p.toString())
+        prefix = Prefix(p.size_)
+        prefix._prefix.reset(new cpp.Prefix(deref(p)))
+        cbs['lookup'](vals, prefix)
 
 cdef inline void shutdown_callback(void* user_data) noexcept with gil:
     cbs = <object>user_data
@@ -863,6 +865,25 @@ cdef class DhtRunner(_WithID):
         self.thisptr.get().cancelListen(token._h, token._t)
         ref.Py_DECREF(<object>token._cb['cb'])
         # fixme: not thread safe
+
+cdef class Prefix(object):
+    cdef shared_ptr[cpp.Prefix] _prefix
+    def __init__(self, int size, bytes val=b''):
+        cdef cpp.vector[cpp.uint8_t] blob
+        for c in val:
+            blob.push_back(c)
+        self._prefix.reset(new cpp.Prefix(blob, size))
+    def __str__(self):
+        return self._prefix.get().toString().decode()
+    property size_:
+        def __get__(self):
+            return self._prefix.get().size_
+    property content_:
+        def __get__(self):
+            return self._prefix.get().toString().decode()
+    property flags_:
+        def __get__(self):
+            return self._prefix.get().flagsToString().decode()
 
 cdef class IndexValue(object):
     cdef cpp.shared_ptr[cpp.IndexValue] _value
