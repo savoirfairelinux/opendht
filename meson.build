@@ -5,7 +5,7 @@ project(
     'cython',
     license: 'MIT',
     license_files: 'LICENSE',
-    version: '3.6.2',
+    version: '3.7.0',
     meson_version: '>=1.1.0',
     default_options: ['cpp_std=c++17', 'warning_level=3'],
 )

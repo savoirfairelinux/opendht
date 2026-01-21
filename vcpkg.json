@@ -1,6 +1,6 @@
 {
   "name": "opendht",
-  "version-string": "3.6.2",
+  "version-string": "3.7.0",
   "port-version": 1,
   "description": "OpenDHT: A lightweight C++17 Distributed Hash Table library.",
   "homepage": "https://opendht.net",
