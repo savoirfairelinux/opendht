@@ -299,7 +299,7 @@ DhtProxyServer::DhtProxyServer(const std::shared_ptr<DhtRunner>& dht,
     if (config.identity.first and config.identity.second) {
         asio::error_code ec;
         // define tls context
-        asio::ssl::context tls_context {asio::ssl::context::sslv3_server};
+        asio::ssl::context tls_context {asio::ssl::context::tlsv13_server};
         tls_context.set_options(asio::ssl::context::default_workarounds | asio::ssl::context::no_sslv2
                                     | asio::ssl::context::single_dh_use,
                                 ec);
