@@ -147,7 +147,7 @@ PeerDiscovery::DomainPeerDiscovery::loopListener()
                                        return;
                                    if (error) {
                                        if (logger_)
-                                           logger_->e("Error receiving message: %s", error.message().c_str());
+                                           logger_->error("Error receiving message: {}", error.message());
                                    }
                                    try {
                                        auto rcv = msgpack::unpack(receiveBuf_.data(), bytes);
@@ -180,7 +180,7 @@ PeerDiscovery::DomainPeerDiscovery::loopListener()
                                        }
                                    } catch (const std::exception& e) {
                                        if (logger_)
-                                           logger_->e("Error receiving packet: %s", e.what());
+                                           logger_->error("Error receiving packet: {}", e.what());
                                    }
                                    loopListener();
                                });
@@ -200,9 +200,9 @@ PeerDiscovery::DomainPeerDiscovery::query(const asio::ip::udp::endpoint& peer)
                           peer,
                           [logger = logger_, peer](const asio::error_code& ec, size_t) {
                               if (ec and (ec != asio::error::operation_aborted) and logger)
-                                  logger->w("Error sending packet to: %s with err: %s",
-                                            peer.address().to_string().c_str(),
-                                            ec.message().c_str());
+                                  logger->warn("Error sending packet to: {} with err: {}",
+                                               peer.address().to_string(),
+                                               ec.message());
                           });
 }
 
@@ -217,9 +217,9 @@ PeerDiscovery::DomainPeerDiscovery::publish(const asio::ip::udp::endpoint& peer)
                           peer,
                           [logger = logger_, peer](const asio::error_code& ec, size_t) {
                               if (ec and (ec != asio::error::operation_aborted) and logger)
-                                  logger->w("Error sending packet to: %s with err: %s",
-                                            peer.address().to_string().c_str(),
-                                            ec.message().c_str());
+                                  logger->warn("Error sending packet to: {} with err: {}",
+                                               peer.address().to_string(),
+                                               ec.message());
                           });
 }
 
@@ -310,7 +310,7 @@ PeerDiscovery::DomainPeerDiscovery::reDiscover()
 
     sockFd_.set_option(asio::ip::multicast::join_group(sockAddrSend_.address()), ec);
     if (ec and logger_)
-        logger_->w("Unable to multicast on %s: %s", sockAddrSend_.address().to_string().c_str(), ec.message().c_str());
+        logger_->warn("Unable to multicast on {}: {}", sockAddrSend_.address().to_string(), ec.message());
     query(sockAddrSend_);
 }
 
@@ -322,7 +322,7 @@ PeerDiscovery::DomainPeerDiscovery::connectivityChanged()
         publish(sockAddrSend_);
     });
     if (logger_)
-        logger_->d("PeerDiscovery: connectivity changed");
+        logger_->debug("PeerDiscovery: connectivity changed");
 
     if (peerDiscovery_period == PeerDiscovery_PERIOD_MAX) {
         peerDiscovery_period = PeerDiscovery_PERIOD;

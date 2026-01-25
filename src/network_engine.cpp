@@ -129,7 +129,7 @@ NetworkEngine::tellListener(const Sp<Node>& node,
         }
     } catch (const std::overflow_error& e) {
         if (logger_)
-            logger_->e("Unable to send value: buffer not large enough.");
+            logger_->error("Unable to send value: buffer not large enough.");
     }
 }
 
@@ -162,7 +162,7 @@ NetworkEngine::tellListenerRefreshed(const Sp<Node>& n,
         pk.pack(KEY_REQ_REFRESHED);
         pk.pack(values);
         if (logger_)
-            logger_->d(n->id, "[node %s] sending %zu refreshed values", n->toString().c_str(), values.size());
+            logger_->debug("[node {}] sending {} refreshed values", n->toString(), values.size());
     }
 
     pk.pack(KEY_Y);
@@ -233,7 +233,7 @@ NetworkEngine::tellListenerExpired(const Sp<Node>& n,
         pk.pack(KEY_REQ_EXPIRED);
         pk.pack(values);
         if (logger_)
-            logger_->d(n->id, "[node %s] sending %zu expired values", n->toString().c_str(), values.size());
+            logger_->debug("[node {}] sending {} expired values", n->toString(), values.size());
     }
 
     pk.pack(KEY_Y);
@@ -433,13 +433,13 @@ NetworkEngine::processMessage(const uint8_t* buf, size_t buflen, SockAddr f)
     auto from = f.getMappedIPv4();
     if (isMartian(from)) {
         if (logger_)
-            logger_->w("Received packet from martian node %s", from.toString().c_str());
+            logger_->warn("Received packet from martian node {}", from.toString());
         return;
     }
 
     if (isNodeBlacklisted(from)) {
         if (logger_)
-            logger_->w("Received packet from blacklisted node %s", from.toString().c_str());
+            logger_->warn("Received packet from blacklisted node {}", from.toString());
         return;
     }
 
@@ -449,7 +449,7 @@ NetworkEngine::processMessage(const uint8_t* buf, size_t buflen, SockAddr f)
         msg->msgpack_unpack(msg_res.get());
     } catch (const std::exception& e) {
         if (logger_)
-            logger_->w("Unable to parse message of size %lu: %s", buflen, e.what());
+            logger_->warn("Unable to parse message of size {}: {}", buflen, e.what());
         // if (logger_)
         //     logger_->DBG.logPrintable(buf, buflen);
         return;
@@ -457,7 +457,7 @@ NetworkEngine::processMessage(const uint8_t* buf, size_t buflen, SockAddr f)
 
     if (msg->network != config.network) {
         if (logger_)
-            logger_->d("Received message from other config.network %u", msg->network);
+            logger_->debug("Received message from other config.network {}", msg->network);
         return;
     }
 
@@ -469,13 +469,13 @@ NetworkEngine::processMessage(const uint8_t* buf, size_t buflen, SockAddr f)
         if (pmsg_it == partial_messages.end()) {
             if (logIncoming_)
                 if (logger_)
-                    logger_->d("Unable to find partial message");
+                    logger_->debug("Unable to find partial message");
             rateLimit(from);
             return;
         }
         if (!pmsg_it->second.from.equals(from)) {
             if (logger_)
-                logger_->d("Received partial message data from unexpected IP address");
+                logger_->debug("Received partial message data from unexpected IP address");
             rateLimit(from);
             return;
         }
@@ -499,7 +499,7 @@ NetworkEngine::processMessage(const uint8_t* buf, size_t buflen, SockAddr f)
 
     if (msg->id == myid or not msg->id) {
         if (logger_)
-            logger_->d("Received message from self");
+            logger_->debug("Received message from self");
         return;
     }
 
@@ -507,7 +507,7 @@ NetworkEngine::processMessage(const uint8_t* buf, size_t buflen, SockAddr f)
         /* Rate limit requests. */
         if (!rateLimit(from)) {
             if (logger_)
-                logger_->w("Dropping request due to rate limiting");
+                logger_->warn("Dropping request due to rate limiting");
             return;
         }
     }
@@ -530,7 +530,7 @@ NetworkEngine::processMessage(const uint8_t* buf, size_t buflen, SockAddr f)
             scheduler.add(now + RX_MAX_PACKET_TIME, std::bind(&NetworkEngine::maintainRxBuffer, this, k));
             scheduler.add(now + RX_TIMEOUT, std::bind(&NetworkEngine::maintainRxBuffer, this, k));
         } else if (logger_)
-            logger_->e("Partial message with given TID %u already exists", k);
+            logger_->error("Partial message with given TID {} already exists", k);
     }
 }
 
@@ -551,7 +551,7 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
             rsocket->on_receive(node, std::move(*msg));
         } catch (const DhtProtocolException& e) {
             if (logger_)
-                logger_->w("Unable to deserialize nodes %s", e.what());
+                logger_->warn("Unable to deserialize nodes {}", e.what());
         }
     } else if (msg->type == MessageType::Error or msg->type == MessageType::Reply) {
         auto rsocket = node->getSocket(msg->tid);
@@ -569,10 +569,7 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
                 if (not node->isClient())
                     onNewNode(node, 1);
                 if (logger_)
-                    logger_->d(node->id,
-                               "[node %s] Unable to find transaction with id %u",
-                               node->toString().c_str(),
-                               msg->tid);
+                    logger_->debug("[node {}] Unable to find transaction with id {}", node->toString(), msg->tid);
                 return;
             }
         }
@@ -585,9 +582,7 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
 
         if (req and (req->cancelled() or req->expired() or req->completed())) {
             if (logger_)
-                logger_->w(node->id,
-                           "[node %s] response to expired, cancelled or completed request",
-                           node->toString().c_str());
+                logger_->warn("[node {}] response to expired, cancelled or completed request", node->toString());
             return;
         }
 
@@ -604,11 +599,10 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
             } else {
                 if (logIncoming_)
                     if (logger_)
-                        logger_->w(msg->id,
-                                   "[node %s %s] received unknown error message %u",
-                                   msg->id.toString().c_str(),
-                                   from.toString().c_str(),
-                                   msg->error_code);
+                        logger_->warn("[node {} {}] received unknown error message {}",
+                                      msg->id.toString(),
+                                      from.toString(),
+                                      msg->error_code);
             }
             break;
         }
@@ -625,7 +619,7 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
                     r.setDone(std::move(*msg));
                 } catch (const DhtProtocolException& e) {
                     if (logger_)
-                        logger_->w("Unable to deserialize nodes %s", e.what());
+                        logger_->warn("Unable to deserialize nodes {}", e.what());
                 }
                 break;
             } else { /* request socket data */
@@ -634,7 +628,7 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
                     rsocket->on_receive(node, std::move(*msg));
                 } catch (const DhtProtocolException& e) {
                     if (logger_)
-                        logger_->w("Unable to deserialize nodes %s", e.what());
+                        logger_->warn("Unable to deserialize nodes {}", e.what());
                 }
             }
             break;
@@ -651,13 +645,13 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
                 ++in_stats.ping;
                 if (logIncoming_)
                     if (logger_)
-                        logger_->d(node->id, "[node %s] sending pong", node->toString().c_str());
+                        logger_->debug("[node {}] sending pong", node->toString());
                 onPing(node);
                 sendPong(from, msg->tid);
                 break;
             case MessageType::FindNode: {
                 // if (logger_)
-                //     logger_->d(msg->target, node->id, "[node %s] got 'find' request for %s (%d)",
+                //     logger_->d("[node %s] got 'find' request for %s (%d)",
                 //     node->toString().c_str(), msg->target.toString().c_str(), msg->want);
                 ++in_stats.find;
                 RequestAnswer answer = onFindNode(node, msg->target, msg->want);
@@ -667,7 +661,7 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
             }
             case MessageType::GetValues: {
                 // if (logger_)
-                //     logger_->d(msg->info_hash, node->id, "[node %s] got 'get' request for %s",
+                //     logger_->d("[node %s] got 'get' request for %s",
                 //     node->toString().c_str(), msg->info_hash.toString().c_str());
                 ++in_stats.get;
                 RequestAnswer answer = onGetValues(node, msg->info_hash, msg->want, msg->query);
@@ -677,11 +671,7 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
             }
             case MessageType::AnnounceValue: {
                 if (logIncoming_ and logger_)
-                    logger_->d(msg->info_hash,
-                               node->id,
-                               "[node %s] got 'put' request for %s",
-                               node->toString().c_str(),
-                               msg->info_hash.toString().c_str());
+                    logger_->debug("[node {}] got 'put' request for {}", node->toString(), msg->info_hash.toString());
                 ++in_stats.put;
                 onAnnounce(node, msg->info_hash, msg->token, msg->values, msg->created);
 
@@ -695,22 +685,16 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
             }
             case MessageType::Refresh:
                 if (logIncoming_ and logger_)
-                    logger_->d(msg->info_hash,
-                               node->id,
-                               "[node %s] got 'refresh' request for %s",
-                               node->toString().c_str(),
-                               msg->info_hash.toString().c_str());
+                    logger_->debug("[node {}] got 'refresh' request for {}",
+                                   node->toString(),
+                                   msg->info_hash.toString());
                 onRefresh(node, msg->info_hash, msg->token, msg->value_id);
                 /* Same note as above in MessageType::AnnounceValue applies. */
                 sendValueAnnounced(from, msg->tid, msg->value_id);
                 break;
             case MessageType::Listen: {
                 if (logIncoming_ and logger_)
-                    logger_->d(msg->info_hash,
-                               node->id,
-                               "[node %s] got 'listen' request for %s",
-                               node->toString().c_str(),
-                               msg->info_hash.toString().c_str());
+                    logger_->debug("[node {}] got 'listen' request for {}", node->toString(), msg->info_hash.toString());
                 ++in_stats.listen;
                 RequestAnswer answer
                     = onListen(node, msg->info_hash, msg->token, msg->socket_id, std::move(msg->query), msg->version);
@@ -720,20 +704,14 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
             }
             case MessageType::UpdateValue: {
                 if (logIncoming_ and logger_)
-                    logger_->d(msg->info_hash,
-                               node->id,
-                               "[node %s] got 'update' request for %s",
-                               node->toString().c_str(),
-                               msg->info_hash.toString().c_str());
+                    logger_->debug("[node {}] got 'update' request for {}", node->toString(), msg->info_hash.toString());
                 ++in_stats.updateValue;
                 if (auto rsocket = node->getSocket(msg->socket_id))
                     rsocket->on_receive(node, std::move(*msg));
                 else if (logger_)
-                    logger_->e(msg->info_hash,
-                               node->id,
-                               "[node %s] 'update' request without socket for %s",
-                               node->toString().c_str(),
-                               msg->info_hash.toString().c_str());
+                    logger_->error("[node {}] 'update' request without socket for {}",
+                                   node->toString(),
+                                   msg->info_hash.toString());
                 sendListenConfirmation(from, msg->tid);
                 break;
             }
@@ -802,9 +780,9 @@ NetworkEngine::sendPing(const Sp<Node>& node, RequestCb&& on_done, RequestExpire
         tid,
         node,
         Blob(buffer.data(), buffer.data() + buffer.size()),
-        [=](const Request& req_status, ParsedMessage&&) {
+        [this, on_done = std::move(on_done)](const Request& req_status, ParsedMessage&&) {
             if (logger_)
-                logger_->d(req_status.node->id, "[node %s] got pong.", req_status.node->toString().c_str());
+                logger_->debug("[node {}] got pong.", req_status.node->toString());
             if (on_done) {
                 on_done(req_status, {});
             }
@@ -1381,18 +1359,18 @@ NetworkEngine::sendAnnounceValue(const Sp<Node>& n,
         tid,
         n,
         Blob(buffer.data(), buffer.data() + buffer.size()),
-        [=](const Request& req_status, ParsedMessage&& msg) { /* on done */
-                                                              if (msg.value_id == Value::INVALID_ID) {
-                                                                  if (logger_)
-                                                                      logger_->d(infohash,
-                                                                                 "Unknown search or announce!");
-                                                              } else {
-                                                                  if (on_done) {
-                                                                      RequestAnswer answer {};
-                                                                      answer.vid = msg.value_id;
-                                                                      on_done(req_status, std::move(answer));
-                                                                  }
-                                                              }
+        [this, on_done = std::move(on_done)](const Request& req_status, ParsedMessage&& msg) {
+            /* on done */
+            if (msg.value_id == Value::INVALID_ID) {
+                if (logger_)
+                    logger_->debug("[node {}] Unknown search or announce!", req_status.node->toString());
+            } else {
+                if (on_done) {
+                    RequestAnswer answer {};
+                    answer.vid = msg.value_id;
+                    on_done(req_status, std::move(answer));
+                }
+            }
         },
         std::move(on_expired));
     req->parts = std::move(v);
@@ -1537,18 +1515,18 @@ NetworkEngine::sendRefreshValue(const Sp<Node>& n,
         tid,
         n,
         Blob(buffer.data(), buffer.data() + buffer.size()),
-        [=](const Request& req_status, ParsedMessage&& msg) { /* on done */
-                                                              if (msg.value_id == Value::INVALID_ID) {
-                                                                  if (logger_)
-                                                                      logger_->d(infohash,
-                                                                                 "Unknown search or announce!");
-                                                              } else {
-                                                                  if (on_done) {
-                                                                      RequestAnswer answer {};
-                                                                      answer.vid = msg.value_id;
-                                                                      on_done(req_status, std::move(answer));
-                                                                  }
-                                                              }
+        [this, on_done = std::move(on_done)](const Request& req_status, ParsedMessage&& msg) {
+            /* on done */
+            if (msg.value_id == Value::INVALID_ID) {
+                if (logger_)
+                    logger_->debug("[node {}] Unknown search or announce!", req_status.node->toString());
+            } else {
+                if (on_done) {
+                    RequestAnswer answer {};
+                    answer.vid = msg.value_id;
+                    on_done(req_status, std::move(answer));
+                }
+            }
         },
         std::move(on_error),
         std::move(on_expired));
@@ -1635,7 +1613,7 @@ NetworkEngine::maintainRxBuffer(Tid tid)
         const auto& now = scheduler.time();
         if (msg->second.start + RX_MAX_PACKET_TIME < now || msg->second.last_part + RX_TIMEOUT < now) {
             if (logger_)
-                logger_->w("Dropping expired partial message from %s", msg->second.from.toString().c_str());
+                logger_->warn("Dropping expired partial message from {}", msg->second.from.toString());
             partial_messages.erase(msg);
         }
     }
