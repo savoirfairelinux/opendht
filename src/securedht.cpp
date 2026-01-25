@@ -51,7 +51,7 @@ SecureDht::SecureDht(std::unique_ptr<DhtInterface> dht,
             iacb = std::move(iacb)
         ](bool ok) {
             if (logger_)
-                logger_->d("SecureDht: certificate announcement %s", ok ? "succeeded" : "failed");
+                logger_->debug("SecureDht: certificate announcement {}", ok ? "succeeded" : "failed");
             completedState->second = completedState->second and ok;
             if (--completedState->first == 0)
                 iacb(completedState->second);
@@ -175,7 +175,7 @@ SecureDht::registerCertificate(const InfoHash& node, const Blob& data)
         return crt;
     } else {
         if (logger_)
-            logger_->w("Certificate {} for node {} does not match node id !", h.toString(), node.toString());
+            logger_->warn("Certificate {} for node {} does not match node id !", h.toString(), node.toString());
         return nullptr;
     }
 }
@@ -196,7 +196,7 @@ SecureDht::registerCertificate(const PkId& node, const Blob& data)
         return crt;
     } else {
         if (logger_)
-            logger_->w("Certificate {} for node {} does not match node id !", h.toString(), node.toString());
+            logger_->warn("Certificate {} for node {} does not match node id !", h.toString(), node.toString());
         return nullptr;
     }
 }
@@ -216,7 +216,7 @@ SecureDht::findCertificate(const InfoHash& node, const std::function<void(const 
     Sp<crypto::Certificate> b = getCertificate(node);
     if (b && *b) {
         if (logger_)
-            logger_->d("Using certificate from cache for %s", node.to_c_str());
+            logger_->debug("Using certificate from cache for {}", node.toString());
         if (cb)
             cb(b);
         return;
@@ -225,7 +225,7 @@ SecureDht::findCertificate(const InfoHash& node, const std::function<void(const 
         auto res = localQueryMethodLegacy_(node);
         if (not res.empty()) {
             if (logger_)
-                logger_->d("Registering certificate from local store for %s", node.to_c_str());
+                logger_->debug("Registering certificate from local store for {}", node.toString());
             nodesCertificates_.emplace(node, res.front());
             nodesCertificatesLong_.emplace(res.front()->getLongId(), res.front());
             if (cb)
@@ -242,7 +242,7 @@ SecureDht::findCertificate(const InfoHash& node, const std::function<void(const 
                 if (auto cert = registerCertificate(node, v->data)) {
                     *found = true;
                     if (logger_)
-                        logger_->d(node, "Found certificate for %s", node.to_c_str());
+                        logger_->debug("Found certificate for {}", node.toString());
                     if (cb)
                         cb(cert);
                     return false;
@@ -263,7 +263,7 @@ SecureDht::findPublicKey(const InfoHash& node, const std::function<void(const Sp
     auto pk = getPublicKey(node);
     if (pk && *pk) {
         if (logger_)
-            logger_->d(node, "Found public key from cache for %s", node.to_c_str());
+            logger_->debug("Found public key from cache for {}", node.toString());
         if (cb)
             cb(pk);
         return;
@@ -383,7 +383,7 @@ SecureDht::checkValue(const Sp<Value>& v)
             }
         } catch (const std::exception& e) {
             if (logger_)
-                logger_->w("Could not decrypt value %s : %s", v->toString().c_str(), e.what());
+                logger_->warn("Could not decrypt value {} : {}", v->toString(), e.what());
         }
     }
     // Check signed values
@@ -396,7 +396,7 @@ SecureDht::checkValue(const Sp<Value>& v)
             }
             return v;
         } else if (logger_)
-            logger_->w("Signature verification failed for %s", v->toString().c_str());
+            logger_->warn("Signature verification failed for {}", v->toString());
     }
     // Forward normal values
     else {
@@ -484,14 +484,15 @@ SecureDht::putSigned(const InfoHash& hash, Sp<Value> val, DoneCallback callback,
         hash,
         [val, this](const std::vector<Sp<Value>>& vals) {
             if (logger_)
-                logger_->d("Found online previous value being announced.");
+                logger_->debug("Found online previous value being announced.");
             for (const auto& v : vals) {
                 if (!v->isSigned()) {
                     if (logger_)
-                        logger_->e("Existing non-signed value seems to exists at this location.");
+                        logger_->error("Existing non-signed value seems to exists at this location.");
                 } else if (not v->owner or v->owner->getId() != getId()) {
                     if (logger_)
-                        logger_->e("Existing signed value belonging to someone else seems to exists at this location.");
+                        logger_->error(
+                            "Existing signed value belonging to someone else seems to exists at this location.");
                 } else if (val->seq <= v->seq)
                     val->seq = v->seq + 1;
             }
@@ -522,12 +523,12 @@ SecureDht::putEncrypted(const InfoHash& hash, const InfoHash& to, Sp<Value> val,
                           return;
                       }
                       if (logger_)
-                          logger_->w("Encrypting data for PK: %s", pk->getId().toString().c_str());
+                          logger_->warn("Encrypting data for PK: {}", pk->getId().toString());
                       try {
                           dht_->put(hash, encrypt(*val, *pk), callback, time_point::max(), permanent);
                       } catch (const std::exception& e) {
                           if (logger_)
-                              logger_->e("Error putting encrypted data: %s", e.what());
+                              logger_->error("Error putting encrypted data: {}", e.what());
                           if (callback)
                               callback(false, {});
                       }
@@ -556,7 +557,7 @@ SecureDht::putEncrypted(const InfoHash& hash, const PkId& to, Sp<Value> val, Don
                           dht_->put(hash, encrypt(*val, *pk), callback, time_point::max(), permanent);
                       } catch (const std::exception& e) {
                           if (logger_)
-                              logger_->e("Error putting encrypted data: %s", e.what());
+                              logger_->error("Error putting encrypted data: {}", e.what());
                           if (callback)
                               callback(false, {});
                       }
@@ -578,7 +579,7 @@ SecureDht::putEncrypted(
         dht_->put(hash, encrypt(*val, pk), callback, time_point::max(), permanent);
     } catch (const std::exception& e) {
         if (logger_)
-            logger_->e("Error putting encrypted data: %s", e.what());
+            logger_->error("Error putting encrypted data: {}", e.what());
         if (callback)
             callback(false, {});
     }

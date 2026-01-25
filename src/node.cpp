@@ -147,9 +147,7 @@ Node::closeSocket(Tid id)
 std::string
 Node::toString() const
 {
-    std::ostringstream ss;
-    ss << (*this);
-    return ss.str();
+    return fmt::format("{} {:<21}", id, addr.toString());
 }
 
 std::ostream&

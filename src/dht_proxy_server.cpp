@@ -72,21 +72,21 @@ public:
     void info(Builder&& msg_builder)
     {
         if (m_logger)
-            m_logger->d("[proxy:server] %s", msg_builder().c_str());
+            m_logger->debug("[proxy:server] {}", msg_builder());
     }
 
     template<typename Builder>
     void warn(Builder&& msg_builder)
     {
         if (m_logger)
-            m_logger->w("[proxy:server] %s", msg_builder().c_str());
+            m_logger->warn("[proxy:server] {}", msg_builder());
     }
 
     template<typename Builder>
     void error(Builder&& msg_builder)
     {
         if (m_logger)
-            m_logger->e("[proxy:server] %s", msg_builder().c_str());
+            m_logger->error("[proxy:server] {}", msg_builder());
     }
 
 private:
@@ -182,7 +182,9 @@ DhtProxyServer::onConnectionClosed(restinio::connection_id_t id)
         dht_->cancelListen(it->second.hash, std::move(it->second.token));
         listeners_.erase(it);
         if (logger_)
-            logger_->d("[proxy:server] [connection:%li] listener cancelled, %li still connected", id, listeners_.size());
+            logger_->debug("[proxy:server] [connection:{}] listener cancelled, {} still connected",
+                           id,
+                           listeners_.size());
     }
 }
 
@@ -322,7 +324,7 @@ DhtProxyServer::DhtProxyServer(const std::shared_ptr<DhtRunner>& dht,
         if (ec)
             throw std::runtime_error("Error setting certificate chain: " + ec.message());
         if (logger_)
-            logger_->d("[proxy:server] using certificate chain for ssl:\n%s", certchain.c_str());
+            logger_->debug("[proxy:server] using certificate chain for ssl:\n{}", certchain);
         // build http server
         auto settings = restinio::run_on_this_thread_settings_t<RestRouterTraitsTls>();
         addServerSettings(settings);
@@ -362,15 +364,12 @@ DhtProxyServer::DhtProxyServer(const std::shared_ptr<DhtRunner>& dht,
                 std::streamsize size = stateFile.tellg();
                 stateFile.seekg(0, std::ios::beg);
                 if (logger_)
-                    logger_->d("Loading proxy state from %.*s (%td bytes)",
-                               (int) persistPath_.size(),
-                               persistPath_.c_str(),
-                               size);
+                    logger_->debug("[proxy:server] Loading proxy state from {} ({} bytes)", persistPath_, size);
                 loadState(stateFile, size);
             }
         } catch (const std::exception& e) {
             if (logger_)
-                logger_->e("Error loading state from file: %s", e.what());
+                logger_->error("[proxy:server] Error loading state from file: {}", e.what());
         }
     }
 }
@@ -412,7 +411,7 @@ DhtProxyServer::loadState(Is& is, size_t size)
                 std::lock_guard<std::mutex> lock(lockSearchPuts_);
                 puts_ = puts->as<decltype(puts_)>();
                 if (logger_)
-                    logger_->d("Loading %zu persistent puts", puts_.size());
+                    logger_->debug("[proxy:server] Loading {} persistent puts", puts_.size());
                 for (auto& put : puts_) {
                     for (auto& pput : put.second.puts) {
                         pput.second.expireTimer = std::make_unique<asio::steady_timer>(io_context(),
@@ -456,14 +455,14 @@ DhtProxyServer::loadState(Is& is, size_t size)
                 }
             } else {
                 if (logger_)
-                    logger_->d("No persistent puts in state");
+                    logger_->debug("No persistent puts in state");
             }
 #ifdef OPENDHT_PUSH_NOTIFICATIONS
             if (auto pushListeners = findMapValue(oh.get(), "pushListeners"sv)) {
                 std::lock_guard<std::mutex> lock(lockListener_);
                 pushListeners_ = pushListeners->as<decltype(pushListeners_)>();
                 if (logger_)
-                    logger_->d("Loading %zu push listeners", pushListeners_.size());
+                    logger_->debug("[proxy:server] Loading {} push listeners", pushListeners_.size());
                 for (auto& pushListener : pushListeners_) {
                     for (auto& listeners : pushListener.second.listeners) {
                         for (auto& listener : listeners.second) {
@@ -523,12 +522,12 @@ DhtProxyServer::loadState(Is& is, size_t size)
                 }
             } else {
                 if (logger_)
-                    logger_->d("No push listeners in state");
+                    logger_->debug("[proxy:server] No push listeners in state");
             }
 #endif
         }
         if (logger_)
-            logger_->d("loading ended");
+            logger_->debug("[proxy:server] loading ended");
     }
 }
 
@@ -542,7 +541,7 @@ DhtProxyServer::~DhtProxyServer()
 {
     if (not persistPath_.empty()) {
         if (logger_)
-            logger_->d("Saving proxy state to %.*s", (int) persistPath_.size(), persistPath_.c_str());
+            logger_->debug("[proxy:server] Saving proxy state to {}", persistPath_);
         std::ofstream stateFile(persistPath_, std::ios::binary);
         saveState(stateFile);
     }
@@ -568,12 +567,12 @@ DhtProxyServer::~DhtProxyServer()
 #endif
     }
     if (logger_)
-        logger_->d("[proxy:server] closing http server");
+        logger_->debug("[proxy:server] closing http server");
     ioContext_->stop();
     if (serverThread_.joinable())
         serverThread_.join();
     if (logger_)
-        logger_->d("[proxy:server] http server closed");
+        logger_->debug("[proxy:server] http server closed");
 }
 
 template<typename ServerSettings>
@@ -647,7 +646,7 @@ DhtProxyServer::updateStats()
         nodeInfo_ = newInfo;
         if (logger_) {
             auto str = Json::writeString(jsonBuilder_, newInfo->toJson());
-            logger_->d("[proxy:server] [stats] %s", str.c_str());
+            logger_->debug("[proxy:server] [stats] {}", str);
         }
     });
 }
@@ -929,10 +928,7 @@ DhtProxyServer::subscribe(restinio::request_handle_t request, restinio::router::
         auto sessionId = root["session_id"].asString();
 
         if (logger_)
-            logger_->d("[proxy:server] [subscribe %s] [client %s] [session %s]",
-                       infoHash.toString().c_str(),
-                       clientId.c_str(),
-                       sessionId.c_str());
+            logger_->debug("[proxy:server] [subscribe {}] [client {}] [session {}]", infoHash, clientId, sessionId);
 
         // Insert new or return existing push listeners of a token
         std::lock_guard<std::mutex> lock(lockListener_);
@@ -992,9 +988,7 @@ DhtProxyServer::subscribe(restinio::request_handle_t request, restinio::router::
         // Send response
         if (not newListener) {
             if (logger_)
-                logger_->d("[proxy:server] [subscribe %s] found [client %s]",
-                           infoHash.toString().c_str(),
-                           listener.clientId.c_str());
+                logger_->debug("[proxy:server] [subscribe {}] found [client {}]", infoHash, listener.clientId);
             // Send response header
             auto response = std::make_shared<ResponseByPartsBuilder>(
                 initHttpResponse(request->create_response<ResponseByParts>()));
@@ -1019,7 +1013,7 @@ DhtProxyServer::subscribe(restinio::request_handle_t request, restinio::router::
             // =========== No existing listener for an infoHash ============
             // Add listen on dht
             if (logger_)
-                logger_->d("[proxy:server] [subscribe %s] new", infoHash.toString().c_str());
+                logger_->debug("[proxy:server] [subscribe {}] new", infoHash);
             listener.internalToken = dht_->listen(infoHash,
                                                   [this,
                                                    infoHash,
@@ -1058,7 +1052,7 @@ DhtProxyServer::unsubscribe(restinio::request_handle_t request, restinio::router
         infoHash = InfoHash::get(params["hash"]);
 
     if (logger_)
-        logger_->d("[proxy:server] [unsubscribe %s]", infoHash.toString().c_str());
+        logger_->debug("[proxy:server] [unsubscribe {}]", infoHash);
 
     try {
         std::string err;
@@ -1095,10 +1089,10 @@ DhtProxyServer::handleNotifyPushListenExpire(const asio::error_code& ec,
         return;
     else if (ec) {
         if (logger_)
-            logger_->e("[proxy:server] [subscribe] error sending put refresh: %s", ec.message().c_str());
+            logger_->error("[proxy:server] [subscribe] error sending put refresh: {}", ec.message());
     }
     if (logger_)
-        logger_->d("[proxy:server] [subscribe] sending refresh to %s token", pushToken.c_str());
+        logger_->debug("[proxy:server] [subscribe] sending refresh to {} token", pushToken);
     sendPushNotification(pushToken, jsonProvider(), type, false, topic);
 }
 
@@ -1112,10 +1106,10 @@ DhtProxyServer::handleCancelPushListen(const asio::error_code& ec,
         return;
     else if (ec) {
         if (logger_)
-            logger_->e("[proxy:server] [listen:push %s] error cancel: %s", key.toString().c_str(), ec.message().c_str());
+            logger_->error("[proxy:server] [listen:push {}] error cancel: {}", key, ec.message());
     }
     if (logger_)
-        logger_->d("[proxy:server] [listen:push %s] cancelled for %s", key.toString().c_str(), clientId.c_str());
+        logger_->debug("[proxy:server] [listen:push {}] cancelled for {}", key, clientId);
     std::lock_guard<std::mutex> lock(lockListener_);
 
     auto pushListener = pushListeners_.find(pushToken);
@@ -1182,13 +1176,13 @@ DhtProxyServer::handlePushListen(const InfoHash& infoHash,
         minPriority = std::min(minPriority, v->priority);
 
     if (logger_)
-        logger_->d("[proxy:server] [listen %s] [client %s] [session %s] [expired %i] [priority %i] [values %zu]",
-                   infoHash.toString().c_str(),
-                   clientId.c_str(),
-                   sessionCtx->sessionId.c_str(),
-                   expired,
-                   minPriority,
-                   values.size());
+        logger_->debug("[proxy:server] [listen {}] [client {}] [session {}] [expired {}] [priority {}] [values {}]",
+                       infoHash,
+                       clientId,
+                       sessionCtx->sessionId,
+                       expired,
+                       minPriority,
+                       values.size());
 
     sendPushNotification(pushToken, std::move(json), type, !expired and minPriority == 0, topic);
 
@@ -1251,7 +1245,7 @@ DhtProxyServer::sendPushNotification(
                     request->set_body(std::string(encrypted.begin(), encrypted.end()));
                 } catch (const std::exception& e) {
                     if (logger_)
-                        logger_->e("[proxy:server] [notification] encryption failed: %s", e.what());
+                        logger_->error("[proxy:server] [notification] encryption failed: {}", e.what());
                     return;
                 }
             } else {
@@ -1307,7 +1301,7 @@ DhtProxyServer::sendPushNotification(
         request->add_on_state_change_callback([this, reqid](http::Request::State state, const http::Response& response) {
             if (state == http::Request::State::DONE) {
                 if (logger_ and response.status_code != 200)
-                    logger_->e("[proxy:server] [notification] push failed: %i", response.status_code);
+                    logger_->error("[proxy:server] [notification] push failed: {}", response.status_code);
                 std::lock_guard<std::mutex> l(requestLock_);
                 requests_.erase(reqid);
             }
@@ -1334,7 +1328,7 @@ DhtProxyServer::sendPushNotification(
         }
     } catch (const std::exception& e) {
         if (logger_)
-            logger_->e("[proxy:server] [notification] error send push: %s", e.what());
+            logger_->error("[proxy:server] [notification] error send push: {}", e.what());
         if (reqid) {
             std::lock_guard<std::mutex> l(requestLock_);
             requests_.erase(reqid);
@@ -1351,10 +1345,10 @@ DhtProxyServer::handleCancelPermamentPut(const asio::error_code& ec, const InfoH
         return;
     else if (ec) {
         if (logger_)
-            logger_->e("[proxy:server] [put:permament] error sending put refresh: %s", ec.message().c_str());
+            logger_->error("[proxy:server] [put:permament] error sending put refresh: {}", ec.message());
     }
     if (logger_)
-        logger_->d("[proxy:server] [put %s] cancel permament put %i", key.toString().c_str(), vid);
+        logger_->debug("[proxy:server] [put {}] cancel permament put {}", key, vid);
     std::lock_guard<std::mutex> lock(lockSearchPuts_);
     auto sPuts = puts_.find(key);
     if (sPuts == puts_.end())
@@ -1398,10 +1392,10 @@ DhtProxyServer::put(restinio::request_handle_t request, restinio::router::route_
             auto value = std::make_shared<Value>(root);
             bool permanent = root.isMember("permanent");
             if (logger_)
-                logger_->d("[proxy:server] [put %s] %s %s",
-                           infoHash.toString().c_str(),
-                           value->toString().c_str(),
-                           (permanent ? "permanent" : ""));
+                logger_->debug("[proxy:server] [put {}] {} {}",
+                               infoHash,
+                               value->toString(),
+                               (permanent ? "permanent" : ""));
             if (permanent) {
                 std::string pushToken, clientId, sessionId, platform, topic;
                 auto& pVal = root["permanent"];
@@ -1525,7 +1519,7 @@ DhtProxyServer::put(restinio::request_handle_t request, restinio::router::route_
         }
     } catch (const std::exception& e) {
         if (logger_)
-            logger_->d("[proxy:server] error in put: %s", e.what());
+            logger_->error("[proxy:server] error in put: {}", e.what());
         return serverError(*request);
     }
 }
@@ -1575,7 +1569,7 @@ DhtProxyServer::putSigned(restinio::request_handle_t request, restinio::router::
         }
     } catch (const std::exception& e) {
         if (logger_)
-            logger_->d("[proxy:server] error in putSigned: %s", e.what());
+            logger_->error("[proxy:server] error in putSigned: {}", e.what());
         return serverError(*request);
     }
 }
@@ -1627,7 +1621,7 @@ DhtProxyServer::putEncrypted(restinio::request_handle_t request, restinio::route
         }
     } catch (const std::exception& e) {
         if (logger_)
-            logger_->d("[proxy:server] error in put: %s", e.what());
+            logger_->error("[proxy:server] error in put: {}", e.what());
         return serverError(*request);
     }
 }

@@ -127,25 +127,25 @@ DhtProxyClient::DhtProxyClient(std::shared_ptr<dht::crypto::Certificate> serverC
     jsonBuilder_["indentation"] = "";
     if (logger_) {
         if (serverCertificate_)
-            logger_->d("[proxy:client] using ca certificate for ssl:\n%s",
-                       serverCertificate_->toString(false /*chain*/).c_str());
+            logger_->debug("[proxy:client] using ca certificate for ssl:\n{}",
+                           serverCertificate_->toString(false /*chain*/));
         if (clientIdentity_.first and clientIdentity_.second)
-            logger_->d("[proxy:client] using client certificate for ssl:\n%s",
-                       clientIdentity_.second->toString(false /*chain*/).c_str());
+            logger_->debug("[proxy:client] using client certificate for ssl:\n{}",
+                           clientIdentity_.second->toString(false /*chain*/));
     }
     // run http client
     httpClientThread_ = std::thread([this]() {
         try {
             if (logger_)
-                logger_->d("[proxy:client] starting io_context");
+                logger_->debug("[proxy:client] starting io_context");
             // Ensures the httpContext_ won't run out of work
             auto work = asio::make_work_guard(httpContext_);
             httpContext_.run();
             if (logger_)
-                logger_->d("[proxy:client] http client io_context stopped");
+                logger_->debug("[proxy:client] http client io_context stopped");
         } catch (const std::exception& ex) {
             if (logger_)
-                logger_->e("[proxy:client] run error: %s", ex.what());
+                logger_->error("[proxy:client] run error: {}", ex.what());
         }
     });
     if (!proxyUrl_.empty())
@@ -159,7 +159,7 @@ DhtProxyClient::startProxy()
         return;
 
     if (logger_)
-        logger_->d("[proxy:client] start proxy with %s", proxyUrl_.c_str());
+        logger_->debug("[proxy:client] start proxy with {}", proxyUrl_);
 
     nextProxyConfirmationTimer_ = std::make_unique<asio::steady_timer>(httpContext_, std::chrono::steady_clock::now());
     nextProxyConfirmationTimer_->async_wait(std::bind(&DhtProxyClient::handleProxyConfirm, this, std::placeholders::_1));
@@ -176,7 +176,7 @@ DhtProxyClient::handleProxyConfirm(const asio::error_code& ec)
         return;
     else if (ec) {
         if (logger_)
-            logger_->e("[proxy:client] confirm error: %s", ec.message().c_str());
+            logger_->error("[proxy:client] confirm error: {}", ec.message());
         return;
     }
     if (proxyUrl_.empty())
@@ -241,7 +241,7 @@ DhtProxyClient::cancelAllListeners()
 {
     std::lock_guard<std::mutex> lock(searchLock_);
     if (logger_)
-        logger_->d("[proxy:client] [listeners] [%zu searches] cancel all", searches_.size());
+        logger_->debug("[proxy:client] [listeners] [{} searches] cancel all", searches_.size());
     for (auto& s : searches_) {
         s.second.ops.cancelAll([&](size_t token) {
             auto l = s.second.listeners.find(token);
@@ -317,7 +317,7 @@ void
 DhtProxyClient::get(const InfoHash& key, GetCallback cb, DoneCallback donecb, Value::Filter&& f, Where&& w)
 {
     if (logger_)
-        logger_->d("[proxy:client] [get] [search %s]", key.to_c_str());
+        logger_->debug("[proxy:client] [get] [search {}]", key.to_view());
 
     if (isDestroying_) {
         if (donecb)
@@ -368,14 +368,14 @@ DhtProxyClient::get(const InfoHash& key, GetCallback cb, DoneCallback donecb, Va
                 }
             } catch (const std::exception& e) {
                 if (logger_)
-                    logger_->e("[proxy:client] [get %s] body parsing error: %s", key.to_c_str(), e.what());
+                    logger_->error("[proxy:client] [get {}] body parsing error: {}", key.to_view(), e.what());
                 opstate->ok.store(false);
             }
         });
         request->add_on_done_callback([this, reqid, opstate, donecb, key](const http::Response& response) {
             if (response.status_code != 200) {
                 if (logger_)
-                    logger_->e("[proxy:client] [get %s] failed with code=%i", key.to_c_str(), response.status_code);
+                    logger_->error("[proxy:client] [get {}] failed with code={}", key.to_view(), response.status_code);
                 opstate->ok.store(false);
                 if (not response.aborted and response.status_code == 0)
                     opFailed();
@@ -402,7 +402,7 @@ DhtProxyClient::get(const InfoHash& key, GetCallback cb, DoneCallback donecb, Va
         request->send();
     } catch (const std::exception& e) {
         if (logger_)
-            logger_->e("[proxy:client] [get %s] error: %s", key.to_c_str(), e.what());
+            logger_->error("[proxy:client] [get {}] error: {}", key.to_view(), e.what());
     }
 }
 
@@ -415,7 +415,7 @@ DhtProxyClient::put(const InfoHash& key, Sp<Value> val, DoneCallback cb, time_po
         return;
     }
     if (logger_)
-        logger_->d("[proxy:client] [put] [search %s]", key.to_c_str());
+        logger_->debug("[proxy:client] [put] [search {}]", key.to_view());
 
     std::shared_ptr<std::atomic_bool> ok;
     if (permanent) {
@@ -459,11 +459,11 @@ DhtProxyClient::handleRefreshPut(const asio::error_code& ec, InfoHash key, Value
         return;
     else if (ec) {
         if (logger_)
-            logger_->e("[proxy:client] [put] [refresh %s] %s", key.toString().c_str(), ec.message().c_str());
+            logger_->error("[proxy:client] [put] [refresh {}] {}", key.to_view(), ec.message());
         return;
     }
     if (logger_)
-        logger_->d("[proxy:client] [put] [refresh %s]", key.to_c_str());
+        logger_->debug("[proxy:client] [put] [refresh {}]", key.to_view());
     std::lock_guard<std::mutex> lock(searchLock_);
     auto search = searches_.find(key);
     if (search != searches_.end()) {
@@ -623,7 +623,7 @@ DhtProxyClient::cancelPut(const InfoHash& key, const Value::Id& id)
     if (search == searches_.end())
         return false;
     if (logger_)
-        logger_->d("[proxy:client] [put] [search %s] cancel", key.to_c_str());
+        logger_->debug("[proxy:client] [put] [search {}] cancel", key.to_view());
     return search->second.puts.erase(id) > 0;
 }
 
@@ -637,7 +637,7 @@ void
 DhtProxyClient::getProxyInfos()
 {
     if (logger_)
-        logger_->d("[proxy:client] [info] requesting proxy server node information");
+        logger_->debug("[proxy:client] [info] requesting proxy server node information");
     auto infoState = std::make_shared<InfoState>();
     {
         std::lock_guard<std::mutex> l(lockCurrentProxyInfos_);
@@ -650,7 +650,7 @@ DhtProxyClient::getProxyInfos()
             statusIpv6_ = NodeStatus::Connecting;
     }
     if (logger_)
-        logger_->d("[proxy:client] [status] sending request");
+        logger_->debug("[proxy:client] [status] sending request");
 
     auto resolver = std::make_shared<http::Resolver>(httpContext_, proxyUrl_, logger_);
     queryProxyInfo(infoState, resolver, AF_INET);
@@ -663,7 +663,7 @@ void
 DhtProxyClient::queryProxyInfo(const Sp<InfoState>& infoState, const Sp<http::Resolver>& resolver, sa_family_t family)
 {
     if (logger_)
-        logger_->d("[proxy:client] [status] query ipv%i info", family == AF_INET ? 4 : 6);
+        logger_->debug("[proxy:client] [status] query ipv{} info", family == AF_INET ? 4 : 6);
     try {
         auto request = std::make_shared<http::Request>(httpContext_, resolver, family);
         if (serverCertificate_)
@@ -676,9 +676,9 @@ DhtProxyClient::queryProxyInfo(const Sp<InfoState>& infoState, const Sp<http::Re
                 return;
             if (response.status_code != 200) {
                 if (logger_)
-                    logger_->e("[proxy:client] [status] ipv%i failed with code=%i",
-                               family == AF_INET ? 4 : 6,
-                               response.status_code);
+                    logger_->error("[proxy:client] [status] ipv{} failed with code={}",
+                                   family == AF_INET ? 4 : 6,
+                                   response.status_code);
                 // pass along the failures
                 if ((family == AF_INET and infoState->ipv4 == 0) or (family == AF_INET6 and infoState->ipv6 == 0))
                     onProxyInfos(Json::Value {}, family);
@@ -715,7 +715,7 @@ DhtProxyClient::queryProxyInfo(const Sp<InfoState>& infoState, const Sp<http::Re
         request->send();
     } catch (const std::exception& e) {
         if (logger_)
-            logger_->e("[proxy:client] [status] error sending request: %s", e.what());
+            logger_->error("[proxy:client] [status] error sending request: {}", e.what());
     }
 }
 
@@ -732,7 +732,7 @@ DhtProxyClient::onProxyInfos(const Json::Value& proxyInfos, const sa_family_t fa
     auto& localAddress = family == AF_INET ? localAddrv4_ : localAddrv6_;
     if (not proxyInfos.isMember("node_id")) {
         if (logger_)
-            logger_->e("[proxy:client] [info] request failed for %s", family == AF_INET ? "ipv4" : "ipv6");
+            logger_->error("[proxy:client] [info] request failed for {}", family == AF_INET ? "ipv4" : "ipv6");
         status = NodeStatus::Disconnected;
         if (pubAddress) {
             pubAddress = {};
@@ -778,7 +778,7 @@ DhtProxyClient::onProxyInfos(const Json::Value& proxyInfos, const sa_family_t fa
 
         } catch (const std::exception& e) {
             if (logger_)
-                logger_->e("[proxy:client] [info] error processing: %s", e.what());
+                logger_->error("[proxy:client] [info] error processing: {}", e.what());
         }
     }
     auto newStatus = std::max(statusIpv4_, statusIpv6_);
@@ -839,7 +839,7 @@ size_t
 DhtProxyClient::listen(const InfoHash& key, ValueCallback cb, Value::Filter filter, Where where)
 {
     if (logger_)
-        logger_->d("[proxy:client] [listen] [search %s]", key.to_c_str());
+        logger_->debug("[proxy:client] [listen] [search {}]", key.to_view());
     if (isDestroying_)
         return 0;
 
@@ -852,13 +852,13 @@ DhtProxyClient::listen(const InfoHash& key, ValueCallback cb, Value::Filter filt
             auto search = searches_.find(key);
             if (search == searches_.end()) {
                 if (logger_)
-                    logger_->e("[proxy:client] [listen] [search %s] search not found", key.to_c_str());
+                    logger_->error("[proxy:client] [listen] [search {}] search not found", key.to_view());
                 return 0;
             }
             if (logger_)
-                logger_->d("[proxy:client] [listen] [search %s] sending %s",
-                           key.to_c_str(),
-                           deviceKey_.empty() ? "listen" : "subscribe");
+                logger_->debug("[proxy:client] [listen] [search {}] sending {}",
+                               key.to_view(),
+                               deviceKey_.empty() ? "listen" : "subscribe");
             // Add listener
             auto token = ++listenerToken_;
             auto l = search->second.listeners.find(token);
@@ -930,7 +930,7 @@ DhtProxyClient::handleResubscribe(const asio::error_code& ec,
         return;
     else if (ec) {
         if (logger_)
-            logger_->e("[proxy:client] [resubscribe %s] %s", key.toString().c_str(), ec.message().c_str());
+            logger_->error("[proxy:client] [resubscribe {}] {}", key.to_view(), ec.message());
         return;
     }
     if (opstate->stop)
@@ -943,7 +943,7 @@ DhtProxyClient::handleResubscribe(const asio::error_code& ec,
             resubscribe(key, token, l->second);
         } else {
             if (logger_)
-                logger_->e("[proxy:client] [resubscribe %s] token not found", key.toString().c_str());
+                logger_->error("[proxy:client] [resubscribe {}] token not found", key.to_view());
         }
     }
 }
@@ -952,7 +952,7 @@ bool
 DhtProxyClient::cancelListen(const InfoHash& key, size_t gtoken)
 {
     if (logger_)
-        logger_->d(key, "[proxy:client] [search %s] cancel listen %zu", key.to_c_str(), gtoken);
+        logger_->debug("[proxy:client] [search {}] cancel listen {}", key.to_view(), gtoken);
 
     std::lock_guard<std::mutex> lock(searchLock_);
     // find the listener in cache
@@ -979,11 +979,11 @@ DhtProxyClient::handleExpireListener(const asio::error_code& ec, const InfoHash&
         return;
     else if (ec) {
         if (logger_)
-            logger_->e("[proxy:client] [listen %s] error in cancel: %s", key.toString().c_str(), ec.message().c_str());
+            logger_->error("[proxy:client] [listen {}] error in cancel: {}", key.to_view(), ec.message());
         return;
     }
     if (logger_)
-        logger_->d("[proxy:client] [listen %s] expire listener", key.toString().c_str());
+        logger_->debug("[proxy:client] [listen {}] expire listener", key.to_view());
 
     std::lock_guard<std::mutex> lock(searchLock_);
     auto search = searches_.find(key);
@@ -1014,9 +1014,9 @@ DhtProxyClient::handleExpireListener(const asio::error_code& ec, const InfoHash&
                 request->add_on_done_callback([this, reqid, key](const http::Response& response) {
                     if (response.status_code != 200) {
                         if (logger_)
-                            logger_->e("[proxy:client] [unsubscribe %s] failed with code=%i",
-                                       key.to_c_str(),
-                                       response.status_code);
+                            logger_->error("[proxy:client] [unsubscribe {}] failed with code={}",
+                                           key.to_view(),
+                                           response.status_code);
                         if (not response.aborted and response.status_code == 0)
                             opFailed();
                     }
@@ -1032,7 +1032,7 @@ DhtProxyClient::handleExpireListener(const asio::error_code& ec, const InfoHash&
                 request->send();
             } catch (const std::exception& e) {
                 if (logger_)
-                    logger_->e("[proxy:client] [unsubscribe %s] failed: %s", key.to_c_str(), e.what());
+                    logger_->error("[proxy:client] [unsubscribe {}] failed: {}", key.to_view(), e.what());
             }
         } else {
             // stop the request
@@ -1043,9 +1043,9 @@ DhtProxyClient::handleExpireListener(const asio::error_code& ec, const InfoHash&
         }
         search->second.listeners.erase(it);
         if (logger_)
-            logger_->d("[proxy:client] [listen:cancel] [search %s] %zu listener remaining",
-                       key.to_c_str(),
-                       search->second.listeners.size());
+            logger_->debug("[proxy:client] [listen:cancel] [search {}] {} listener remaining",
+                           key.to_view(),
+                           search->second.listeners.size());
     });
     if (next != time_point::max()) {
         search->second.opExpirationTimer->expires_at(next);
@@ -1065,7 +1065,7 @@ DhtProxyClient::sendListen(const restinio::http_request_header_t& header,
                            ListenMethod method)
 {
     if (logger_)
-        logger_->e("[proxy:client] [listen] sendListen: %d", (int) method);
+        logger_->error("[proxy:client] [listen] sendListen: {}", (int) method);
     try {
         auto request = buildRequest();
         listener.request = request;
@@ -1115,16 +1115,16 @@ DhtProxyClient::sendListen(const restinio::http_request_header_t& header,
                 }
             } catch (const std::exception& e) {
                 if (logger_)
-                    logger_->e("[proxy:client] [listen] request #%i error in parsing: %s", reqid, e.what());
+                    logger_->error("[proxy:client] [listen] request #{} error in parsing: {}", reqid, e.what());
                 opstate->ok.store(false);
             }
         });
         request->add_on_done_callback([this, opstate, reqid](const http::Response& response) {
             if (response.status_code != 200) {
                 if (logger_)
-                    logger_->e("[proxy:client] [listen] send request #%i failed with code=%i",
-                               reqid,
-                               response.status_code);
+                    logger_->error("[proxy:client] [listen] send request #{} failed with code={}",
+                                   reqid,
+                                   response.status_code);
                 opstate->ok.store(false);
                 if (not response.aborted and response.status_code == 0)
                     opFailed();
@@ -1147,7 +1147,7 @@ DhtProxyClient::sendListen(const restinio::http_request_header_t& header,
         request->send();
     } catch (const std::exception& e) {
         if (logger_)
-            logger_->e("[proxy:client] [listen] request failed: %s", e.what());
+            logger_->error("[proxy:client] [listen] request failed: {}", e.what());
     }
 }
 
@@ -1157,7 +1157,7 @@ DhtProxyClient::opFailed()
     if (isDestroying_)
         return;
     if (logger_)
-        logger_->e("[proxy:client] proxy request failed");
+        logger_->error("[proxy:client] proxy request failed");
     {
         std::lock_guard<std::mutex> l(lockCurrentProxyInfos_);
         statusIpv4_ = NodeStatus::Disconnected;
@@ -1212,7 +1212,7 @@ DhtProxyClient::restartListeners(const asio::error_code& ec)
     }
     if (not deviceKey_.empty()) {
         if (logger_)
-            logger_->d("[proxy:client] [listeners] resubscribe due to a connectivity change");
+            logger_->debug("[proxy:client] [listeners] resubscribe due to a connectivity change");
         // Connectivity changed, refresh all subscribe
         for (auto& search : searches_)
             for (auto& listener : search.second.listeners)
@@ -1221,7 +1221,7 @@ DhtProxyClient::restartListeners(const asio::error_code& ec)
         return;
     }
     if (logger_)
-        logger_->d("[proxy:client] [listeners] restarting listeners");
+        logger_->debug("[proxy:client] [listeners] restarting listeners");
     for (auto& search : searches_) {
         for (auto& l : search.second.listeners) {
             auto& listener = l.second;
@@ -1267,7 +1267,7 @@ DhtProxyClient::pushNotificationReceived([[maybe_unused]] const std::map<std::st
         auto sessionId = notification.find("s");
         if (sessionId != notification.end() and sessionId->second != pushSessionId_) {
             if (logger_)
-                logger_->d("[proxy:client] [push] ignoring push for other session");
+                logger_->debug("[proxy:client] [push] ignoring push for other session");
             return PushNotificationResult::IgnoredWrongSession;
         }
         std::lock_guard<std::mutex> lock(searchLock_);
@@ -1308,7 +1308,7 @@ DhtProxyClient::pushNotificationReceived([[maybe_unused]] const std::map<std::st
                 if (list.second.opstate->stop)
                     continue;
                 if (logger_)
-                    logger_->d("[proxy:client] [push] [search %s] received", key.to_c_str());
+                    logger_->debug("[proxy:client] [push] [search {}] received", key);
                 auto token = list.first;
                 auto opstate = list.second.opstate;
                 if (expired == notification.end()) {
@@ -1356,7 +1356,7 @@ DhtProxyClient::pushNotificationReceived([[maybe_unused]] const std::map<std::st
         ret = PushNotificationResult::IgnoredNoOp;
     } catch (const std::exception& e) {
         if (logger_)
-            logger_->e("[proxy:client] [push] receive error: %s", e.what());
+            logger_->error("[proxy:client] [push] receive error: {}", e.what());
         ret = PushNotificationResult::Error;
     }
     if (launchLoop)
@@ -1374,7 +1374,7 @@ DhtProxyClient::resubscribe([[maybe_unused]] const InfoHash& key,
     if (deviceKey_.empty())
         return;
     if (logger_)
-        logger_->d("[proxy:client] [resubscribe] [search %s]", key.to_c_str());
+        logger_->debug("[proxy:client] [resubscribe] [search {}]", key);
 
     auto opstate = listener.opstate;
     listener.request.reset(); // This will update ok to false
@@ -1433,7 +1433,7 @@ DhtProxyClient::setPushNotificationToken([[maybe_unused]] const std::string& tok
         deviceKey_ = token;
         if (statusIpv4_ == NodeStatus::Connected || statusIpv6_ == NodeStatus::Connected) {
             if (logger_)
-                logger_->d("[proxy:client] [push] token changed, resubscribing");
+                logger_->debug("[proxy:client] [push] token changed, resubscribing");
             for (auto& search : searches_) {
                 for (auto& listener : search.second.listeners) {
                     resubscribe(search.first, listener.first, listener.second);

@@ -1546,10 +1546,10 @@ Request::handle_response(const asio::error_code& ec, size_t /* n_bytes */)
     enum llhttp_errno ret = llhttp_execute(parser_.get(), request.c_str(), request.size());
     if (ret != HPE_OK && ret != HPE_PAUSED) {
         if (logger_)
-            logger_->e("Error parsing HTTP: %zu %s %d",
-                       (int) ret,
-                       llhttp_errno_name(ret),
-                       llhttp_get_error_reason(parser_.get()));
+            logger_->error("Error parsing HTTP: {} {} {}",
+                           (int) ret,
+                           llhttp_errno_name(ret),
+                           llhttp_get_error_reason(parser_.get()));
         terminate(asio::error::basic_errors::broken_pipe);
         return;
     }
@@ -1589,14 +1589,14 @@ Request::onHeadersComplete()
         auto location_it = response_.headers.find(restinio::field_to_string(restinio::http_field_t::location));
         if (location_it == response_.headers.end()) {
             if (logger_)
-                logger_->e("[http:client] [request:%i] got redirect without location", id_);
+                logger_->error("[http:client] [request:{}] got redirect without location", id_);
             terminate(asio::error::connection_aborted);
         }
 
         if (follow_redirect and num_redirect < MAX_REDIRECTS) {
             auto newUrl = getRelativePath(get_url(), location_it->second);
             if (logger_)
-                logger_->w("[http:client] [request:%i] redirect to %s", id_, newUrl.c_str());
+                logger_->warn("[http:client] [request:{}] redirect to {}", id_, newUrl);
             auto next = std::make_shared<Request>(ctx_, newUrl, logger_);
             next->set_method(header_.method());
             next->headers_ = std::move(headers_);
@@ -1608,7 +1608,7 @@ Request::onHeadersComplete()
             next->send();
         } else {
             if (logger_)
-                logger_->e("[http:client] [request:%i] got redirect without location", id_);
+                logger_->error("[http:client] [request:{}] got redirect without location", id_);
             terminate(asio::error::connection_aborted);
         }
     } else {

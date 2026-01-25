@@ -49,27 +49,36 @@ constexpr const Color::Modifier def(Color::FG_DEFAULT);
 constexpr const Color::Modifier red(Color::FG_RED);
 constexpr const Color::Modifier yellow(Color::FG_YELLOW);
 
+using namespace std::chrono;
+using log_precision = microseconds;
+constexpr auto den = log_precision::period::den;
+
 /**
  * Print va_list to std::ostream (used for logging).
  */
 void
-printfLog(std::ostream& s, const std::string& message)
+printfLog(std::ostream& s, source_loc loc, std::string_view prefix, const std::string& message)
 {
-    using namespace std::chrono;
-    using log_precision = microseconds;
     auto num = duration_cast<log_precision>(steady_clock::now().time_since_epoch()).count();
-    constexpr auto den = log_precision::period::den;
-    fmt::print(s, "[{:06d}.{:06d}] ", num / den, num % den);
+    if (!loc.file.empty())
+        fmt::print(s,
+                   "[{:06d}.{:06d} {:>20}:{:<5} {:<24}] {}",
+                   num / den,
+                   num % den,
+                   loc.file,
+                   loc.line,
+                   loc.function,
+                   prefix);
+    else
+        fmt::print(s, "[{:06d}.{:06d}] {}", num / den, num % den, prefix);
     s << message << std::endl;
 }
+
 void
-printLog(std::ostream& s, fmt::string_view format, fmt::format_args args)
+printLog(std::ostream& s, source_loc loc, std::string_view prefix, fmt::string_view format, fmt::format_args args)
 {
-    using namespace std::chrono;
-    using log_precision = microseconds;
     auto num = duration_cast<log_precision>(steady_clock::now().time_since_epoch()).count();
-    constexpr auto den = log_precision::period::den;
-    fmt::print(s, "[{:06d}.{:06d}] ", num / den, num % den);
+    fmt::print(s, "[{:06d}.{:06d}] {}", num / den, num % den, prefix);
     fmt::vprint(s, format, args);
     s << std::endl;
 }
@@ -77,12 +86,12 @@ printLog(std::ostream& s, fmt::string_view format, fmt::format_args args)
 std::shared_ptr<Logger>
 getStdLogger()
 {
-    return std::make_shared<Logger>([](LogLevel level, std::string&& message) {
+    return std::make_shared<Logger>([](source_loc loc, LogLevel level, std::string_view prefix, std::string&& message) {
         if (level == LogLevel::error)
             std::cerr << red;
         else if (level == LogLevel::warning)
             std::cerr << yellow;
-        printfLog(std::cerr, message);
+        printfLog(std::cerr, loc, prefix, message);
         std::cerr << def;
     });
 }
@@ -93,7 +102,9 @@ getFileLogger(const std::string& path)
     auto logfile = std::make_shared<std::ofstream>();
     logfile->open(path, std::ios::out);
     return std::make_shared<Logger>(
-        [logfile](LogLevel /*level*/, std::string&& message) { printfLog(*logfile, message); });
+        [logfile](source_loc loc, LogLevel /*level*/, std::string_view prefix, std::string&& message) {
+            printfLog(*logfile, loc, prefix, message);
+        });
 }
 
 #ifndef _WIN32
@@ -129,7 +140,14 @@ getSyslogLogger(const char* name)
         opened_logfile = logfile;
     }
     return std::make_shared<Logger>(
-        [logfile](LogLevel level, std::string&& message) { syslog(syslogLevel(level), "%s", message.c_str()); });
+        [logfile](source_loc loc, LogLevel level, std::string_view prefix, std::string&& message) {
+            syslog(syslogLevel(level),
+                   "%.*s%.*s",
+                   (int) prefix.size(),
+                   prefix.data(),
+                   (int) message.size(),
+                   message.c_str());
+        });
 #else
     return getStdLogger();
 #endif

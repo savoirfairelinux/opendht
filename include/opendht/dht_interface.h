@@ -234,14 +234,6 @@ public:
 
     virtual std::vector<SockAddr> getPublicAddress(sa_family_t family = 0) = 0;
 
-    virtual void setLogger(const Logger& l)
-    {
-        if (logger_)
-            *logger_ = l;
-        else
-            logger_ = std::make_shared<Logger>(l);
-    }
-
     virtual void setLogger(const std::shared_ptr<Logger>& l) { logger_ = l; }
 
     /**

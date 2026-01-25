@@ -292,12 +292,6 @@ public:
         return dht_->pushNotificationReceived(notification);
     }
 
-    void setLogger(const Logger& logger) override
-    {
-        DhtInterface::setLogger(logger);
-        dht_->setLogger(logger);
-    }
-
     void setLogger(const std::shared_ptr<Logger>& logger) override
     {
         DhtInterface::setLogger(logger);
