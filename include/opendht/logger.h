@@ -135,12 +135,12 @@ struct OPENDHT_PUBLIC Logger
         return child;
     }
 
-    void setFilter(std::string_view tag)
+    void setFilter(std::string_view filter)
     {
-        enable_ = tag.empty() or tag_ == tag;
+        enable_ = filter.empty() or tag_.find(filter) != std::string_view::npos;
         for (auto it = children_.begin(); it != children_.end();) {
             if (auto c = it->lock()) {
-                c->setFilter(enable_ ? std::string_view {} : tag);
+                c->setFilter(enable_ ? std::string_view {} : filter);
                 ++it;
             } else {
                 it = children_.erase(it);
