@@ -132,10 +132,9 @@ if (NOT MSVC)
                     message(STATUS "Fallback mode specified, downloading simdutf")
                     set(SIMDUTF_TESTS OFF CACHE INTERNAL "Disable tests for simdutf downloader")
                     set(SIMDUTF_TOOLS OFF CACHE INTERNAL "Disable tools for simdutf downloader")
-                    set(SIMDUTF_CXX_STANDARD 17 CACHE INTERNAL "Set C++ standard for simdutf downloader")
                     FetchContent_Declare(simdutf
                         GIT_REPOSITORY "https://github.com/simdutf/simdutf.git"
-                        GIT_TAG "v7.5.0"
+                        GIT_TAG "v8.0.0"
                     )
                     FetchContent_MakeAvailable(simdutf)
                     set(SIMDUTF_LIBRARIES simdutf::simdutf)
