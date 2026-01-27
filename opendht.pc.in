@@ -6,7 +6,7 @@ Name: OpenDHT
 Description: C++17 Distributed Hash Table library
 Version: @VERSION@
 Libs: -L${libdir} -lopendht -lfmt
-Libs.private: @http_lib@ -pthread
+Libs.private: @http_lib@ @simdutf_libfile@ -pthread
 Requires: gnutls >= 3.3@jsoncpp_lib@@openssl_lib@
 Requires.private: nettle >= 2.4@argon2_lib@@llhttp_lib@@iouring_lib@@simdutf_lib@
 Cflags: -I${includedir}
