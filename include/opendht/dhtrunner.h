@@ -11,6 +11,7 @@
 #include "network_utils.h"
 #include "node_export.h"
 
+#include <atomic>
 #include <thread>
 #include <mutex>
 #include <atomic>
@@ -315,18 +316,16 @@ public:
         putEncrypted(hash, to, value, bindDoneCb(cb), permanent);
     }
 
-    [[deprecated("Use the shared_ptr version instead")]]
-    void putEncrypted(InfoHash hash,
-                      const std::shared_ptr<crypto::PublicKey>& to,
-                      Value&& value,
-                      DoneCallback cb = {},
-                      bool permanent = false);
-    [[deprecated("Use the shared_ptr version instead")]]
-    void putEncrypted(InfoHash hash,
-                      const std::shared_ptr<crypto::PublicKey>& to,
-                      Value&& value,
-                      DoneCallbackSimple cb,
-                      bool permanent = false)
+    [[deprecated("Use the shared_ptr version instead")]] void putEncrypted(InfoHash hash,
+                                                                           const std::shared_ptr<crypto::PublicKey>& to,
+                                                                           Value&& value,
+                                                                           DoneCallback cb = {},
+                                                                           bool permanent = false);
+    [[deprecated("Use the shared_ptr version instead")]] void putEncrypted(InfoHash hash,
+                                                                           const std::shared_ptr<crypto::PublicKey>& to,
+                                                                           Value&& value,
+                                                                           DoneCallbackSimple cb,
+                                                                           bool permanent = false)
     {
         putEncrypted(hash, to, std::forward<Value>(value), bindDoneCb(cb), permanent);
     }
@@ -596,6 +595,15 @@ private:
 
     /** PeerDiscovery Parameters */
     std::shared_ptr<PeerDiscovery> peerDiscovery_;
+
+    /**
+     * Cached bound addresses/ports so getters don't need to take dht_mtx.
+     * This avoids deadlock issues when dht_mtx is held while periodic()/bootstrap does blocking DNS.
+     */
+    mutable std::mutex bound_mtx_ {};
+    SockAddr bound4_ {}, bound6_ {};
+    std::atomic<in_port_t> boundPort4_ {0};
+    std::atomic<in_port_t> boundPort6_ {0};
 
     /**
      * The Logger instance is used in enableProxy and other methods that
