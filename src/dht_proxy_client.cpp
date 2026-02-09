@@ -727,7 +727,6 @@ DhtProxyClient::onProxyInfos(const Json::Value& proxyInfos, const sa_family_t fa
     std::unique_lock<std::mutex> l(lockCurrentProxyInfos_);
     auto oldStatus = std::max(statusIpv4_, statusIpv6_);
     auto& status = family == AF_INET ? statusIpv4_ : statusIpv6_;
-    auto ipChanged = false;
     auto& pubAddress = family == AF_INET ? publicAddressV4_ : publicAddressV6_;
     auto& localAddress = family == AF_INET ? localAddrv4_ : localAddrv6_;
     if (not proxyInfos.isMember("node_id")) {
@@ -736,7 +735,6 @@ DhtProxyClient::onProxyInfos(const Json::Value& proxyInfos, const sa_family_t fa
         status = NodeStatus::Disconnected;
         if (pubAddress) {
             pubAddress = {};
-            ipChanged = true;
         }
     } else {
         if (logger_)
@@ -746,15 +744,14 @@ DhtProxyClient::onProxyInfos(const Json::Value& proxyInfos, const sa_family_t fa
             stats4_ = NodeStats(proxyInfos["ipv4"]);
             stats6_ = NodeStats(proxyInfos["ipv6"]);
             auto publicIp = parsePublicAddress(proxyInfos["public_ip"]);
-            ipChanged = pubAddress && pubAddress.toString() != publicIp.toString();
-            bool pub = ipChanged || !pubAddress;
+            bool pub = pubAddress != publicIp;
             pubAddress = publicIp;
 
             if (proxyInfos.isMember("local_ip")) {
                 std::string localIp = proxyInfos["local_ip"].asString();
                 if (localAddress.toString() != localIp) {
                     localAddress.setAddress(localIp.c_str());
-                    ipChanged = (bool) localAddress;
+                    pub = (bool) localAddress;
                 }
             }
 
@@ -769,9 +766,9 @@ DhtProxyClient::onProxyInfos(const Json::Value& proxyInfos, const sa_family_t fa
                     [cb = publicAddressChangedCb_, addresses = std::move(addresses)]() { cb(std::move(addresses)); });
             }
 
-            if (!ipChanged && stats4_.good_nodes + stats6_.good_nodes)
+            if (stats4_.good_nodes + stats6_.good_nodes)
                 status = NodeStatus::Connected;
-            else if (!ipChanged && stats4_.dubious_nodes + stats6_.dubious_nodes)
+            else if (stats4_.dubious_nodes + stats6_.dubious_nodes)
                 status = NodeStatus::Connecting;
             else
                 status = NodeStatus::Disconnected;
@@ -801,10 +798,7 @@ DhtProxyClient::onProxyInfos(const Json::Value& proxyInfos, const sa_family_t fa
         nextProxyConfirmationTimer_->async_wait(
             std::bind(&DhtProxyClient::handleProxyConfirm, this, std::placeholders::_1));
     } else if (newStatus == NodeStatus::Disconnected) {
-        auto next = std::chrono::steady_clock::now();
-        if (!ipChanged)
-            next += std::chrono::minutes(1);
-        nextProxyConfirmationTimer_->expires_at(next);
+        nextProxyConfirmationTimer_->expires_at(std::chrono::steady_clock::now() + std::chrono::minutes(1));
         nextProxyConfirmationTimer_->async_wait(
             std::bind(&DhtProxyClient::handleProxyConfirm, this, std::placeholders::_1));
     }

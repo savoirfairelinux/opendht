@@ -98,6 +98,9 @@ public:
     {
         return len == o.len && std::memcmp((const uint8_t*) get(), (const uint8_t*) o.get(), len) == 0;
     }
+    bool operator==(const SockAddr& o) const { return equals(o); }
+    bool operator!=(const SockAddr& o) const { return !equals(o); }
+
     SockAddr& operator=(const SockAddr& o)
     {
         set(o.get(), o.getLength());
@@ -326,8 +329,6 @@ private:
             std::memcpy((uint8_t*) get(), (const uint8_t*) sa, len);
     }
 };
-
-OPENDHT_PUBLIC bool operator==(const SockAddr& a, const SockAddr& b);
 
 } // namespace dht
 
