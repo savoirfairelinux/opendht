@@ -97,19 +97,18 @@ std::vector<Sp<Node>>
 RoutingTable::findClosestNodes(const InfoHash id, time_point now, size_t count) const
 {
     std::vector<Sp<Node>> nodes;
-    nodes.reserve(count);
     auto bucket = findBucket(id);
-
     if (bucket == end()) {
         return nodes;
     }
+    nodes.reserve(count);
 
     auto sortedBucketInsert = [&](const Bucket& b) {
-        for (auto n : b.nodes) {
+        for (const auto& n : b.nodes) {
             if (not n->isGood(now))
                 continue;
 
-            auto here = std::find_if(nodes.begin(), nodes.end(), [&id, &n](Sp<Node>& node) {
+            auto here = std::find_if(nodes.begin(), nodes.end(), [&id, &n](const Sp<Node>& node) {
                 return id.xorCmp(n->id, node->id) < 0;
             });
             nodes.insert(here, n);
@@ -199,7 +198,7 @@ RoutingTable::onNewNode(
     if (confirm == 2)
         b->time = now;
 
-    for (auto& n : b->nodes) {
+    for (const auto& n : b->nodes) {
         if (n == node)
             return false;
     }
