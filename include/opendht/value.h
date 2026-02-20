@@ -1081,7 +1081,7 @@ template<typename T, typename std::enable_if<std::is_base_of<Value::Serializable
 Value::Filter
 getFilterSet(Value::Filter f)
 {
-    return Value::Filter::chain({Value::TypeFilter(T::TYPE), T::getFilter(), f});
+    return Value::Filter::chain({Value::TypeFilter(T::TYPE), T::getFilter(), std::move(f)});
 }
 
 template<typename T, typename std::enable_if<!std::is_base_of<Value::SerializableBase, T>::value, T>::type* = nullptr>
