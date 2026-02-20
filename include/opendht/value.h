@@ -1026,9 +1026,9 @@ struct OPENDHT_PUBLIC Query
     void msgpack_pack(Packer& pk) const
     {
         pk.pack_map(2);
-        pk.pack(std::string("s"));
+        pk.pack("s"sv);
         pk.pack(select); /* packing field selectors */
-        pk.pack(std::string("w"));
+        pk.pack("w"sv);
         pk.pack(where); /* packing filters */
     }
 
