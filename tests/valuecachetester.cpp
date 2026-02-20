@@ -197,20 +197,41 @@ ValueCacheTester::testClear() {
 
 void
 ValueCacheTester::testSyncStatus() {
-    bool synced = false;
-    dht::ValueCache cache([](const std::vector<std::shared_ptr<dht::Value>>&, bool){}, [&](dht::ListenSyncStatus status){
-        synced = (status == dht::ListenSyncStatus::SYNCED);
-    });
+    std::vector<dht::ListenSyncStatus> statuses;
+    {
+        dht::ValueCache cache([](const std::vector<std::shared_ptr<dht::Value>>&, bool){}, [&](dht::ListenSyncStatus status){
+            statuses.push_back(status);
+        });
+        
+        CPPUNIT_ASSERT_EQUAL((size_t)1, statuses.size());
+        CPPUNIT_ASSERT(statuses.back() == dht::ListenSyncStatus::ADDED);
+        
+        cache.onSynced(true);
+        CPPUNIT_ASSERT_EQUAL((size_t)2, statuses.size());
+        CPPUNIT_ASSERT(statuses.back() == dht::ListenSyncStatus::SYNCED);
+        
+        // Calling onSynced(true) again should not trigger the callback
+        cache.onSynced(true);
+        CPPUNIT_ASSERT_EQUAL((size_t)2, statuses.size());
+        
+        cache.onSynced(false);
+        CPPUNIT_ASSERT_EQUAL((size_t)3, statuses.size());
+        CPPUNIT_ASSERT(statuses.back() == dht::ListenSyncStatus::UNSYNCED);
+        
+        // Calling onSynced(false) again should not trigger the callback
+        cache.onSynced(false);
+        CPPUNIT_ASSERT_EQUAL((size_t)3, statuses.size());
+
+        // Set to synced before destruction to test UNSYNCED on destruction
+        cache.onSynced(true);
+        CPPUNIT_ASSERT_EQUAL((size_t)4, statuses.size());
+        CPPUNIT_ASSERT(statuses.back() == dht::ListenSyncStatus::SYNCED);
+    }
     
-    // Initial status is UNSYNCED (or ADDED then UNSYNCED?)
-    // Constructor calls syncCallback(ADDED).
-    // Default status is UNSYNCED.
-    
-    cache.onSynced(true);
-    CPPUNIT_ASSERT(synced);
-    
-    cache.onSynced(false);
-    CPPUNIT_ASSERT(!synced);
+    // Destructor should have been called
+    CPPUNIT_ASSERT_EQUAL((size_t)6, statuses.size());
+    CPPUNIT_ASSERT(statuses[4] == dht::ListenSyncStatus::UNSYNCED);
+    CPPUNIT_ASSERT(statuses[5] == dht::ListenSyncStatus::REMOVED);
 }
 
 void
