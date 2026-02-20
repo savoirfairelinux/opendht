@@ -54,8 +54,8 @@ public:
     typedef typename T::iterator iterator;
     typedef typename T::const_iterator const_iterator;
 
-    Hash() noexcept { data_.fill(0); }
-    Hash(const uint8_t* h, size_t data_len)
+    constexpr Hash() noexcept { data_.fill(0); }
+    constexpr Hash(const uint8_t* h, size_t data_len)
     {
         if (data_len < N)
             data_.fill(0);
@@ -67,7 +67,8 @@ public:
      * hex must be at least 2.HASH_LEN characters long.
      * If too long, only the first 2.HASH_LEN characters are read.
      */
-    explicit Hash(std::string_view hex)
+    explicit constexpr Hash(std::string_view hex)
+        : data_()
     {
         if (hex.size() < 2 * N)
             data_.fill(0);
@@ -78,7 +79,7 @@ public:
     Hash(const msgpack::object& o) { msgpack_unpack(o); }
 
     static constexpr size_t size() noexcept { return N; }
-    const uint8_t* data() const { return data_.data(); }
+    constexpr const uint8_t* data() const { return data_.data(); }
     uint8_t* data() { return data_.data(); }
     iterator begin() { return data_.begin(); }
     const_iterator cbegin() const { return data_.cbegin(); }
@@ -120,7 +121,7 @@ public:
     }
 
     uint8_t& operator[](size_t index) { return data_[index]; }
-    const uint8_t& operator[](size_t index) const { return data_[index]; }
+    constexpr const uint8_t& operator[](size_t index) const { return data_[index]; }
 
     /**
      * Find the lowest 1 bit in an id.
@@ -258,7 +259,7 @@ public:
 
 private:
     T data_;
-    void fromString(const char*);
+    constexpr void fromString(const char*);
 };
 
 #define HASH_LEN 20u
@@ -286,25 +287,29 @@ operator>>(std::istream& s, Hash<N>& h)
 }
 
 template<size_t N>
-void
+constexpr void
 Hash<N>::fromString(const char* in)
 {
-    auto hex2bin = [](char c) -> uint8_t {
+    constexpr auto hex2bin = [](char c, bool& valid) -> uint8_t {
         if (c >= 'a' and c <= 'f')
             return 10 + c - 'a';
         else if (c >= 'A' and c <= 'F')
             return 10 + c - 'A';
         else if (c >= '0' and c <= '9')
             return c - '0';
-        else
-            throw std::domain_error("not an hex character");
+        else {
+            valid = false;
+            return 0;
+        }
     };
-    try {
-        for (size_t i = 0; i < N; i++)
-            data_[i] = (hex2bin(in[2 * i]) << 4) | hex2bin(in[2 * i + 1]);
-    } catch (const std::domain_error&) {
-        data_.fill(0);
+    bool valid = true;
+    for (size_t i = 0; i < N && valid; i++) {
+        uint8_t high = hex2bin(in[2 * i], valid);
+        uint8_t low = hex2bin(in[2 * i + 1], valid);
+        data_[i] = (high << 4) | low;
     }
+    if (!valid)
+        data_.fill(0);
 }
 
 template<size_t N>
@@ -367,6 +372,19 @@ inline std::string
 toHex(const std::vector<uint8_t>& data)
 {
     return toHex(data.data(), data.size());
+}
+
+template<size_t N>
+constexpr std::array<char, N * 2>
+toHexArray(const Hash<N>& h)
+{
+    std::array<char, N * 2> ret {};
+    for (size_t i = 0; i < N; i++) {
+        const auto& m = hex_map[h[i]];
+        ret[i * 2] = m[0];
+        ret[i * 2 + 1] = m[1];
+    }
+    return ret;
 }
 
 template<size_t N>

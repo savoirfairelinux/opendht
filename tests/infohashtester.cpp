@@ -6,6 +6,7 @@
 // std
 #include <iostream>
 #include <string>
+#include <string_view>
 
 // opendht
 #include "opendht/infohash.h"
@@ -126,10 +127,21 @@ InfoHashTester::testXorCmp()
 void
 InfoHashTester::testHex()
 {
-    const std::string TEST_HASH_STR("01b20304d5060708090a010203e05060708090ae");
+    using namespace std::literals;
+    static constexpr auto H = "0123456789abcdef0123456789abcdef01234567"sv;
+    const std::string TEST_HASH_STR(H);
     dht::InfoHash TEST_HASH(TEST_HASH_STR);
+    static constexpr dht::InfoHash TEST_HASH_CONST(H);
     CPPUNIT_ASSERT_EQUAL(TEST_HASH_STR, TEST_HASH.toString());
+    CPPUNIT_ASSERT_EQUAL(H, TEST_HASH.to_view());
     CPPUNIT_ASSERT_EQUAL(TEST_HASH_STR, dht::toHex(TEST_HASH.data(), TEST_HASH.size()));
+    CPPUNIT_ASSERT_EQUAL(TEST_HASH_CONST.to_view(), H);
+
+    static constexpr auto hexArray = dht::toHexArray(TEST_HASH_CONST);
+    static constexpr auto hexArrayView = std::string_view(hexArray.data(), hexArray.size());
+    static_assert(hexArrayView == H, "Hex array does not match");
+
+    CPPUNIT_ASSERT_EQUAL(std::string_view(TEST_HASH_STR), hexArrayView);
 }
 
 void
