@@ -204,6 +204,90 @@ DhtProxyTester::testResubscribeGetValues()
 }
 
 void
+DhtProxyTester::testPushNotification()
+{
+    clientConfig.push_token = "atlas";
+    nodeClient.run(0, clientConfig);
+
+    bool done = false;
+    std::condition_variable cv;
+    std::mutex cv_m;
+    std::unique_lock<std::mutex> lk(cv_m);
+    auto key = dht::InfoHash::get("GLaDOs");
+
+    std::vector<std::shared_ptr<dht::Value>> values;
+    auto ftoken = nodeClient.listen(key, [&](const std::vector<std::shared_ptr<dht::Value>>& v, bool expired) {
+        if (not expired) {
+            std::lock_guard<std::mutex> lk(cv_m);
+            values.insert(values.end(), v.begin(), v.end());
+            done = true;
+            cv.notify_all();
+        }
+        return true;
+    });
+
+    // Wait for listen to be sent to proxy
+    cv.wait_for(lk, std::chrono::seconds(1));
+
+    // Peer puts a value
+    dht::Value firstVal {"Hey! It's been a long time. How have you been?"};
+    auto firstVal_data = firstVal.data;
+    nodePeer.put(key, std::move(firstVal), [&](bool ok) {
+        std::lock_guard<std::mutex> lk(cv_m);
+        CPPUNIT_ASSERT(ok);
+        done = true;
+        cv.notify_all();
+    });
+    CPPUNIT_ASSERT(cv.wait_for(lk, 10s, [&] { return done; }));
+    done = false;
+
+    // Simulate push notification
+    std::map<std::string, std::string> push_data;
+    push_data["key"] = key.toString();
+    push_data["t"] = std::to_string(
+        std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch())
+            .count());
+    nodeClient.pushNotificationReceived(push_data);
+
+    // Wait for client to receive the value
+    CPPUNIT_ASSERT(cv.wait_for(lk, 10s, [&] { return done; }));
+    done = false;
+
+    CPPUNIT_ASSERT_EQUAL((size_t) 1u, values.size());
+    CPPUNIT_ASSERT(firstVal_data == values.front()->data);
+
+    // Peer puts a second value
+    dht::Value secondVal {"You're a monster"};
+    auto secondVal_data = secondVal.data;
+    nodePeer.put(key, std::move(secondVal), [&](bool ok) {
+        std::lock_guard<std::mutex> lk(cv_m);
+        CPPUNIT_ASSERT(ok);
+        done = true;
+        cv.notify_all();
+    });
+    CPPUNIT_ASSERT(cv.wait_for(lk, 10s, [&] { return done; }));
+    done = false;
+
+    // Simulate push notification again
+    push_data["t"] = std::to_string(
+        std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch())
+            .count());
+    nodeClient.pushNotificationReceived(push_data);
+
+    // Wait for client to receive the second value
+    CPPUNIT_ASSERT(cv.wait_for(lk, 10s, [&] { return done; }));
+    done = false;
+
+    // OpValueCache should filter out the first value, so we only get the second value in the callback
+    CPPUNIT_ASSERT_EQUAL((size_t) 2u, values.size());
+    CPPUNIT_ASSERT(secondVal_data == values.back()->data);
+
+    auto token = ftoken.get();
+    CPPUNIT_ASSERT(token);
+    nodeClient.cancelListen(key, token);
+}
+
+void
 DhtProxyTester::testPutGet40KChars()
 {
     nodeClient.run(0, clientConfig);
