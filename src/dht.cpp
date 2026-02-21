@@ -1580,7 +1580,7 @@ Dht::expireStore()
 
     // remove unused quota entires
     for (auto i = store_quota.begin(); i != store_quota.end();) {
-        if (i->second.size() == 0)
+        if (i->second.empty())
             i = store_quota.erase(i);
         else
             ++i;
