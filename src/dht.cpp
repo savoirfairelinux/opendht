@@ -1558,7 +1558,7 @@ Dht::expireStore()
             if (it->second.size() > largest->second.size())
                 largest = it;
         }
-        if (largest != store_quota.end()) {
+        if (largest != store_quota.end() && !largest->second.empty()) {
             while (true) {
                 auto exp_value = largest->second.getOldest();
                 auto storage = store.find(exp_value.first);
@@ -1575,6 +1575,10 @@ Dht::expireStore()
                     }
                 }
             }
+        } else {
+            if (logger_)
+                logger_->warn("No space left: remote data consumes all the quota!");
+            break;
         }
     }
 
