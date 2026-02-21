@@ -19,6 +19,7 @@ class DhtRunnerTester : public CppUnit::TestFixture
     CPPUNIT_TEST(testPutOverride);
     CPPUNIT_TEST(testListen);
     CPPUNIT_TEST(testListenLotOfBytes);
+    CPPUNIT_TEST(testStoreEmptyValue);
     CPPUNIT_TEST(testIdOps);
     CPPUNIT_TEST(testImportValuesPreservesRemoteQuota);
     CPPUNIT_TEST(testImportValuesPreservesStoredExpiration);
@@ -74,6 +75,10 @@ public:
      * Test listen method with lot of datas
      */
     void testListenLotOfBytes();
+    /**
+     * Test storing an empty value
+     */
+    void testStoreEmptyValue();
     /**
      * Test multithread
      */
