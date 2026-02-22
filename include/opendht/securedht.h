@@ -191,6 +191,23 @@ public:
     std::vector<ValuesExport> exportValues() const override { return dht_->exportValues(); }
     void importValues(const std::vector<ValuesExport>& v) override { dht_->importValues(v); }
     NodeStats getNodesStats(sa_family_t af) const override { return dht_->getNodesStats(af); }
+
+    NodeInfo getNodeInfo()
+    {
+        NodeInfo info;
+        info.id = getId();
+        info.node_id = getNodeId();
+        info.ipv4 = getNodesStats(AF_INET);
+        info.ipv6 = getNodesStats(AF_INET6);
+        std::tie(info.storage_size, info.storage_values) = getStoreSize();
+        std::tie(info.local_storage_size, info.local_storage_values) = getLocalStoreSize();
+        if (auto sock = getSocket()) {
+            info.bound4 = sock->getBoundRef(AF_INET).getPort();
+            info.bound6 = sock->getBoundRef(AF_INET6).getPort();
+        }
+        return info;
+    }
+
     std::vector<unsigned> getNodeMessageStats(bool in = false) override { return dht_->getNodeMessageStats(in); }
     std::string getRoutingTablesLog(sa_family_t af) const override { return dht_->getRoutingTablesLog(af); }
     std::string getSearchesLog(sa_family_t af) const override { return dht_->getSearchesLog(af); }

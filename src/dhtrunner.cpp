@@ -571,20 +571,10 @@ DhtRunner::getNodesStats(sa_family_t af) const
 NodeInfo
 DhtRunner::getNodeInfo() const
 {
-    std::lock_guard<std::mutex> lck(dht_mtx);
     NodeInfo info {};
-    if (dht_) {
-        info.id = dht_->getId();
-        info.node_id = dht_->getNodeId();
-        info.ipv4 = dht_->getNodesStats(AF_INET);
-        info.ipv6 = dht_->getNodesStats(AF_INET6);
-        std::tie(info.storage_size, info.storage_values) = dht_->getStoreSize();
-        std::tie(info.local_storage_size, info.local_storage_values) = dht_->getLocalStoreSize();
-        if (auto sock = dht_->getSocket()) {
-            info.bound4 = sock->getBoundRef(AF_INET).getPort();
-            info.bound6 = sock->getBoundRef(AF_INET6).getPort();
-        }
-    }
+    std::lock_guard<std::mutex> lck(dht_mtx);
+    if (dht_)
+        info = dht_->getNodeInfo();
     info.ongoing_ops = ongoing_ops;
     return info;
 }
@@ -596,18 +586,8 @@ DhtRunner::getNodeInfo(std::function<void(std::shared_ptr<NodeInfo>)> cb)
     ongoing_ops++;
     pending_ops_prio.emplace([cb = std::move(cb), this](SecureDht& dht) {
         auto sinfo = std::make_shared<NodeInfo>();
-        auto& info = *sinfo;
-        info.id = dht.getId();
-        info.node_id = dht.getNodeId();
-        info.ipv4 = dht.getNodesStats(AF_INET);
-        info.ipv6 = dht.getNodesStats(AF_INET6);
-        std::tie(info.storage_size, info.storage_values) = dht.getStoreSize();
-        std::tie(info.local_storage_size, info.local_storage_values) = dht.getLocalStoreSize();
-        if (auto sock = dht.getSocket()) {
-            info.bound4 = sock->getBoundRef(AF_INET).getPort();
-            info.bound6 = sock->getBoundRef(AF_INET6).getPort();
-        }
-        info.ongoing_ops = ongoing_ops;
+        *sinfo = dht.getNodeInfo();
+        sinfo->ongoing_ops = ongoing_ops;
         cb(std::move(sinfo));
         opEnded();
     });
