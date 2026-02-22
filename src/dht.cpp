@@ -1421,8 +1421,22 @@ Dht::storageStore(const InfoHash& id, const Sp<Value>& value, time_point created
     }
 
     StorageBucket* store_bucket {nullptr};
+    bool is_local = !sa;
     if (sa)
         store_bucket = &store_quota[sa];
+    else
+        store_bucket = local_store_quota.get();
+
+    // Reject new local values if local storage limit is exceeded
+    if (is_local && max_local_store_size != STORAGE_LIMIT_UNLIMITED
+        && local_store_quota->size() + value->size() > max_local_store_size) {
+        if (logger_)
+            logger_->warn("[store {}] Rejecting local put: local storage limit exceeded ({}/{})",
+                          id.to_view(),
+                          local_store_quota->size(),
+                          max_local_store_size);
+        return false;
+    }
 
     auto store = st->second.store(id, value, created, expiration, store_bucket);
     if (auto vs = store.first) {
@@ -1432,7 +1446,7 @@ Dht::storageStore(const InfoHash& id, const Sp<Value>& value, time_point created
         if (not permanent) {
             vs->expiration_job = scheduler.add(expiration, std::bind(&Dht::expireStorage, this, id));
         }
-        if (total_store_size > max_store_size) {
+        if (total_store_size - local_store_quota->size() > max_store_size) {
             auto value = vs->data;
             auto value_diff = store.second.values_diff;
             auto value_edit = store.second.edited_values;
@@ -1483,8 +1497,8 @@ Dht::expireStore(decltype(store)::iterator i)
     const auto& id = i->first;
     auto& st = i->second;
     auto stats = st.expire(id, scheduler.time());
-    if (not stats.second.empty()) {
-        storageRemoved(id, st, stats.second, -stats.first);
+    if (not stats.expired_values.empty()) {
+        storageRemoved(id, st, stats.expired_values, -stats.size_diff);
     }
 }
 
@@ -1545,8 +1559,8 @@ Dht::expireStore()
             ++i;
     }
 
-    // remove more values if storage limit is exceeded
-    while (total_store_size > max_store_size) {
+    // remove more values if remote storage limit is exceeded
+    while (total_store_size - local_store_quota->size() > max_store_size) {
         // find IP using the most storage
         if (store_quota.empty()) {
             if (logger_)
@@ -1828,8 +1842,16 @@ Dht::getStorageLog() const
     out << "Total " << store.size() << " storages, " << total_values << " values (";
     if (total_store_size < 1024)
         out << total_store_size << " bytes)";
-    else
-        out << (total_store_size / 1024) << " / " << (max_store_size / 1024) << " KB)";
+    else {
+        auto remote_store_size = total_store_size - local_store_quota->size();
+        out << (remote_store_size / 1024) << " / " << (max_store_size / 1024) << " KB remote, "
+            << (local_store_quota->size() / 1024) << " / ";
+        if (max_local_store_size == STORAGE_LIMIT_UNLIMITED)
+            out << "unlimited";
+        else
+            out << (max_local_store_size / 1024) << " KB";
+        out << " local)";
+    }
     out << std::endl;
     return out.str();
 }
@@ -1943,8 +1965,10 @@ Dht::Dht(std::unique_ptr<net::DatagramSocket>&& sock,
     , myid(config.node_id ? config.node_id : InfoHash::getRandom(rd))
     , store()
     , store_quota()
+    , local_store_quota(std::make_unique<StorageBucket>())
     , max_store_keys(config.max_store_keys ? (int) config.max_store_keys : MAX_HASHES)
-    , max_store_size(config.max_store_size ? (int) config.max_store_size : DEFAULT_STORAGE_LIMIT)
+    , max_store_size(config.max_store_size ? (size_t) config.max_store_size : STORAGE_LIMIT_DEFAULT)
+    , max_local_store_size(config.max_local_store_size ? (size_t) config.max_local_store_size : STORAGE_LIMIT_UNLIMITED)
     , max_searches(config.max_searches ? (int) config.max_searches : MAX_SEARCHES)
     , network_engine(myid,
                      fromDhtConfig(config),
@@ -2144,7 +2168,7 @@ Dht::maintainStorage(decltype(store)::value_type& storage, bool force, const Don
     if (not want4 and not want6) {
         if (logger_)
             logger_->debug("Discarding storage values {}", storage.first.to_view());
-        auto diff = storage.second.clear();
+        auto diff = storage.second.clear(storage.first);
         total_store_size += diff.size_diff;
         total_values += diff.values_diff;
     }

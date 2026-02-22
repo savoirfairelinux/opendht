@@ -288,6 +288,8 @@ public:
     std::vector<unsigned> getNodeMessageStats(bool) override { return {}; }
     void setStorageLimit(size_t) override {}
     virtual size_t getStorageLimit() const override { return 0; }
+    void setLocalStorageLimit(size_t) override {}
+    virtual size_t getLocalStorageLimit() const override { return STORAGE_LIMIT_UNLIMITED; }
     void connectivityChanged(sa_family_t) override { getProxyInfos(); }
     void connectivityChanged() override
     {

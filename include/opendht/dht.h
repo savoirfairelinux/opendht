@@ -296,10 +296,19 @@ public:
     }
 
     /**
-     * Set the in-memory storage limit in bytes
+     * Set the in-memory storage limit in bytes for remote values
      */
-    void setStorageLimit(size_t limit = DEFAULT_STORAGE_LIMIT) override { max_store_size = limit; }
+    void setStorageLimit(size_t limit = 0) override { max_store_size = limit == 0 ? STORAGE_LIMIT_DEFAULT : limit; }
     size_t getStorageLimit() const override { return max_store_size; }
+
+    /**
+     * Set the in-memory storage limit in bytes for locally stored values
+     */
+    void setLocalStorageLimit(size_t limit = 0) override
+    {
+        max_local_store_size = limit == 0 ? STORAGE_LIMIT_UNLIMITED : limit;
+    }
+    size_t getLocalStorageLimit() const override { return max_local_store_size; }
 
     /**
      * Returns the total memory usage of stored values and the number
@@ -403,10 +412,12 @@ private:
 
     std::map<InfoHash, Storage> store;
     std::map<SockAddr, StorageBucket, SockAddr::ipCmp> store_quota;
+    std::unique_ptr<StorageBucket> local_store_quota;
     size_t total_values {0};
     size_t total_store_size {0};
     size_t max_store_keys {MAX_HASHES};
-    size_t max_store_size {DEFAULT_STORAGE_LIMIT};
+    size_t max_store_size {STORAGE_LIMIT_DEFAULT};
+    size_t max_local_store_size {STORAGE_LIMIT_UNLIMITED};
 
     size_t max_searches {MAX_SEARCHES};
     size_t search_id {0};

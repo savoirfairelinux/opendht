@@ -181,8 +181,10 @@ public:
     std::pair<size_t, size_t> getStoreSize() const override { return dht_->getStoreSize(); }
     std::string getStorageLog() const override { return dht_->getStorageLog(); }
     std::string getStorageLog(const InfoHash& h) const override { return dht_->getStorageLog(h); }
-    void setStorageLimit(size_t limit = DEFAULT_STORAGE_LIMIT) override { dht_->setStorageLimit(limit); }
+    void setStorageLimit(size_t limit = 0) override { dht_->setStorageLimit(limit); }
     size_t getStorageLimit() const override { return dht_->getStorageLimit(); }
+    void setLocalStorageLimit(size_t limit = 0) override { dht_->setLocalStorageLimit(limit); }
+    size_t getLocalStorageLimit() const override { return dht_->getLocalStorageLimit(); }
 
     std::vector<NodeExport> exportNodes() const override { return dht_->exportNodes(); }
     std::vector<ValuesExport> exportValues() const override { return dht_->exportValues(); }

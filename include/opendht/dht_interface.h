@@ -218,10 +218,16 @@ public:
     virtual std::vector<unsigned> getNodeMessageStats(bool in = false) = 0;
 
     /**
-     * Set the in-memory storage limit in bytes
+     * Set the in-memory storage limit in bytes for remote values
      */
-    virtual void setStorageLimit(size_t limit = DEFAULT_STORAGE_LIMIT) = 0;
+    virtual void setStorageLimit(size_t limit = 0) = 0;
     virtual size_t getStorageLimit() const = 0;
+
+    /**
+     * Set the in-memory storage limit in bytes for locally stored values
+     */
+    virtual void setLocalStorageLimit(size_t limit = 0) = 0;
+    virtual size_t getLocalStorageLimit() const = 0;
 
     /**
      * Returns the total memory usage of stored values and the number

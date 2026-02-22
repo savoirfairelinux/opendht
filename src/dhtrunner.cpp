@@ -467,6 +467,24 @@ DhtRunner::getStorageLimit() const
     return dht_->getStorageLimit();
 }
 
+void
+DhtRunner::setLocalStorageLimit(size_t limit)
+{
+    std::lock_guard<std::mutex> lck(dht_mtx);
+    if (!dht_)
+        throw std::runtime_error("dht is not running");
+    return dht_->setLocalStorageLimit(limit);
+}
+
+size_t
+DhtRunner::getLocalStorageLimit() const
+{
+    std::lock_guard<std::mutex> lck(dht_mtx);
+    if (!dht_)
+        throw std::runtime_error("dht is not running");
+    return dht_->getLocalStorageLimit();
+}
+
 std::vector<NodeExport>
 DhtRunner::exportNodes() const
 {

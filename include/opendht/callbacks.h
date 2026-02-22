@@ -113,8 +113,11 @@ struct OPENDHT_PUBLIC Config
     /* If non-0, overrides the default maximum number of searches. -1 means no limit.  */
     ssize_t max_searches {0};
 
-    /* If non-0, overrides the default maximum store size. -1 means no limit.  */
+    /* If non-0, overrides the default maximum store size for remote values. -1 means no limit.  */
     ssize_t max_store_size {0};
+
+    /* If non-0, overrides the default maximum store size for locally stored values. -1 means no limit.  */
+    ssize_t max_local_store_size {0};
 
     /* If non-0, overrides the default maximum store key count. -1 means no limit.  */
     ssize_t max_store_keys {0};
@@ -159,7 +162,8 @@ enum class OPENDHT_PUBLIC PushNotificationResult : uint8_t {
     Error
 };
 
-static constexpr size_t DEFAULT_STORAGE_LIMIT {1024 * 1024 * 64};
+static constexpr size_t STORAGE_LIMIT_DEFAULT {1024 * 1024 * 64};
+static constexpr size_t STORAGE_LIMIT_UNLIMITED {(size_t) -1};
 
 using ValuesExport = std::pair<InfoHash, Blob>;
 

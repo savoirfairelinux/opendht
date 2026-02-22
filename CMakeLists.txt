@@ -861,6 +861,8 @@ if (BUILD_TESTING)
         tests/cryptotester.cpp
         tests/dhtrunnertester.h
         tests/dhtrunnertester.cpp
+        tests/storagetester.h
+        tests/storagetester.cpp
         tests/threadpooltester.h
         tests/threadpooltester.cpp
     )
