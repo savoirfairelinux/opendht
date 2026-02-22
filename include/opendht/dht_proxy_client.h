@@ -276,6 +276,7 @@ public:
     void insertNode(const InfoHash&, const SockAddr&) override {}
     void insertNode(const NodeExport&) override {}
     std::pair<size_t, size_t> getStoreSize() const override { return {}; }
+    std::pair<size_t, size_t> getLocalStoreSize() const override { return {}; }
     std::vector<NodeExport> exportNodes() const override { return {}; }
     std::vector<ValuesExport> exportValues() const override { return {}; }
     void importValues(const std::vector<ValuesExport>&) override {}
