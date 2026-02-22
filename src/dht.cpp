@@ -166,6 +166,12 @@ Dht::getPublicAddress(sa_family_t family)
     return ret;
 }
 
+std::pair<size_t, size_t>
+Dht::getLocalStoreSize() const
+{
+    return {local_store_quota->size(), local_store_quota->valueCount()};
+}
+
 bool
 Dht::trySearchInsert(const Sp<Node>& node)
 {

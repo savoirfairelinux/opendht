@@ -50,6 +50,7 @@ public:
         insert(id, value, expiration);
     }
     size_t size() const { return totalSize_; }
+    size_t valueCount() const { return storedValues_.size(); }
     bool empty() const { return storedValues_.empty(); }
     std::pair<InfoHash, Value::Id> getOldest() const
     {

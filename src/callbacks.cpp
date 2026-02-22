@@ -139,6 +139,12 @@ NodeInfo::toJson() const
     val["ipv4"] = ipv4.toJson();
     val["ipv6"] = ipv6.toJson();
     val["ops"] = Json::Value::LargestUInt(ongoing_ops);
+    val["storage_values"] = Json::Value::LargestUInt(storage_values);
+    val["storage_size"] = Json::Value::LargestUInt(storage_size);
+    val["local_storage_values"] = Json::Value::LargestUInt(local_storage_values);
+    val["local_storage_size"] = Json::Value::LargestUInt(local_storage_size);
+    val["port_ipv4"] = Json::Value::LargestUInt(bound4);
+    val["port_ipv6"] = Json::Value::LargestUInt(bound6);
     return val;
 }
 
@@ -150,6 +156,12 @@ NodeInfo::NodeInfo(const Json::Value& v)
     ipv4 = NodeStats(v["ipv4"]);
     ipv6 = NodeStats(v["ipv6"]);
     ongoing_ops = v["ops"].asLargestUInt();
+    storage_values = v["storage_values"].asLargestUInt();
+    storage_size = v["storage_size"].asLargestUInt();
+    local_storage_values = v["local_storage_values"].asLargestUInt();
+    local_storage_size = v["local_storage_size"].asLargestUInt();
+    bound4 = v["port_ipv4"].asLargestUInt();
+    bound6 = v["port_ipv6"].asLargestUInt();
 }
 
 #endif

@@ -179,6 +179,7 @@ public:
     inline const InfoHash& getNodeId() const override { return dht_->getNodeId(); }
 
     std::pair<size_t, size_t> getStoreSize() const override { return dht_->getStoreSize(); }
+    std::pair<size_t, size_t> getLocalStoreSize() const override { return dht_->getLocalStoreSize(); }
     std::string getStorageLog() const override { return dht_->getStorageLog(); }
     std::string getStorageLog(const InfoHash& h) const override { return dht_->getStorageLog(h); }
     void setStorageLimit(size_t limit = 0) override { dht_->setStorageLimit(limit); }

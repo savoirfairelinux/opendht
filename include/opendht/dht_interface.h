@@ -235,6 +235,8 @@ public:
      */
     virtual std::pair<size_t, size_t> getStoreSize() const = 0;
 
+    virtual std::pair<size_t, size_t> getLocalStoreSize() const = 0;
+
     virtual std::vector<SockAddr> getPublicAddress(sa_family_t family = 0) = 0;
 
     virtual void setLogger(const std::shared_ptr<Logger>& l) { logger_ = l; }

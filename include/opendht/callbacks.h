@@ -65,6 +65,8 @@ struct OPENDHT_PUBLIC NodeInfo
     size_t ongoing_ops {0};
     size_t storage_values {0};
     size_t storage_size {0};
+    size_t local_storage_values {0};
+    size_t local_storage_size {0};
     in_port_t bound4 {0};
     in_port_t bound6 {0};
 
@@ -77,7 +79,17 @@ struct OPENDHT_PUBLIC NodeInfo
     explicit NodeInfo(const Json::Value& v);
 #endif
 
-    MSGPACK_DEFINE_MAP(id, node_id, ipv4, ipv6)
+    MSGPACK_DEFINE_MAP(id,
+                       node_id,
+                       ipv4,
+                       ipv6,
+                       ongoing_ops,
+                       storage_values,
+                       storage_size,
+                       local_storage_values,
+                       local_storage_size,
+                       bound4,
+                       bound6)
 };
 
 /**

@@ -316,6 +316,8 @@ public:
      */
     std::pair<size_t, size_t> getStoreSize() const override { return {total_store_size, total_values}; }
 
+    std::pair<size_t, size_t> getLocalStoreSize() const override;
+
     std::vector<SockAddr> getPublicAddress(sa_family_t family = 0) override;
 
     PushNotificationResult pushNotificationReceived(const std::map<std::string, std::string>&) override
