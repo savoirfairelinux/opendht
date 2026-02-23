@@ -21,11 +21,11 @@ Optionally, install RESTinio to enable the OpenDHT proxy client and server:
 mkdir /usr/include/nonstd
 wget https://raw.githubusercontent.com/martinmoene/expected-lite/master/include/nonstd/expected.hpp -O /usr/include/nonstd/expected.hpp
 
-wget https://github.com/Stiffstream/restinio/releases/download/v.0.7.3/restinio-0.7.3.tar.bz2
-tar -xjf restinio-0.7.3.tar.bz2
-cd restinio-0.7.3/dev
+wget https://github.com/Stiffstream/restinio/releases/download/v.0.7.9/restinio-0.7.9.tar.bz2
+tar -xjf restinio-0.7.9.tar.bz2
+cd restinio-0.7.9/dev
 cmake -DCMAKE_INSTALL_PREFIX=/usr -DRESTINIO_TEST=Off -DRESTINIO_SAMPLE=Off -DRESTINIO_BENCHMARK=Off -DRESTINIO_WITH_SOBJECTIZER=Off -DRESTINIO_DEP_STANDALONE_ASIO=system -DRESTINIO_DEP_LLHTTP=system -DRESTINIO_DEP_FMT=system -DRESTINIO_DEP_EXPECTED_LITE=system .
-make -j2 && make install
+make && make install
 ```
 
 To run openDHT on a different computer from the build computer, the following runtime dependencies are required:
@@ -48,11 +48,11 @@ Optionally, install RESTinio to enable the OpenDHT proxy client and server:
 mkdir /usr/include/nonstd
 wget https://raw.githubusercontent.com/martinmoene/expected-lite/master/include/nonstd/expected.hpp -O /usr/include/nonstd/expected.hpp
 
-wget https://github.com/Stiffstream/restinio/releases/download/v.0.7.3/restinio-0.7.3.tar.bz2
-tar -xjf restinio-0.7.3.tar.bz2
-cd restinio-0.7.3/dev
+wget https://github.com/Stiffstream/restinio/releases/download/v.0.7.9/restinio-0.7.9.tar.bz2
+tar -xjf restinio-0.7.9.tar.bz2
+cd restinio-0.7.9/dev
 cmake -DCMAKE_INSTALL_PREFIX=/usr -DRESTINIO_TEST=Off -DRESTINIO_SAMPLE=Off -DRESTINIO_BENCHMARK=Off -DRESTINIO_WITH_SOBJECTIZER=Off -DRESTINIO_DEP_STANDALONE_ASIO=system -DRESTINIO_DEP_LLHTTP=system -DRESTINIO_DEP_FMT=system -DRESTINIO_DEP_EXPECTED_LITE=system .
-make -j2 && make install
+make && make install
 ```
 
 ### Fedora

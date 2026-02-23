@@ -140,19 +140,21 @@ asyncio.run(dht_async_demo("unique_key"))
 ```
 
 ## Dependencies
+Core dependencies:
 - msgpack-c 1.2+, used for data serialization.
 - GnuTLS 3.3+, used for cryptographic operations.
 - Nettle 2.4+, a GnuTLS dependency for crypto.
 - {fmt} 9.0+, for log formatting.
-- (optional) restinio used for the REST API.
-- (optional) llhttp used for the REST API.
-- (optional) jsoncpp 1.7.4-3+, used for the REST API.
+
+Optional dependencies for the REST API (DHT proxy client/server):
+- (optional) restinio
+- (optional) llhttp
+- (optional) jsoncpp 1.7.4-3+
+- (optional) simdutf
+
+Build environment:
 - Build tested with GCC 9+ (GNU/Linux, Windows with MinGW), Clang/LLVM (GNU/Linux, Android, macOS, iOS).
 - Build tested with Microsoft Visual Studio 2019, 2022
-
-## Contact
-
-IRC: join us on Libera.chat at [`#opendht`](https://web.libera.chat/#opendht).
 
 ## License
 Copyright (c) 2014-2026 Savoir-faire Linux Inc.
