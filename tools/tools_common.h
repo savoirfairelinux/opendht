@@ -119,6 +119,21 @@ loadFile(const std::string& path)
     return buffer;
 }
 
+std::string
+printByteCount(size_t bytes)
+{
+    static constexpr std::string_view suffixes[] = {"B", "KB", "MB", "GB", "TB"};
+    size_t suffixIndex = 0;
+    double count = static_cast<double>(bytes);
+    while (count >= 1024 && suffixIndex < std::size(suffixes) - 1) {
+        count /= 1024;
+        suffixIndex++;
+    }
+    if (suffixIndex == 0)
+        return fmt::format("{} {}", bytes, suffixes[suffixIndex]);
+    return fmt::format("{:.2f} {} ({} bytes)", count, suffixes[suffixIndex], bytes);
+}
+
 struct dht_params
 {
     bool help {false}; // print help and exit
@@ -193,7 +208,9 @@ getDhtConfig(dht_params& params)
     }
     if (context.logger) {
         context.statusChangedCallback = [logger = context.logger](dht::NodeStatus status4, dht::NodeStatus status6) {
-            logger->w("Connectivity changed: IPv4: %s, IPv6: %s", dht::statusToStr(status4), dht::statusToStr(status6));
+            logger->warn("Connectivity changed: IPv4: {}, IPv6: {}",
+                         dht::statusToStr(status4),
+                         dht::statusToStr(status6));
         };
         context.publicAddressChangedCb = [logger = context.logger](std::vector<dht::SockAddr> addrs) {
             logger->warn("Public address changed: {}", addrs);
@@ -212,9 +229,9 @@ print_node_info(const dht::NodeInfo& info)
         std::cout << "IPv4 port " << info.bound4 << ", IPv6 port " << info.bound6 << std::endl;
     if (info.id)
         std::cout << "Public key ID " << info.id << std::endl;
-    std::cout << "Storage: " << info.storage_values << " values, " << info.storage_size << " bytes" << std::endl;
-    std::cout << "Local storage: " << info.local_storage_values << " values, " << info.local_storage_size << " bytes"
-              << std::endl;
+    std::cout << "Storage: " << info.storage_values << " values, " << printByteCount(info.storage_size) << std::endl;
+    std::cout << "Local storage: " << info.local_storage_values << " values, "
+              << printByteCount(info.local_storage_size) << std::endl;
     std::cout << "Ongoing operations: " << info.ongoing_ops << std::endl;
 }
 

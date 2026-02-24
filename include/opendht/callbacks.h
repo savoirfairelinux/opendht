@@ -27,11 +27,11 @@ enum class NodeStatus {
     Connected     // 1+ good nodes
 };
 
-inline constexpr const char*
+inline constexpr std::string_view
 statusToStr(NodeStatus status)
 {
-    return status == NodeStatus::Connected ? "connected"
-                                           : (status == NodeStatus::Connecting ? "connecting" : "disconnected");
+    return status == NodeStatus::Connected ? "connected"sv
+                                           : (status == NodeStatus::Connecting ? "connecting"sv : "disconnected"sv);
 }
 
 struct OPENDHT_PUBLIC NodeStats
