@@ -276,7 +276,7 @@ DhtRunnerTester::testIdOps()
         CPPUNIT_ASSERT(cv.wait_for(lk, 20s, [&] { return identityCount == 1; }));
     }
 
-    node1.findCertificate(node2.getId(), [&](const std::shared_ptr<dht::crypto::Certificate>& crt) {
+    node1.findCertificate(node2.getPublicKey()->getLongId(), [&](const std::shared_ptr<dht::crypto::Certificate>& crt) {
         CPPUNIT_ASSERT(crt);
         std::lock_guard lk(mutex);
         valueCount++;
@@ -306,14 +306,14 @@ DhtRunnerTester::testIdOps()
     node1.bootstrap(bound);
 
     auto key = dht::InfoHash::get("key");
-    node1.putEncrypted(key, node2.getId(), dht::Value("yo"), [&](bool ok) {
+    node1.putEncrypted(key, node2.getPublicKey()->getLongId(), std::make_shared<dht::Value>("yo"), [&](bool ok) {
         CPPUNIT_ASSERT(ok);
         std::lock_guard lk(mutex);
         valueCount++;
         cv.notify_all();
     });
 
-    node1.putEncrypted(key, node2.getPublicKey(), std::make_shared<dht::Value>("yo"), [&](bool ok) {
+    node1.putEncrypted(key, node2.getPublicKey(), dht::Value("yo"), [&](bool ok) {
         CPPUNIT_ASSERT(ok);
         std::lock_guard lk(mutex);
         valueCount++;
