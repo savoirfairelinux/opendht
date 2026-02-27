@@ -7,7 +7,7 @@ project(
     license_files: 'LICENSE',
     version: '3.7.1',
     meson_version: '>=1.1.0',
-    default_options: ['cpp_std=c++17', 'warning_level=3'],
+    default_options: ['cpp_std=c++20', 'warning_level=3'],
 )
 
 gnutls = dependency('gnutls')
