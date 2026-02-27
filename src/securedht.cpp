@@ -40,12 +40,11 @@ SecureDht::SecureDht(std::unique_ptr<DhtInterface> dht,
     registerInsecureType(CERTIFICATE_TYPE);
 
     if (certificate_) {
-        auto certId = certificate_->getId();
         auto certLongId = certificate_->getLongId();
-        if (key_ and (certId != key_->getPublicKey().getId() or certLongId != key_->getPublicKey().getLongId()))
+        if (key_ and (certLongId != key_->getPublicKey().getLongId()))
             throw DhtException("SecureDht: provided certificate doesn't match private key.");
 
-        dht_->addOnConnectedCallback([this, certId, certLongId, cb = std::move(iacb)] mutable {
+        dht_->addOnConnectedCallback([this, certLongId, cb = std::move(iacb)]() mutable {
             dht_->put(InfoHash::get(certLongId), Value {CERTIFICATE_TYPE, *certificate_, 1}, std::move(cb), {}, true);
         });
     }
