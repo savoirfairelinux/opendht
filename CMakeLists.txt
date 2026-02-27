@@ -853,32 +853,32 @@ if (BUILD_TESTING)
     endif()
     # unit testing
     list (APPEND test_FILES
-        tests/infohashtester.h
-        tests/infohashtester.cpp
-        tests/valuetester.h
-        tests/valuetester.cpp
-        tests/cryptotester.h
-        tests/cryptotester.cpp
-        tests/dhtrunnertester.h
-        tests/dhtrunnertester.cpp
-        tests/storagetester.h
-        tests/storagetester.cpp
-        tests/threadpooltester.h
-        tests/threadpooltester.cpp
+        tests/test_infohash.h
+        tests/test_infohash.cpp
+        tests/test_value.h
+        tests/test_value.cpp
+        tests/test_crypto.h
+        tests/test_crypto.cpp
+        tests/test_dhtrunner.h
+        tests/test_dhtrunner.cpp
+        tests/test_storage.h
+        tests/test_storage.cpp
+        tests/test_threadpool.h
+        tests/test_threadpool.cpp
     )
     if (OPENDHT_TESTS_NETWORK)
         if (OPENDHT_PROXY_SERVER AND OPENDHT_PROXY_CLIENT)
             list (APPEND test_FILES
-                tests/httptester.h
-                tests/httptester.cpp
-                tests/dhtproxytester.h
-                tests/dhtproxytester.cpp
+                tests/test_http.h
+                tests/test_http.cpp
+                tests/test_dhtproxy.h
+                tests/test_dhtproxy.cpp
             )
         endif()
         if (OPENDHT_PEER_DISCOVERY)
             list (APPEND test_FILES
-                tests/peerdiscoverytester.h
-                tests/peerdiscoverytester.cpp
+                tests/test_peerdiscovery.h
+                tests/test_peerdiscovery.cpp
             )
         endif()
     endif()
@@ -886,7 +886,7 @@ if (BUILD_TESTING)
     # We keep using the common tests_runner.cpp (CppUnit registry based) and compile it with each test file.
     foreach(test_src ${test_FILES})
         if (test_src MATCHES ".*\\.cpp$")
-            get_filename_component(test_name ${test_src} NAME_WE) # e.g. infohashtester
+            get_filename_component(test_name ${test_src} NAME_WE) # e.g. test_infohash
             set(target_name ${test_name})
             add_executable(${target_name}
                 tests/tests_runner.cpp

@@ -1,7 +1,7 @@
 // Copyright (c) 2014-2026 Savoir-faire Linux Inc.
 // SPDX-License-Identifier: MIT
 
-#include "peerdiscoverytester.h"
+#include "test_peerdiscovery.h"
 #include "opendht/value.h"
 
 #include <mutex>

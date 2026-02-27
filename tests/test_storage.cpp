@@ -1,7 +1,7 @@
 // Copyright (c) 2014-2026 Savoir-faire Linux Inc.
 // SPDX-License-Identifier: MIT
 
-#include "storagetester.h"
+#include "test_storage.h"
 
 #include <opendht/thread_pool.h>
 

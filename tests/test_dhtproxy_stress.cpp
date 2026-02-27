@@ -1,7 +1,7 @@
 // Copyright (c) 2014-2026 Savoir-faire Linux Inc.
 // SPDX-License-Identifier: MIT
 
-#include "dhtproxy_stress_tester.h"
+#include "test_dhtproxy_stress.h"
 
 #include <iostream>
 #include <string>

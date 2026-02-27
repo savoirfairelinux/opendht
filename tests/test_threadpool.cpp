@@ -1,7 +1,7 @@
 // Copyright (c) 2014-2026 Savoir-faire Linux Inc.
 // SPDX-License-Identifier: MIT
 
-#include "threadpooltester.h"
+#include "test_threadpool.h"
 
 #include "opendht/thread_pool.h"
 #include <atomic>

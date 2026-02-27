@@ -1,7 +1,7 @@
 // Copyright (c) 2014-2026 Savoir-faire Linux Inc.
 // SPDX-License-Identifier: MIT
 
-#include "valuetester.h"
+#include "test_value.h"
 
 #include <iostream>
 #include <string>

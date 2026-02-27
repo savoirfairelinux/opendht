@@ -1,7 +1,7 @@
 // Copyright (c) 2014-2026 Savoir-faire Linux Inc.
 // SPDX-License-Identifier: MIT
 
-#include "dhtproxytester.h"
+#include "test_dhtproxy.h"
 
 // std
 #include <iostream>

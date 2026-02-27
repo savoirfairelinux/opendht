@@ -1,7 +1,7 @@
 // Copyright (c) 2014-2026 Savoir-faire Linux Inc.
 // SPDX-License-Identifier: MIT
 
-#include "infohashtester.h"
+#include "test_infohash.h"
 
 // std
 #include <iostream>

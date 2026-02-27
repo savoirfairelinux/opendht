@@ -1,7 +1,7 @@
 // Copyright (c) 2014-2026 Savoir-faire Linux Inc.
 // SPDX-License-Identifier: MIT
 
-#include "cryptotester.h"
+#include "test_crypto.h"
 
 #include <opendht/crypto.h>
 

@@ -237,7 +237,7 @@ if get_option('tests').enabled()
 
     test_infohash = executable(
         'test_infohash',
-        'tests/infohashtester.cpp',
+        'tests/test_infohash.cpp',
         'tests/tests_runner.cpp',
         include_directories: opendht_interface_inc,
         link_with: opendht,
@@ -247,7 +247,7 @@ if get_option('tests').enabled()
 
     test_value = executable(
         'test_value',
-        'tests/valuetester.cpp',
+        'tests/test_value.cpp',
         'tests/tests_runner.cpp',
         include_directories: opendht_interface_inc,
         link_with: opendht,
@@ -257,7 +257,7 @@ if get_option('tests').enabled()
 
     test_crypto = executable(
         'test_crypto',
-        'tests/cryptotester.cpp',
+        'tests/test_crypto.cpp',
         'tests/tests_runner.cpp',
         include_directories: opendht_interface_inc,
         link_with: opendht,
@@ -267,7 +267,7 @@ if get_option('tests').enabled()
 
     test_dhtrunner = executable(
         'test_dhtrunner',
-        'tests/dhtrunnertester.cpp',
+        'tests/test_dhtrunner.cpp',
         'tests/tests_runner.cpp',
         include_directories: opendht_interface_inc,
         link_with: opendht,
@@ -277,7 +277,7 @@ if get_option('tests').enabled()
 
     test_threadpool = executable(
         'test_threadpool',
-        'tests/threadpooltester.cpp',
+        'tests/test_threadpool.cpp',
         'tests/tests_runner.cpp',
         include_directories: opendht_interface_inc,
         link_with: opendht,
@@ -288,7 +288,7 @@ if get_option('tests').enabled()
     if get_option('proxy_client').enabled() or get_option('proxy_server').enabled()
         test_http = executable(
             'test_http',
-            'tests/httptester.cpp',
+            'tests/test_http.cpp',
             'tests/tests_runner.cpp',
             include_directories: opendht_interface_inc,
             link_with: opendht,
@@ -300,7 +300,7 @@ if get_option('tests').enabled()
     if get_option('peer_discovery').enabled()
         test_peerdiscovery = executable(
             'test_peerdiscovery',
-            'tests/peerdiscoverytester.cpp',
+            'tests/test_peerdiscovery.cpp',
             'tests/tests_runner.cpp',
             include_directories: opendht_interface_inc,
             link_with: opendht,
@@ -312,7 +312,7 @@ if get_option('tests').enabled()
     if get_option('proxy_server').enabled()
         test_proxy = executable(
             'test_dhtproxy',
-            'tests/dhtproxytester.cpp',
+            'tests/test_dhtproxy.cpp',
             'tests/tests_runner.cpp',
             include_directories: opendht_interface_inc,
             link_with: opendht,

@@ -1,7 +1,7 @@
 // Copyright (c) 2014-2026 Savoir-faire Linux Inc.
 // SPDX-License-Identifier: MIT
 
-#include "httptester.h"
+#include "test_http.h"
 
 #include <opendht/value.h>
 #include <opendht/dhtrunner.h>
