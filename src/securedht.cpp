@@ -45,21 +45,8 @@ SecureDht::SecureDht(std::unique_ptr<DhtInterface> dht,
         if (key_ and (certId != key_->getPublicKey().getId() or certLongId != key_->getPublicKey().getLongId()))
             throw DhtException("SecureDht: provided certificate doesn't match private key.");
 
-        auto cb = iacb ? [
-            this,
-            completedState = std::make_shared<std::pair<unsigned,bool>>(2, true),
-            iacb = std::move(iacb)
-        ](bool ok) {
-            if (logger_)
-                logger_->debug("SecureDht: certificate announcement {}", ok ? "succeeded" : "failed");
-            completedState->second = completedState->second and ok;
-            if (--completedState->first == 0)
-                iacb(completedState->second);
-        } : iacb;
-
-        dht_->addOnConnectedCallback([this, certId, certLongId, cb = std::move(cb)] {
-            dht_->put(certId, Value {CERTIFICATE_TYPE, *certificate_, 1}, cb, {}, true);
-            dht_->put(InfoHash::get(certLongId), Value {CERTIFICATE_TYPE, *certificate_, 1}, cb, {}, true);
+        dht_->addOnConnectedCallback([this, certId, certLongId, cb = std::move(iacb)] mutable {
+            dht_->put(InfoHash::get(certLongId), Value {CERTIFICATE_TYPE, *certificate_, 1}, std::move(cb), {}, true);
         });
     }
 }
