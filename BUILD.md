@@ -104,6 +104,18 @@ cmake -DOPENDHT_PYTHON=ON \
       -DCMAKE_INSTALL_PREFIX=/usr ..
 ```
 
+#### Common CMake options
+| Option | Default | Purpose |
+|--------|---------|---------|
+| `OPENDHT_TOOLS` | ON | CLI tools (dhtnode, dhtchat, …) |
+| `OPENDHT_C` | OFF | C language bindings |
+| `OPENDHT_PYTHON` | OFF | Python 3 Cython bindings |
+| `OPENDHT_PROXY_SERVER` | OFF | REST API proxy server (requires RESTinio + llhttp) |
+| `OPENDHT_PROXY_CLIENT` | OFF | REST API proxy client |
+| `OPENDHT_PEER_DISCOVERY` | OFF | Multicast local peer discovery |
+| `OPENDHT_PUSH_NOTIFICATIONS` | OFF | Push notification support |
+| `OPENDHT_SANITIZE` | OFF | AddressSanitizer + stack protector |
+
 ## Windows/MSVC
 
 Building on Windows with MSVC is supported with VCPKG and CMake.
