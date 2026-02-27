@@ -451,7 +451,8 @@ public:
 
     // securedht methods
 
-    void findCertificate(InfoHash hash, std::function<void(const std::shared_ptr<crypto::Certificate>&)>);
+    [[deprecated("Use PkId version")]] void findCertificate(
+        InfoHash hash, std::function<void(const std::shared_ptr<crypto::Certificate>&)>);
     void findCertificate(PkId hash, std::function<void(const std::shared_ptr<crypto::Certificate>&)>);
 
     void registerCertificate(const std::shared_ptr<crypto::Certificate>& cert);

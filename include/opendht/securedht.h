@@ -145,16 +145,18 @@ public:
 
     Value decrypt(const Value& v);
 
-    void findCertificate(const InfoHash& node, const std::function<void(const Sp<crypto::Certificate>)>& cb);
-    void findPublicKey(const InfoHash& node, const std::function<void(const Sp<crypto::PublicKey>)>& cb);
+    [[deprecated("Use PkId version")]] void findCertificate(
+        const InfoHash& node, const std::function<void(const Sp<crypto::Certificate>)>& cb);
+    [[deprecated("Use PkId version")]] void findPublicKey(const InfoHash& node,
+                                                          const std::function<void(const Sp<crypto::PublicKey>)>& cb);
 
     void findCertificate(const PkId& id, const std::function<void(const Sp<crypto::Certificate>)>& cb);
     void findPublicKey(const PkId& id, const std::function<void(const Sp<crypto::PublicKey>)>& cb);
 
     void registerCertificate(const Sp<crypto::Certificate>& cert);
 
-    Sp<crypto::Certificate> getCertificate(const InfoHash& node) const;
-    Sp<crypto::PublicKey> getPublicKey(const InfoHash& node) const;
+    [[deprecated("Use PkId version")]] Sp<crypto::Certificate> getCertificate(const InfoHash& node) const;
+    [[deprecated("Use PkId version")]] Sp<crypto::PublicKey> getPublicKey(const InfoHash& node) const;
 
     Sp<crypto::Certificate> getCertificate(const PkId& node) const;
     Sp<crypto::PublicKey> getPublicKey(const PkId& node) const;
