@@ -13,7 +13,7 @@ import aiohttp
 # Configuration
 START_PORT = 80
 END_PORT = 101
-HOST = "dhtproxy1.jami.net"
+HOST = "localhost"
 OUTPUT_FILE = "stats_proxy_total"
 REQUEST_TIMEOUT = 20  # seconds
 
