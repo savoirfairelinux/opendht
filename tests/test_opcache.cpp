@@ -293,4 +293,212 @@ OpCacheTester::testSyncStatus()
     CPPUNIT_ASSERT(cache.isSynced());
 }
 
+void
+OpCacheTester::testGetWhileSynced()
+{
+    // Test that get() on a SearchCache with a synced listen returns cached values
+    // and completes the get (returns true) without causing duplicate delivery.
+    dht::SearchCache searchCache;
+
+    int getCallCount = 0;
+    bool doneCalled = false;
+    bool doneSuccess = false;
+
+    auto v1 = std::make_shared<dht::Value>();
+    v1->id = 100;
+    v1->data = {'X'};
+    auto v2 = std::make_shared<dht::Value>();
+    v2->id = 101;
+    v2->data = {'Y'};
+
+    auto query = std::make_shared<dht::Query>();
+
+    // Start a listen
+    size_t listenToken = searchCache.listen([](const std::vector<std::shared_ptr<dht::Value>>&, bool) { return true; },
+                                            query,
+                                            {},
+                                            [&](const std::shared_ptr<dht::Query>& q,
+                                                dht::ValueCallback vcb,
+                                                dht::SyncCallback scb) -> size_t {
+                                                // Simulate node added and synced
+                                                scb(dht::ListenSyncStatus::ADDED);
+                                                // Inject values
+                                                vcb({v1, v2}, false);
+                                                // Mark as synced
+                                                scb(dht::ListenSyncStatus::SYNCED);
+                                                return 1;
+                                            });
+    CPPUNIT_ASSERT(listenToken != 0);
+
+    // Now perform a get on the synced cache
+    bool result = searchCache.get(
+        {},
+        query,
+        [&](const std::vector<std::shared_ptr<dht::Value>>& vals) {
+            getCallCount++;
+            CPPUNIT_ASSERT_EQUAL((size_t) 2, vals.size());
+            return true;
+        },
+        [&](bool success, const std::vector<std::shared_ptr<dht::Node>>&) {
+            doneCalled = true;
+            doneSuccess = success;
+        });
+
+    // get should be served from cache
+    CPPUNIT_ASSERT_MESSAGE("get() should return true when cache is synced", result);
+    CPPUNIT_ASSERT_EQUAL_MESSAGE("get callback should be called exactly once", 1, getCallCount);
+    CPPUNIT_ASSERT_MESSAGE("done callback should be called", doneCalled);
+    CPPUNIT_ASSERT_MESSAGE("done callback should indicate success", doneSuccess);
+}
+
+void
+OpCacheTester::testGetWhileNotSynced()
+{
+    // Test that get() on a SearchCache with a non-synced listen does NOT call gcb
+    // (to prevent duplicate delivery when the network get completes later).
+    dht::SearchCache searchCache;
+
+    int getCallCount = 0;
+    bool doneCalled = false;
+
+    auto v1 = std::make_shared<dht::Value>();
+    v1->id = 200;
+    v1->data = {'A'};
+
+    auto query = std::make_shared<dht::Query>();
+
+    // Start a listen but DON'T mark as synced
+    size_t listenToken = searchCache.listen([](const std::vector<std::shared_ptr<dht::Value>>&, bool) { return true; },
+                                            query,
+                                            {},
+                                            [&](const std::shared_ptr<dht::Query>& q,
+                                                dht::ValueCallback vcb,
+                                                dht::SyncCallback scb) -> size_t {
+                                                // Node added but NOT synced
+                                                scb(dht::ListenSyncStatus::ADDED);
+                                                // Inject a value
+                                                vcb({v1}, false);
+                                                // NOT calling scb(SYNCED) — listen is not synced
+                                                return 1;
+                                            });
+    CPPUNIT_ASSERT(listenToken != 0);
+
+    // Now perform a get on the non-synced cache
+    bool result = searchCache.get(
+        {},
+        query,
+        [&](const std::vector<std::shared_ptr<dht::Value>>& vals) {
+            getCallCount++;
+            return true;
+        },
+        [&](bool success, const std::vector<std::shared_ptr<dht::Node>>&) { doneCalled = true; });
+
+    // get should NOT be served from cache (not synced)
+    CPPUNIT_ASSERT_MESSAGE("get() should return false when cache is not synced", !result);
+    CPPUNIT_ASSERT_EQUAL_MESSAGE("get callback should NOT be called (would cause duplicates)", 0, getCallCount);
+    CPPUNIT_ASSERT_MESSAGE("done callback should NOT be called", !doneCalled);
+}
+
+void
+OpCacheTester::testGetEmptySynced()
+{
+    // Test that get() on a synced but empty cache calls dcb but not gcb.
+    dht::SearchCache searchCache;
+
+    int getCallCount = 0;
+    bool doneCalled = false;
+    bool doneSuccess = false;
+
+    auto query = std::make_shared<dht::Query>();
+
+    // Start a listen, inject no values, mark as synced
+    size_t listenToken = searchCache.listen([](const std::vector<std::shared_ptr<dht::Value>>&, bool) { return true; },
+                                            query,
+                                            {},
+                                            [&](const std::shared_ptr<dht::Query>& q,
+                                                dht::ValueCallback vcb,
+                                                dht::SyncCallback scb) -> size_t {
+                                                scb(dht::ListenSyncStatus::ADDED);
+                                                scb(dht::ListenSyncStatus::SYNCED);
+                                                return 1;
+                                            });
+    CPPUNIT_ASSERT(listenToken != 0);
+
+    bool result = searchCache.get(
+        {},
+        query,
+        [&](const std::vector<std::shared_ptr<dht::Value>>& vals) {
+            getCallCount++;
+            return true;
+        },
+        [&](bool success, const std::vector<std::shared_ptr<dht::Node>>&) {
+            doneCalled = true;
+            doneSuccess = success;
+        });
+
+    // Synced + empty: get should succeed but gcb should not be called
+    CPPUNIT_ASSERT_MESSAGE("get() should return true when cache is synced (even if empty)", result);
+    CPPUNIT_ASSERT_EQUAL_MESSAGE("get callback should NOT be called (no values)", 0, getCallCount);
+    CPPUNIT_ASSERT_MESSAGE("done callback should be called", doneCalled);
+    CPPUNIT_ASSERT_MESSAGE("done callback should indicate success", doneSuccess);
+}
+
+void
+OpCacheTester::testValueExpirationDuringListen()
+{
+    // Test that values correctly expire via refCount during listen with multiple sources.
+    dht::OpValueCache cache([](const std::vector<std::shared_ptr<dht::Value>>&, bool) { return true; });
+
+    auto v1 = std::make_shared<dht::Value>();
+    v1->id = 300;
+    v1->data = {'D'};
+
+    // Simulate two nodes reporting the same value
+    cache.onNodeChanged(dht::ListenSyncStatus::ADDED);
+    cache.onNodeChanged(dht::ListenSyncStatus::ADDED);
+
+    cache.onValuesAdded({v1}); // source 1
+    cache.onValuesAdded({v1}); // source 2
+
+    CPPUNIT_ASSERT_EQUAL((size_t) 1, cache.size());
+    CPPUNIT_ASSERT(cache.get(300) != nullptr);
+
+    // Expire from source 1 — value should stay (refCount = 1)
+    cache.onValuesExpired({v1});
+    CPPUNIT_ASSERT_EQUAL((size_t) 1, cache.size());
+    CPPUNIT_ASSERT(cache.get(300) != nullptr);
+
+    // Expire from source 2 — value should be removed (refCount = 0)
+    cache.onValuesExpired({v1});
+    CPPUNIT_ASSERT_EQUAL((size_t) 0, cache.size());
+    CPPUNIT_ASSERT(cache.get(300) == nullptr);
+}
+
+void
+OpCacheTester::testTimestampOrdering()
+{
+    // Test that expired values with timestamps older than the last update are ignored.
+    dht::OpValueCache cache([](const std::vector<std::shared_ptr<dht::Value>>&, bool) { return true; });
+
+    auto v1 = std::make_shared<dht::Value>();
+    v1->id = 400;
+    v1->data = {'T'};
+
+    auto t1 = std::chrono::system_clock::now();
+    auto t2 = t1 + std::chrono::seconds(10);
+
+    // Add value at time t2
+    cache.onValue({v1}, false, t2);
+    CPPUNIT_ASSERT_EQUAL((size_t) 1, cache.size());
+
+    // Try to expire at time t1 (older) — should be ignored
+    cache.onValue({v1}, true, t1);
+    CPPUNIT_ASSERT_EQUAL_MESSAGE("Stale expiration should be ignored", (size_t) 1, cache.size());
+    CPPUNIT_ASSERT(cache.get(400) != nullptr);
+
+    // Expire at time t2 — should succeed
+    cache.onValue({v1}, true, t2);
+    CPPUNIT_ASSERT_EQUAL((size_t) 0, cache.size());
+}
+
 } // namespace test

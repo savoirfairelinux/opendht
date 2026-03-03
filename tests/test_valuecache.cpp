@@ -267,4 +267,62 @@ ValueCacheTester::testMaxValues()
     CPPUNIT_ASSERT_EQUAL((size_t) 4096, cache.size());
 }
 
+void
+ValueCacheTester::testUpdateTypeExpiration()
+{
+    // Test that when a value is updated with a different type, the expiration
+    // uses the new type's expiration period, not the old one.
+    int addCount = 0;
+    int expireCount = 0;
+    dht::ValueCache cache([&](const std::vector<std::shared_ptr<dht::Value>>& vals, bool expired) {
+        if (expired)
+            expireCount += vals.size();
+        else
+            addCount += vals.size();
+    });
+
+    // Register a custom type with a short expiration (2 minutes)
+    dht::TypeStore types;
+    dht::ValueType shortType(42, "short", std::chrono::minutes(2));
+    types.registerType(shortType);
+
+    // Register a custom type with a long expiration (30 minutes)
+    dht::ValueType longType(99, "long", std::chrono::minutes(30));
+    types.registerType(longType);
+
+    auto v1 = std::make_shared<dht::Value>();
+    v1->id = 1;
+    v1->type = 42; // short type: 2 min expiration
+    v1->data = {'A'};
+
+    auto now = std::chrono::steady_clock::now();
+
+    // Add v1 with short type
+    cache.onValues({v1}, {}, {}, types, now);
+    CPPUNIT_ASSERT_EQUAL(1, addCount);
+
+    // Update with new type (long expiration)
+    auto v2 = std::make_shared<dht::Value>();
+    v2->id = 1;
+    v2->type = 99; // long type: 30 min expiration
+    v2->data = {'B'};
+
+    cache.onValues({v2}, {}, {}, types, now);
+    CPPUNIT_ASSERT_EQUAL(2, addCount);
+
+    // At +3 minutes: should NOT be expired (long type has 30 min expiration)
+    // Before the fix, the old type (2 min) would be used, causing expiration here
+    expireCount = 0;
+    auto at3min = now + std::chrono::minutes(3);
+    cache.expireValues(at3min);
+    CPPUNIT_ASSERT_EQUAL_MESSAGE("Value updated to long-expiry type should NOT expire at 3 min", 0, expireCount);
+    CPPUNIT_ASSERT_EQUAL((size_t) 1, cache.size());
+
+    // At +31 minutes: should be expired
+    auto at31min = now + std::chrono::minutes(31);
+    cache.expireValues(at31min);
+    CPPUNIT_ASSERT_EQUAL(1, expireCount);
+    CPPUNIT_ASSERT_EQUAL((size_t) 0, cache.size());
+}
+
 } // namespace test

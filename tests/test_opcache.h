@@ -24,7 +24,8 @@
 
 namespace test {
 
-class OpCacheTester : public CppUnit::TestFixture {
+class OpCacheTester : public CppUnit::TestFixture
+{
     CPPUNIT_TEST_SUITE(OpCacheTester);
     CPPUNIT_TEST(testUpdateRefCount);
     CPPUNIT_TEST(testBasicAddExpire);
@@ -33,6 +34,11 @@ class OpCacheTester : public CppUnit::TestFixture {
     CPPUNIT_TEST(testCallbacks);
     CPPUNIT_TEST(testFilters);
     CPPUNIT_TEST(testSyncStatus);
+    CPPUNIT_TEST(testGetWhileSynced);
+    CPPUNIT_TEST(testGetWhileNotSynced);
+    CPPUNIT_TEST(testGetEmptySynced);
+    CPPUNIT_TEST(testValueExpirationDuringListen);
+    CPPUNIT_TEST(testTimestampOrdering);
     CPPUNIT_TEST_SUITE_END();
 
 public:
@@ -46,6 +52,11 @@ public:
     void testCallbacks();
     void testFilters();
     void testSyncStatus();
+    void testGetWhileSynced();
+    void testGetWhileNotSynced();
+    void testGetEmptySynced();
+    void testValueExpirationDuringListen();
+    void testTimestampOrdering();
 };
 
-}  // namespace test
+} // namespace test

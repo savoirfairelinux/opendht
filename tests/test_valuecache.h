@@ -24,7 +24,8 @@
 
 namespace test {
 
-class ValueCacheTester : public CppUnit::TestFixture {
+class ValueCacheTester : public CppUnit::TestFixture
+{
     CPPUNIT_TEST_SUITE(ValueCacheTester);
     CPPUNIT_TEST(testUpdate);
     CPPUNIT_TEST(testUpdateExpiration);
@@ -34,6 +35,7 @@ class ValueCacheTester : public CppUnit::TestFixture {
     CPPUNIT_TEST(testClear);
     CPPUNIT_TEST(testSyncStatus);
     CPPUNIT_TEST(testMaxValues);
+    CPPUNIT_TEST(testUpdateTypeExpiration);
     CPPUNIT_TEST_SUITE_END();
 
 public:
@@ -48,6 +50,7 @@ public:
     void testClear();
     void testSyncStatus();
     void testMaxValues();
+    void testUpdateTypeExpiration();
 };
 
-}  // namespace test
+} // namespace test
