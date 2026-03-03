@@ -36,6 +36,10 @@ class ValueCacheTester : public CppUnit::TestFixture
     CPPUNIT_TEST(testSyncStatus);
     CPPUNIT_TEST(testMaxValues);
     CPPUNIT_TEST(testUpdateTypeExpiration);
+    CPPUNIT_TEST(testShortExpirationRefreshLost);
+    CPPUNIT_TEST(testShortExpirationHighChurn);
+    CPPUNIT_TEST(testNoTimeExpirationWhileSynced);
+    CPPUNIT_TEST(testUnsyncExpiresImmediately);
     CPPUNIT_TEST_SUITE_END();
 
 public:
@@ -51,6 +55,10 @@ public:
     void testSyncStatus();
     void testMaxValues();
     void testUpdateTypeExpiration();
+    void testShortExpirationRefreshLost();
+    void testShortExpirationHighChurn();
+    void testNoTimeExpirationWhileSynced();
+    void testUnsyncExpiresImmediately();
 };
 
 } // namespace test

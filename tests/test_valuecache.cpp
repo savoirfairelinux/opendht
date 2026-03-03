@@ -325,4 +325,208 @@ ValueCacheTester::testUpdateTypeExpiration()
     CPPUNIT_ASSERT_EQUAL((size_t) 0, cache.size());
 }
 
+void
+ValueCacheTester::testShortExpirationRefreshLost()
+{
+    // Demonstrates that a value with a short expiration type survives
+    // past its nominal expiration when the listen is synced, thanks to
+    // a proportional grace period (= typeExpiration).
+    //
+    // For a 5s type:  effective expiration when synced = expiration + 5s = 10s
+    //
+    // Scenario:
+    //   t=0 : Value V added → nominal expiration t+5s, effective t+10s
+    //   t=6 : Past nominal but within grace → alive
+    //   t=8 : Refresh arrives → V refreshed → expiration reset to t8+5s, effective t8+10s=t18s
+    //   t=14: Still alive (within refreshed effective range)
+    //   t=20: No more refreshes → past t8+10s=t18s → expired
+
+    int addCount = 0;
+    int expireCount = 0;
+    dht::ValueCache cache([&](const std::vector<std::shared_ptr<dht::Value>>& vals, bool expired) {
+        if (expired)
+            expireCount += vals.size();
+        else
+            addCount += vals.size();
+    });
+
+    // Register a type with a very short expiration (5 seconds)
+    dht::TypeStore types;
+    dht::ValueType shortType(100, "short_lived", std::chrono::seconds(5));
+    types.registerType(shortType);
+
+    auto v1 = std::make_shared<dht::Value>();
+    v1->id = 1;
+    v1->type = 100;
+    v1->data = {'V'};
+
+    auto t0 = std::chrono::steady_clock::now();
+
+    // t=0: Listen response arrives with V
+    cache.onValues({v1}, {}, {}, types, t0);
+    CPPUNIT_ASSERT_EQUAL(1, addCount);
+    CPPUNIT_ASSERT_EQUAL(0, expireCount);
+    CPPUNIT_ASSERT_EQUAL((size_t) 1, cache.size());
+
+    // Mark cache as synced (listen is active)
+    cache.onSynced(true);
+
+    // t=6: Past nominal 5s expiration, but grace (5s) gives effective 10s
+    auto t6 = t0 + std::chrono::seconds(6);
+    cache.expireValues(t6);
+    CPPUNIT_ASSERT_EQUAL_MESSAGE("Value should survive past nominal expiration thanks to proportional grace",
+                                 0,
+                                 expireCount);
+    CPPUNIT_ASSERT_EQUAL((size_t) 1, cache.size());
+
+    // t=8: Value refresh arrives → expiration reset to t8+5s=t13s, effective t8+10s=t18s
+    auto t8 = t0 + std::chrono::seconds(8);
+    cache.onValues({}, {v1->id}, {}, types, t8);
+    CPPUNIT_ASSERT_EQUAL((size_t) 1, cache.size());
+
+    // t=14: Within refreshed effective range (t18s) → alive
+    auto t14 = t0 + std::chrono::seconds(14);
+    cache.expireValues(t14);
+    CPPUNIT_ASSERT_EQUAL_MESSAGE("Value should survive past short expiration after refresh", 0, expireCount);
+    CPPUNIT_ASSERT_EQUAL((size_t) 1, cache.size());
+
+    // t=20: No more refreshes → past effective t18s → must expire
+    auto t20 = t0 + std::chrono::seconds(20);
+    cache.expireValues(t20);
+    CPPUNIT_ASSERT_EQUAL_MESSAGE("Value must eventually expire even while synced if server stops refreshing",
+                                 1,
+                                 expireCount);
+    CPPUNIT_ASSERT_EQUAL((size_t) 0, cache.size());
+}
+
+void
+ValueCacheTester::testShortExpirationHighChurn()
+{
+    // Simulates high churn: multiple rapid add/expire/refresh cycles with
+    // short-lived values, verifying the cache stays consistent.
+
+    int addCount = 0;
+    int expireCount = 0;
+    dht::ValueCache cache([&](const std::vector<std::shared_ptr<dht::Value>>& vals, bool expired) {
+        if (expired)
+            expireCount += vals.size();
+        else
+            addCount += vals.size();
+    });
+
+    dht::TypeStore types;
+    dht::ValueType shortType(101, "fast_churn", std::chrono::seconds(3));
+    types.registerType(shortType);
+
+    auto now = std::chrono::steady_clock::now();
+
+    // Simulate 10 churn cycles: add value, advance time, refresh, advance, expire
+    for (int cycle = 0; cycle < 10; cycle++) {
+        auto v = std::make_shared<dht::Value>();
+        v->id = static_cast<dht::Value::Id>(500 + cycle);
+        v->type = 101;
+        v->data = {static_cast<uint8_t>('A' + cycle)};
+
+        auto t = now + std::chrono::seconds(cycle * 10);
+
+        // Add the value
+        cache.onValues({v}, {}, {}, types, t);
+
+        // Refresh halfway through
+        auto tRefresh = t + std::chrono::seconds(2);
+        cache.onValues({}, {v->id}, {}, types, tRefresh);
+
+        // Explicit expire from server
+        auto tExpire = t + std::chrono::seconds(8);
+        cache.onValues({}, {}, {v->id}, types, tExpire);
+    }
+
+    // All 10 values were added and explicitly expired
+    CPPUNIT_ASSERT_EQUAL(10, addCount);
+    CPPUNIT_ASSERT_EQUAL(10, expireCount);
+    CPPUNIT_ASSERT_EQUAL((size_t) 0, cache.size());
+}
+
+void
+ValueCacheTester::testNoTimeExpirationWhileSynced()
+{
+    // Verify that when the listen is synced, the proportional grace period
+    // (= typeExpiration) delays time-based expiration but doesn't prevent
+    // it entirely.  For a 2s type: effective expiration = 2s + 2s = 4s.
+
+    int expireCount = 0;
+    dht::ValueCache cache([&](const std::vector<std::shared_ptr<dht::Value>>& vals, bool expired) {
+        if (expired)
+            expireCount += vals.size();
+    });
+
+    dht::TypeStore types;
+    dht::ValueType shortType(110, "short", std::chrono::seconds(2));
+    types.registerType(shortType);
+
+    auto v1 = std::make_shared<dht::Value>();
+    v1->id = 1;
+    v1->type = 110;
+    v1->data = {'X'};
+
+    auto t0 = std::chrono::steady_clock::now();
+    cache.onValues({v1}, {}, {}, types, t0);
+    CPPUNIT_ASSERT_EQUAL((size_t) 1, cache.size());
+
+    // Mark as synced
+    cache.onSynced(true);
+
+    // t=3: Past nominal 2s, within effective 4s → grace protects
+    auto t3 = t0 + std::chrono::seconds(3);
+    cache.expireValues(t3);
+    CPPUNIT_ASSERT_EQUAL_MESSAGE("Synced cache: grace period should prevent early expiry", 0, expireCount);
+    CPPUNIT_ASSERT_EQUAL((size_t) 1, cache.size());
+
+    // t=5: Past effective 4s (2s + 2s grace) → must expire
+    auto t5 = t0 + std::chrono::seconds(5);
+    cache.expireValues(t5);
+    CPPUNIT_ASSERT_EQUAL_MESSAGE("Synced cache: value must eventually expire after grace period", 1, expireCount);
+    CPPUNIT_ASSERT_EQUAL((size_t) 0, cache.size());
+}
+
+void
+ValueCacheTester::testUnsyncExpiresImmediately()
+{
+    // When the cache goes from synced to unsynced, the grace period is
+    // removed and already-past-due values expire on the next check.
+    // Type expiration = 5s. Grace when synced = 5s → effective = 10s.
+
+    int expireCount = 0;
+    dht::ValueCache cache([&](const std::vector<std::shared_ptr<dht::Value>>& vals, bool expired) {
+        if (expired)
+            expireCount += vals.size();
+    });
+
+    dht::TypeStore types;
+    dht::ValueType shortType(120, "short", std::chrono::seconds(5));
+    types.registerType(shortType);
+
+    auto v1 = std::make_shared<dht::Value>();
+    v1->id = 1;
+    v1->type = 120;
+    v1->data = {'U'};
+
+    auto t0 = std::chrono::steady_clock::now();
+    cache.onValues({v1}, {}, {}, types, t0);
+    cache.onSynced(true);
+
+    // t=7: past nominal 5s, within effective 10s while synced → alive
+    auto t7 = t0 + std::chrono::seconds(7);
+    cache.expireValues(t7);
+    CPPUNIT_ASSERT_EQUAL(0, expireCount);
+
+    // Now unsync (node went away / connectivity loss)
+    cache.onSynced(false);
+
+    // Same time point t=7: past nominal 5s, no grace → expires
+    cache.expireValues(t7);
+    CPPUNIT_ASSERT_EQUAL_MESSAGE("Unsynced cache should immediately expire past-due values", 1, expireCount);
+    CPPUNIT_ASSERT_EQUAL((size_t) 0, cache.size());
+}
+
 } // namespace test

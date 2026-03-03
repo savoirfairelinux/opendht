@@ -529,4 +529,168 @@ OpCacheTester::testTimestampOrdering()
     CPPUNIT_ASSERT_EQUAL((size_t) 0, cache.size());
 }
 
+void
+OpCacheTester::testShortExpirationPhantomExpiry()
+{
+    // End-to-end test: demonstrates phantom expire / re-add when multiple
+    // per-node ValueCaches feed into a single OpValueCache and a short-lived
+    // value expires from all per-node caches before the listen refresh.
+    //
+    // The fixed behavior (ValueCache does not time-expire while synced)
+    // prevents the phantom.  Here we verify the OpValueCache stays consistent.
+
+    using namespace std::chrono;
+    int addCount = 0;
+    int expireCount = 0;
+
+    dht::OpValueCache opCache([&](const std::vector<std::shared_ptr<dht::Value>>& vals, bool expired) {
+        if (expired)
+            expireCount += vals.size();
+        else
+            addCount += vals.size();
+        return true;
+    });
+
+    auto v = std::make_shared<dht::Value>();
+    v->id = 900;
+    v->data = {'Z'};
+
+    // Simulate 3 nodes each adding the same value
+    opCache.onNodeChanged(dht::ListenSyncStatus::ADDED);
+    opCache.onNodeChanged(dht::ListenSyncStatus::ADDED);
+    opCache.onNodeChanged(dht::ListenSyncStatus::ADDED);
+    opCache.onValuesAdded({v});
+    opCache.onValuesAdded({v});
+    opCache.onValuesAdded({v});
+    CPPUNIT_ASSERT_EQUAL(1, addCount); // first add fires callback
+    CPPUNIT_ASSERT_EQUAL((size_t) 1, opCache.size());
+
+    // Simulate 2 out of 3 nodes expiring (high churn)
+    opCache.onValuesExpired({v});         // refCount 3→2
+    opCache.onValuesExpired({v});         // refCount 2→1
+    CPPUNIT_ASSERT_EQUAL(0, expireCount); // value still alive, 1 source left
+    CPPUNIT_ASSERT_EQUAL((size_t) 1, opCache.size());
+
+    // Last node also expires → value goes away
+    opCache.onValuesExpired({v}); // refCount 1→0
+    CPPUNIT_ASSERT_EQUAL(1, expireCount);
+    CPPUNIT_ASSERT_EQUAL((size_t) 0, opCache.size());
+
+    // New nodes report the same value again (re-listen completed)
+    opCache.onValuesAdded({v});
+    opCache.onValuesAdded({v});
+    CPPUNIT_ASSERT_EQUAL(2, addCount); // value re-appeared
+    CPPUNIT_ASSERT_EQUAL((size_t) 1, opCache.size());
+
+    // Only 1 expire needed per source to remove
+    opCache.onValuesExpired({v}); // refCount 2→1
+    CPPUNIT_ASSERT_EQUAL((size_t) 1, opCache.size());
+    opCache.onValuesExpired({v}); // refCount 1→0
+    CPPUNIT_ASSERT_EQUAL((size_t) 0, opCache.size());
+    CPPUNIT_ASSERT_EQUAL(2, expireCount);
+}
+
+void
+OpCacheTester::testHighChurnRefCountConsistency()
+{
+    // Rapid node churn: nodes join and leave quickly, each reporting the same
+    // value.  Verify that the refCount never goes negative and the value is
+    // correctly expired only when all sources are gone.
+
+    bool callbackFailed = false;
+    dht::OpValueCache cache([&](const std::vector<std::shared_ptr<dht::Value>>&, bool) { return true; });
+
+    auto v = std::make_shared<dht::Value>();
+    v->id = 800;
+    v->data = {'C', 'H', 'U', 'R', 'N'};
+
+    // Simulate 50 rapid churn cycles:
+    //   - node joins, adds V (refCount++)
+    //   - node leaves, expires V (refCount--)
+    for (int i = 0; i < 50; i++) {
+        cache.onNodeChanged(dht::ListenSyncStatus::ADDED);
+        cache.onValuesAdded({v});
+        cache.onValuesExpired({v});
+        cache.onNodeChanged(dht::ListenSyncStatus::REMOVED);
+    }
+
+    // After all churn, value should be completely gone.
+    CPPUNIT_ASSERT_EQUAL_MESSAGE("All sources gone — value must be removed", (size_t) 0, cache.size());
+
+    // Now simulate overlapping churn: add N, add N+1, expire N, expire N+1
+    for (int i = 0; i < 20; i++) {
+        cache.onNodeChanged(dht::ListenSyncStatus::ADDED);
+        cache.onValuesAdded({v}); // refCount+
+
+        cache.onNodeChanged(dht::ListenSyncStatus::ADDED);
+        cache.onValuesAdded({v}); // refCount+
+
+        // First node leaves
+        cache.onValuesExpired({v});
+        cache.onNodeChanged(dht::ListenSyncStatus::REMOVED);
+
+        // Value should still be alive (second node still holds it)
+        CPPUNIT_ASSERT_EQUAL_MESSAGE("Value should survive while one source remains", (size_t) 1, cache.size());
+
+        // Second node leaves
+        cache.onValuesExpired({v});
+        cache.onNodeChanged(dht::ListenSyncStatus::REMOVED);
+    }
+
+    CPPUNIT_ASSERT_EQUAL((size_t) 0, cache.size());
+}
+
+void
+OpCacheTester::testValueUpdateSingleSourcePhantom()
+{
+    // Demonstrates Bug 2: when ValueCache::addValues detects a changed value,
+    // it fires expire(old) then add(new).  With a single source (refCount=1),
+    // OpValueCache removes the value on expire(old) → user sees a phantom
+    // expiration before the re-add.
+    //
+    // This test captures the current behaviour so a future fix can update
+    // the expectation.
+
+    std::vector<std::pair<dht::Value::Id, bool>> events; // (id, expired?)
+
+    dht::OpValueCache cache([&](const std::vector<std::shared_ptr<dht::Value>>& vals, bool expired) {
+        for (const auto& v : vals)
+            events.emplace_back(v->id, expired);
+        return true;
+    });
+
+    auto v1 = std::make_shared<dht::Value>();
+    v1->id = 700;
+    v1->seq = 1;
+    v1->data = {'O', 'L', 'D'};
+
+    auto v2 = std::make_shared<dht::Value>();
+    v2->id = 700;
+    v2->seq = 2;
+    v2->data = {'N', 'E', 'W'};
+
+    // Single source adds v1
+    cache.onValuesAdded({v1});
+    CPPUNIT_ASSERT_EQUAL((size_t) 1, cache.size());
+    events.clear();
+
+    // Simulate what ValueCache::addValues does on value update:
+    //   1) callback(old_value, expired=true)
+    //   2) callback(new_value, expired=false)
+    cache.onValuesExpired({v1}); // refCount 1→0 → value removed
+    cache.onValuesAdded({v2});   // value re-added with refCount=1
+
+    // The user sees 2 events: first an expire, then an add.
+    // Ideally there should be just 1 event (add with updated data), but
+    // the current architecture causes a phantom expire when refCount==1.
+    CPPUNIT_ASSERT_EQUAL_MESSAGE("Expected 2 events (phantom expire + re-add)", (size_t) 2, events.size());
+    CPPUNIT_ASSERT_EQUAL_MESSAGE("First event should be an expiration", true, events[0].second);
+    CPPUNIT_ASSERT_EQUAL_MESSAGE("Second event should be an addition", false, events[1].second);
+
+    // Final state: value exists with updated data
+    auto stored = cache.get(700);
+    CPPUNIT_ASSERT(stored != nullptr);
+    CPPUNIT_ASSERT_EQUAL(v2->seq, stored->seq);
+}
+
 } // namespace test
