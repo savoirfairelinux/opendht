@@ -164,6 +164,7 @@ public:
 
     bool cancelListen(size_t gtoken, const time_point& now);
     void cancelAll(const std::function<void(size_t)>& onCancel);
+    void clear();
 
     time_point expire(const time_point& now, const std::function<void(size_t)>& onCancel);
     time_point getExpiration() const { return nextExpiration_; }

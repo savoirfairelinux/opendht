@@ -836,6 +836,7 @@ struct Dht::Search
         listeners.clear();
         nodes.clear();
         nextSearchStep.reset();
+        cache.clear();
     }
 };
 
