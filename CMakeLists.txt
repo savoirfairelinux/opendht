@@ -869,6 +869,8 @@ if (BUILD_TESTING)
         tests/test_parsedmessage.cpp
         tests/test_opcache.h
         tests/test_opcache.cpp
+        tests/test_valuecache.h
+        tests/test_valuecache.cpp
     )
     if (OPENDHT_TESTS_NETWORK)
         if (OPENDHT_PROXY_SERVER AND OPENDHT_PROXY_CLIENT)
