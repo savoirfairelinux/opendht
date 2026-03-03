@@ -354,12 +354,13 @@ OpCacheTester::testGetWhileSynced()
 void
 OpCacheTester::testGetWhileNotSynced()
 {
-    // Test that get() on a SearchCache with a non-synced listen does NOT call gcb
-    // (to prevent duplicate delivery when the network get completes later).
+    // Test that when a get() is performed on a non-synced cache, values
+    // are not delivered twice: once from the cache and once from the
+    // simulated network get that Search::get would queue.
     dht::SearchCache searchCache;
 
-    int getCallCount = 0;
-    bool doneCalled = false;
+    // Track every value delivery with (value_id, source) pairs
+    std::vector<std::pair<dht::Value::Id, std::string>> deliveries;
 
     auto v1 = std::make_shared<dht::Value>();
     v1->id = 200;
@@ -368,35 +369,62 @@ OpCacheTester::testGetWhileNotSynced()
     auto query = std::make_shared<dht::Query>();
 
     // Start a listen but DON'T mark as synced
+    dht::ValueCallback storedVcb;
+    dht::SyncCallback storedScb;
     size_t listenToken = searchCache.listen([](const std::vector<std::shared_ptr<dht::Value>>&, bool) { return true; },
                                             query,
                                             {},
                                             [&](const std::shared_ptr<dht::Query>& q,
                                                 dht::ValueCallback vcb,
                                                 dht::SyncCallback scb) -> size_t {
+                                                storedVcb = vcb;
+                                                storedScb = scb;
                                                 // Node added but NOT synced
                                                 scb(dht::ListenSyncStatus::ADDED);
                                                 // Inject a value
                                                 vcb({v1}, false);
-                                                // NOT calling scb(SYNCED) — listen is not synced
                                                 return 1;
                                             });
     CPPUNIT_ASSERT(listenToken != 0);
 
-    // Now perform a get on the non-synced cache
-    bool result = searchCache.get(
-        {},
-        query,
-        [&](const std::vector<std::shared_ptr<dht::Value>>& vals) {
-            getCallCount++;
-            return true;
-        },
-        [&](bool success, const std::vector<std::shared_ptr<dht::Node>>&) { doneCalled = true; });
+    // Simulate what Search::get does: try cache first, if false, queue network get
+    bool doneCalled = false;
+    auto gcb = [&](const std::vector<std::shared_ptr<dht::Value>>& vals) {
+        for (const auto& v : vals)
+            deliveries.emplace_back(v->id, "get");
+        return true;
+    };
+    auto dcb = [&](bool, const std::vector<std::shared_ptr<dht::Node>>&) {
+        doneCalled = true;
+    };
 
-    // get should NOT be served from cache (not synced)
-    CPPUNIT_ASSERT_MESSAGE("get() should return false when cache is not synced", !result);
-    CPPUNIT_ASSERT_EQUAL_MESSAGE("get callback should NOT be called (would cause duplicates)", 0, getCallCount);
-    CPPUNIT_ASSERT_MESSAGE("done callback should NOT be called", !doneCalled);
+    bool servedFromCache = searchCache.get({}, query, gcb, dcb);
+
+    // Cache is not synced so get should not be served from cache
+    CPPUNIT_ASSERT_MESSAGE("get() should return false when cache is not synced", !servedFromCache);
+
+    // Simulate the network get completing with the same value
+    // (this is what onGetValuesDone does — calls gcb for each matching get)
+    gcb({v1});
+
+    // Exactly one delivery expected — from the network get only
+    CPPUNIT_ASSERT_EQUAL_MESSAGE("Value should be delivered exactly once (from network get only)",
+                                 (size_t) 1,
+                                 deliveries.size());
+    CPPUNIT_ASSERT_EQUAL(v1->id, deliveries[0].first);
+    CPPUNIT_ASSERT_EQUAL(std::string("get"), deliveries[0].second);
+
+    // Now sync the listen and perform another get — this time it should be served from cache
+    storedScb(dht::ListenSyncStatus::SYNCED);
+
+    deliveries.clear();
+    doneCalled = false;
+    bool servedFromCache2 = searchCache.get({}, query, gcb, dcb);
+    CPPUNIT_ASSERT_MESSAGE("get() should return true once cache is synced", servedFromCache2);
+    CPPUNIT_ASSERT_MESSAGE("done callback should be called when served from synced cache", doneCalled);
+    CPPUNIT_ASSERT_EQUAL_MESSAGE("Synced cache get should deliver the value exactly once",
+                                 (size_t) 1,
+                                 deliveries.size());
 }
 
 void
