@@ -175,7 +175,7 @@ private:
             } else {
                 // refreshed value
                 v->second.created = now;
-                v->second.expiration = now + types.getType(v->second.data->type).expiration;
+                v->second.expiration = now + types.getType(value->type).expiration;
                 if (*v->second.data != *value) {
                     expired_vals.emplace_back(v->second.data);
                     v->second.data = value;
@@ -185,9 +185,7 @@ private:
         }
         CallbackQueue ret;
         if (callback and not expired_vals.empty())
-            ret.emplace_back([cb = callback, expired_vals = std::move(expired_vals)]{
-                cb(expired_vals, true);
-            });
+            ret.emplace_back([cb = callback, expired_vals = std::move(expired_vals)] { cb(expired_vals, true); });
         if (callback and not nvals.empty())
             ret.emplace_back([cb = callback, nvals = std::move(nvals)] { cb(nvals, false); });
         return ret;
