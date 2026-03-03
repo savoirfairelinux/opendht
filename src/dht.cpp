@@ -889,10 +889,16 @@ Dht::search(const InfoHash& id,
             sr = std::make_shared<Search>();
             srs.emplace(id, sr);
         } else {
-            for (auto it = srs.begin(); it != srs.end();) {
+            for (auto it = srs.begin(); it != srs.end(); ++it) {
                 auto& s = *it->second;
                 if ((s.done or s.expired) and s.announce.empty() and s.listeners.empty()) {
                     sr = it->second;
+                    if (sr->nextSearchStep)
+                        scheduler.cancel(sr->nextSearchStep);
+                    if (sr->opExpirationJob)
+                        scheduler.cancel(sr->opExpirationJob);
+                    sr->clear();
+                    srs.erase(it);
                     break;
                 }
             }
@@ -901,8 +907,11 @@ Dht::search(const InfoHash& id,
                     logger_->error("[search {} IPv{}] Maximum number of searches reached!",
                                    id.toString(),
                                    (af == AF_INET) ? '4' : '6');
+                if (dcb)
+                    dcb(false, {});
                 return {};
             }
+            srs.emplace(id, sr);
         }
         sr->af = af;
         sr->tid = search_id++;

@@ -210,6 +210,13 @@ SearchCache::cancelAll(const std::function<void(size_t)>& onCancel)
     ops.clear();
 }
 
+void
+SearchCache::clear()
+{
+    ops.clear();
+    nextExpiration_ = time_point::max();
+}
+
 time_point
 SearchCache::expire(const time_point& now, const std::function<void(size_t)>& onCancel)
 {
