@@ -870,6 +870,8 @@ if (BUILD_TESTING)
         tests/test_parsedmessage.cpp
         tests/test_networkengine.h
         tests/test_networkengine.cpp
+        tests/test_opcache.h
+        tests/test_opcache.cpp
     )
     if (OPENDHT_PROXY_CLIENT)
         list (APPEND test_FILES
