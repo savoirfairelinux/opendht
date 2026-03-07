@@ -61,47 +61,11 @@ DhtRunner          (public API — thread-safe, manages lifecycle & I/O threads)
 - **`RoutingTable`** (`include/opendht/routing_table.h`, `src/routing_table.cpp`) — Kademlia routing table with bucket splitting.
 - **`Value`** (`include/opendht/value.h`) — the storable unit: binary blob, optional signature, optional encryption; typed via `ValueType`.
 - **`InfoHash`** (`include/opendht/infohash.h`) — 20-byte SHA-1 identifier; alias `Hash<HASH_LEN>`.
-- **Internal-only headers** (`src/storage.h`, `src/search.h`, `src/listener.h`, `src/request.h`, `src/parsed_message.h`) are not part of the public API.
 
 Optional components (`DhtProxyServer`, `DhtProxyClient`, `PeerDiscovery`) are compiled in only when the corresponding CMake options are enabled.
 
 ---
 
-## Key conventions
+## dhtnode
 
-### Namespaces
-All library code lives in `namespace dht`. Sub-namespaces: `dht::net`, `dht::crypto`, `dht::indexation`.
-
-### Naming
-- Types/classes: `PascalCase` — `DhtRunner`, `NetworkEngine`, `InfoHash`
-- Methods/functions: `camelCase` — `getNodeId()`, `putEncrypted()`
-- Constants: `UPPER_SNAKE_CASE` — `HASH_LEN`, `STORAGE_LIMIT_DEFAULT`, `STORAGE_LIMIT_UNLIMITED`
-- Private member variables: `snake_case_` (trailing underscore)
-
-### Smart pointers
-`Sp<T>` is a project-wide alias for `std::shared_ptr<T>` (defined in `def.h`). Prefer it over spelling out `std::shared_ptr`.
-
-### Code style (`.clang-format` enforced)
-- Indent: 4 spaces, no tabs
-- Column limit: 120
-- Pointer alignment: left (`T* ptr`)
-- Braces wrap after `class`, `struct`, function definitions; not after control statements
-- Binary operators break before (not after)
-- Constructor initializers: `BeforeComma` style
-
-Run `clang-format -i <file>` before committing. CI also runs `clang-tidy` (config in `.clang-tidy`).
-
-### Tests
-Tests use **CppUnit**. Each feature has a `test_<name>.h` / `test_<name>.cpp` pair in `tests/`. Test classes inherit from `CppUnit::TestFixture` and use `CPPUNIT_TEST_SUITE()` macros. All test executables share `tests/tests_runner.cpp` as the entry point.
-
-### Language bindings
-- **C bindings**: `c/opendht.cpp` implements the C API declared in `c/opendht_c.h`.
-- **Python bindings**: Cython (`.pyx`) in `python/opendht/`. An `asyncio`-compatible layer is in `python/opendht/aio.py`.
-- **Rust bindings**: `rust/` is a separate Cargo workspace; it wraps the C bindings.
-
-### Copyright header
-Every source file should begin with:
-```cpp
-// Copyright (c) 2014-2026 Savoir-faire Linux Inc.
-// SPDX-License-Identifier: MIT
-```
+The `dhtnode` CLI tool is a simple DHT node implementation using `DhtRunner`.
