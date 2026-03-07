@@ -11,6 +11,7 @@
 
 #include <iostream>
 #include <string>
+#include <limits>
 
 namespace test {
 CPPUNIT_TEST_SUITE_REGISTRATION(ParsedMessageTester);
