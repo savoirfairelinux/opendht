@@ -865,6 +865,8 @@ if (BUILD_TESTING)
         tests/test_storage.cpp
         tests/test_threadpool.h
         tests/test_threadpool.cpp
+        tests/test_parsedmessage.h
+        tests/test_parsedmessage.cpp
     )
     if (OPENDHT_TESTS_NETWORK)
         if (OPENDHT_PROXY_SERVER AND OPENDHT_PROXY_CLIENT)
