@@ -298,6 +298,7 @@ NetworkEngine::clear()
         request.second->node->setExpired();
     }
     requests.clear();
+    partial_messages.clear();
 }
 
 void
@@ -487,10 +488,10 @@ NetworkEngine::processMessage(const uint8_t* buf, size_t buflen, SockAddr f)
                 try {
                     // process the full message
                     process(std::move(pmsg_it->second.msg), from);
-                    partial_messages.erase(pmsg_it);
                 } catch (...) {
                     return;
                 }
+                partial_messages.erase(pmsg_it);
             } else
                 scheduler.add(now + RX_TIMEOUT, std::bind(&NetworkEngine::maintainRxBuffer, this, msg->tid));
         }
