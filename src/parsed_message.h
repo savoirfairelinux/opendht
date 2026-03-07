@@ -6,6 +6,7 @@
 #include "sockaddr.h"
 #include "net.h"
 
+#include <algorithm>
 #include <map>
 #include <string_view>
 
@@ -95,9 +96,25 @@ struct ParsedMessage
     std::vector<Value::Id> expired_values {};
     /* index for fields values */
     std::vector<Sp<FieldValueIndex>> fields;
-    /** When part of the message header: {index -> (total size, {})}
-     *  When part of partial value data: {index -> (offset, part_data)} */
-    std::map<unsigned, std::pair<unsigned, Blob>> value_parts;
+    /** Tracks partial value reassembly for fragmented messages.
+     *  Populated from message header with total expected sizes. */
+    struct PartialValue
+    {
+        size_t total_size {0};
+        size_t received_bytes {0};
+        std::map<size_t, Blob> fragments {}; // offset -> fragment data
+        bool isComplete() const { return total_size > 0 && received_bytes == total_size; }
+        Blob reassemble() const
+        {
+            Blob result(total_size);
+            for (const auto& [offset, data] : fragments)
+                std::copy(data.begin(), data.end(), result.begin() + offset);
+            return result;
+        }
+    };
+    std::map<unsigned, PartialValue> value_parts;
+    /** When part of partial value data: {index -> (offset, part_data)} */
+    std::map<unsigned, std::pair<size_t, Blob>> fragment_parts;
     /* query describing a filter to apply on values. */
     Query query;
     /* states if ipv4 or ipv6 request */
@@ -118,17 +135,32 @@ bool
 ParsedMessage::append(const ParsedMessage& block)
 {
     bool ret(false);
-    for (const auto& ve : block.value_parts) {
-        auto part_val = value_parts.find(ve.first);
-        if (part_val == value_parts.end() || part_val->second.second.size() >= part_val->second.first)
+    for (const auto& [index, fragment] : block.fragment_parts) {
+        auto part_it = value_parts.find(index);
+        if (part_it == value_parts.end())
             continue;
-        // TODO: handle out-of-order packets
-        if (ve.second.first != part_val->second.second.size()) {
-            // std::cout << "skipping out-of-order packet" << std::endl;
+        auto& pv = part_it->second;
+        if (pv.isComplete())
             continue;
+        auto offset = fragment.first;
+        const auto& data = fragment.second;
+        if (data.empty() || offset > pv.total_size || data.size() > pv.total_size - offset)
+            continue;
+        // Check for overlap with existing fragments
+        auto it = pv.fragments.lower_bound(offset);
+        if (it != pv.fragments.end()) {
+            auto distance = it->first - offset;
+            if (distance < data.size())
+                continue;
         }
+        if (it != pv.fragments.begin()) {
+            auto prev = std::prev(it);
+            if (prev->second.size() > offset - prev->first)
+                continue;
+        }
+        pv.fragments.emplace(offset, data);
+        pv.received_bytes += data.size();
         ret = true;
-        part_val->second.second.insert(part_val->second.second.end(), ve.second.second.begin(), ve.second.second.end());
     }
     return ret;
 }
@@ -136,16 +168,14 @@ ParsedMessage::append(const ParsedMessage& block)
 bool
 ParsedMessage::complete()
 {
-    for (auto& e : value_parts) {
-        if (e.second.first > e.second.second.size()) {
-            // std::cout << "uncomplete part " << e.first << ": " << e.second.second.size() << "/" << e.second.first <<
-            // std::endl;
+    for (const auto& [index, pv] : value_parts) {
+        if (!pv.isComplete())
             return false;
-        }
     }
-    for (auto& e : value_parts) {
+    for (auto& [index, pv] : value_parts) {
+        auto assembled = pv.reassemble();
         msgpack::unpacked msg;
-        msgpack::unpack(msg, (const char*) e.second.second.data(), e.second.second.size());
+        msgpack::unpack(msg, (const char*) assembled.data(), assembled.size());
         values.emplace_back(std::make_shared<Value>(msg.get()));
     }
     return true;
@@ -233,7 +263,7 @@ ParsedMessage::msgpack_unpack(const msgpack::object& msg)
             auto d = findMapValue(vdat.val, "d"sv);
             if (not o or not d)
                 continue;
-            value_parts.emplace(vdat.key.as<unsigned>(), std::pair<size_t, Blob>(o->as<size_t>(), unpackBlob(*d)));
+            fragment_parts.emplace(vdat.key.as<unsigned>(), std::pair<size_t, Blob>(o->as<size_t>(), unpackBlob(*d)));
         }
         return;
     }
@@ -324,7 +354,7 @@ ParsedMessage::msgpack_unpack(const msgpack::object& msg)
                 // Skip oversize values with a small margin for header overhead
                 if (packed_v.via.u64 > MAX_VALUE_SIZE + 32)
                     continue;
-                value_parts.emplace(i, std::make_pair(packed_v.via.u64, Blob {}));
+                value_parts[i].total_size = packed_v.via.u64;
             } else {
                 try {
                     values.emplace_back(std::make_shared<Value>(parsedReq.values->via.array.ptr[i]));
