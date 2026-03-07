@@ -255,6 +255,26 @@ if get_option('tests').enabled()
     )
     test('Value', test_value)
 
+    test_parsedmessage = executable(
+        'test_parsedmessage',
+        'tests/test_parsedmessage.cpp',
+        'tests/tests_runner.cpp',
+        include_directories: [opendht_interface_inc, opendht_inc],
+        link_with: opendht,
+        dependencies: [cppunit, jsoncpp, fmt, openssl, msgpack],
+    )
+    test('ParsedMessage', test_parsedmessage)
+
+    test_networkengine = executable(
+        'test_networkengine',
+        'tests/test_networkengine.cpp',
+        'tests/tests_runner.cpp',
+        include_directories: [opendht_interface_inc, opendht_inc],
+        link_with: opendht,
+        dependencies: [cppunit, jsoncpp, fmt, openssl, msgpack],
+    )
+    test('NetworkEngine', test_networkengine)
+
     test_crypto = executable(
         'test_crypto',
         'tests/test_crypto.cpp',
