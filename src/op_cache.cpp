@@ -14,14 +14,15 @@ OpValueCache::onValuesAdded(const std::vector<Sp<Value>>& vals, const system_clo
         auto viop = values.emplace(v->id, v);
         if (viop.second) {
             newValues.emplace_back(v);
-        } else if (*viop.first->second.data != *v) {
-            // Special case for edition
-            if (v->seq > viop.first->second.data->seq) {
-                viop.first->second.data = v;
-                newValues.emplace_back(v);
-            }
         } else {
             viop.first->second.refCount++;
+            if (*viop.first->second.data != *v) {
+                // Special case for edition
+                if (v->seq > viop.first->second.data->seq) {
+                    viop.first->second.data = v;
+                    newValues.emplace_back(v);
+                }
+            }
         }
         viop.first->second.updated = t;
     }
@@ -241,12 +242,12 @@ bool
 SearchCache::get(const Value::Filter& f, const Sp<Query>& q, const GetCallback& gcb, const DoneCallback& dcb) const
 {
     auto op = getOp(q);
-    if (op != ops.end()) {
+    if (op != ops.end() and op->second->isSynced()) {
         auto vals = op->second->get(f);
-        if ((not vals.empty() and not gcb(vals)) or op->second->isSynced()) {
-            dcb(true, {});
-            return true;
-        }
+        if (not vals.empty())
+            gcb(vals);
+        dcb(true, {});
+        return true;
     }
     return false;
 }

@@ -488,8 +488,9 @@ NetworkEngine::processMessage(const uint8_t* buf, size_t buflen, SockAddr f)
                 try {
                     // process the full message
                     process(std::move(pmsg_it->second.msg), from);
-                } catch (...) {
-                    return;
+                } catch (const std::exception& e) {
+                    if (logger_)
+                        logger_->warn("Error while processing partial message: {}", e.what());
                 }
                 partial_messages.erase(pmsg_it);
             } else
@@ -516,7 +517,9 @@ NetworkEngine::processMessage(const uint8_t* buf, size_t buflen, SockAddr f)
     if (msg->value_parts.empty()) {
         try {
             process(std::move(msg), from);
-        } catch (...) {
+        } catch (const std::exception& e) {
+            if (logger_)
+                logger_->warn("Error while processing message: {}", e.what());
             return;
         }
     } else {

@@ -71,11 +71,21 @@ public:
     {
         std::vector<Sp<Value>> expired_values;
         for (auto it = values.begin(); it != values.end();) {
-            if (it->second.expiration <= now) {
+            auto effectiveExpiration = it->second.expiration;
+            if (status == ListenSyncStatus::SYNCED)
+                // While the listen is synced, the remote node pushes
+                // explicit expirations and periodic refreshes.  Add a
+                // grace period proportional to the value's type
+                // expiration so that a single lost UDP refresh
+                // notification does not cause a premature local drop.
+                // A grace of one type-expiration covers exactly one
+                // missed re-announcement cycle.
+                effectiveExpiration += it->second.typeExpiration;
+            if (effectiveExpiration <= now) {
                 expired_values.emplace_back(std::move(it->second.data));
                 it = values.erase(it);
             } else {
-                next = std::min(next, it->second.expiration);
+                next = std::min(next, effectiveExpiration);
                 ++it;
             }
         }
@@ -148,12 +158,14 @@ private:
         Sp<Value> data {};
         time_point created {};
         time_point expiration {};
+        duration typeExpiration {}; /* value type's expiration period, used as grace when synced */
 
         CacheValueStorage() {}
-        CacheValueStorage(const Sp<Value>& v, time_point t, time_point e)
+        CacheValueStorage(const Sp<Value>& v, time_point t, time_point e, duration te)
             : data(v)
             , created(t)
             , expiration(e)
+            , typeExpiration(te)
         {}
     };
 
@@ -165,19 +177,29 @@ private:
     CallbackQueue addValues(const std::vector<Sp<Value>>& new_values, const TypeStore& types, const time_point& now)
     {
         std::vector<Sp<Value>> nvals;
+        std::vector<Sp<Value>> expired_vals;
         for (const auto& value : new_values) {
+            auto te = types.getType(value->type).expiration;
             auto v = values.find(value->id);
             if (v == values.end()) {
                 // new value
                 nvals.emplace_back(value);
-                values.emplace(value->id, CacheValueStorage(value, now, now + types.getType(value->type).expiration));
+                values.emplace(value->id, CacheValueStorage(value, now, now + te, te));
             } else {
                 // refreshed value
                 v->second.created = now;
-                v->second.expiration = now + types.getType(v->second.data->type).expiration;
+                v->second.expiration = now + te;
+                v->second.typeExpiration = te;
+                if (*v->second.data != *value) {
+                    expired_vals.emplace_back(v->second.data);
+                    v->second.data = value;
+                    nvals.emplace_back(value);
+                }
             }
         }
         CallbackQueue ret;
+        if (callback and not expired_vals.empty())
+            ret.emplace_back([cb = callback, expired_vals = std::move(expired_vals)] { cb(expired_vals, true); });
         if (callback and not nvals.empty())
             ret.emplace_back([cb = callback, nvals = std::move(nvals)] { cb(nvals, false); });
         return ret;
@@ -201,8 +223,10 @@ private:
         auto v = values.find(vid);
         if (v == values.end())
             return;
+        auto te = types.getType(v->second.data->type).expiration;
         v->second.created = now;
-        v->second.expiration = now + types.getType(v->second.data->type).expiration;
+        v->second.expiration = now + te;
+        v->second.typeExpiration = te;
     }
 };
 
