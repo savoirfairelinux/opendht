@@ -12,7 +12,7 @@ env:
 on: [push, pull_request]
 
 jobs:
-    build-ubuntu-meson:
+  build-ubuntu-meson:
     name: Ubuntu/GCC Meson build
     runs-on: ubuntu-latest
     steps:
