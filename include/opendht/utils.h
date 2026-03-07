@@ -85,8 +85,8 @@ using system_clock = std::chrono::system_clock;
 using time_point = clock::time_point;
 using duration = clock::duration;
 
-time_point from_time_t(std::time_t t);
-std::time_t to_time_t(time_point t);
+OPENDHT_PUBLIC time_point from_time_t(std::time_t t);
+OPENDHT_PUBLIC std::time_t to_time_t(time_point t);
 
 template<class DT>
 static std::string
@@ -184,7 +184,7 @@ unpackMsg(const Blob& b)
     return msgpack::unpack((const char*) b.data(), b.size());
 }
 
-msgpack::object* findMapValue(const msgpack::object& map, const char* key, size_t length);
+OPENDHT_PUBLIC msgpack::object* findMapValue(const msgpack::object& map, const char* key, size_t length);
 
 inline msgpack::object*
 findMapValue(const msgpack::object& map, const char* key)
