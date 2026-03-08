@@ -42,8 +42,7 @@ OPENDHT_PUBLIC void hash(const uint8_t* data, size_t data_length, uint8_t* hash,
 }
 
 /**
- * Represents an Hash,
- * a byte array of N bytes.
+ * Represents an Hash, a byte array of N bytes.
  * Hashes identify nodes and values in the Dht.
  */
 template<size_t N>
@@ -54,31 +53,25 @@ public:
     typedef typename T::iterator iterator;
     typedef typename T::const_iterator const_iterator;
 
-    Hash() noexcept { data_.fill(0); }
-    Hash(const uint8_t* h, size_t data_len)
-    {
-        if (data_len < N)
-            data_.fill(0);
-        else
-            std::copy_n(h, N, data_.begin());
-    }
+    constexpr Hash() noexcept
+        : data_ {}
+    {}
+    constexpr Hash(const uint8_t* h, size_t data_len)
+        : data_(fromBytes(h, data_len))
+    {}
     /**
      * Constructor from an hexadecimal string (without "0x").
-     * hex must be at least 2.HASH_LEN characters long.
-     * If too long, only the first 2.HASH_LEN characters are read.
+     * hex must be at least 2.N characters long.
+     * If too long, only the first 2.N characters are read.
      */
-    explicit Hash(std::string_view hex)
-    {
-        if (hex.size() < 2 * N)
-            data_.fill(0);
-        else
-            fromString(hex.data());
-    }
+    explicit constexpr Hash(std::string_view hex)
+        : data_(fromString(hex))
+    {}
 
     Hash(const msgpack::object& o) { msgpack_unpack(o); }
 
     static constexpr size_t size() noexcept { return N; }
-    const uint8_t* data() const { return data_.data(); }
+    constexpr const uint8_t* data() const { return data_.data(); }
     uint8_t* data() { return data_.data(); }
     iterator begin() { return data_.begin(); }
     const_iterator cbegin() const { return data_.cbegin(); }
@@ -87,10 +80,21 @@ public:
 
     static constexpr inline Hash zero() noexcept { return Hash {}; }
 
-    bool operator==(const Hash& h) const { return data_ == h.data_; }
-    bool operator!=(const Hash& h) const { return !(*this == h); }
+    constexpr bool operator==(const Hash& h) const
+    {
+#if __cplusplus >= 202002L
+        return data_ == h.data_;
+#else
+        for (size_t i = 0; i < N; ++i) {
+            if (data_[i] != h.data_[i])
+                return false;
+        }
+        return true;
+#endif
+    }
+    constexpr bool operator!=(const Hash& h) const { return !(*this == h); }
 
-    bool operator<(const Hash& o) const
+    constexpr bool operator<(const Hash& o) const
     {
         for (unsigned i = 0; i < N; i++) {
             if (data_[i] != o.data_[i])
@@ -99,7 +103,7 @@ public:
         return false;
     }
 
-    Hash operator^(const Hash& o) const
+    constexpr Hash operator^(const Hash& o) const
     {
         Hash result;
         for (auto i = 0u; i < N; i++) {
@@ -108,8 +112,9 @@ public:
         return result;
     }
 
-    explicit operator bool() const
+    explicit constexpr operator bool() const
     {
+#if __cplusplus >= 202002L
         auto a = reinterpret_cast<const uint32_t*>(data_.data());
         auto b = reinterpret_cast<const uint32_t*>(data_.data() + N);
         for (; a != b; a++) {
@@ -117,24 +122,32 @@ public:
                 return true;
         }
         return false;
+#else
+        for (size_t i = 0; i < N; ++i) {
+            if (data_[i] != 0)
+                return true;
+        }
+        return false;
+#endif
     }
 
     uint8_t& operator[](size_t index) { return data_[index]; }
-    const uint8_t& operator[](size_t index) const { return data_[index]; }
+    constexpr const uint8_t& operator[](size_t index) const { return data_[index]; }
 
     /**
      * Find the lowest 1 bit in an id.
      * Result will allways be lower than 8*N
      */
-    inline int lowbit() const
+    constexpr int lowbit() const
     {
-        int i, j;
-        for (i = N - 1; i >= 0; i--)
+        int i = N - 1;
+        for (; i >= 0; i--)
             if (data_[i] != 0)
                 break;
         if (i < 0)
             return -1;
-        for (j = 7; j >= 0; j--)
+        int j = 7;
+        for (; j >= 0; j--)
             if ((data_[i] & (0x80 >> j)) != 0)
                 break;
         return 8 * i + j;
@@ -146,11 +159,10 @@ public:
     }
 
     /** Find how many bits two ids have in common. */
-    static inline unsigned commonBits(const Hash& id1, const Hash& id2)
+    static constexpr inline unsigned commonBits(const Hash& id1, const Hash& id2)
     {
-        unsigned i, j;
-        uint8_t x;
-        for (i = 0; i < N; i++) {
+        unsigned i = 0;
+        for (; i < N; i++) {
             if (id1.data_[i] != id2.data_[i])
                 break;
         }
@@ -158,9 +170,9 @@ public:
         if (i == N)
             return 8 * N;
 
-        x = id1.data_[i] ^ id2.data_[i];
+        uint8_t x = id1.data_[i] ^ id2.data_[i];
 
-        j = 0;
+        unsigned j = 0;
         while ((x & 0x80) == 0) {
             x <<= 1;
             j++;
@@ -170,7 +182,7 @@ public:
     }
 
     /** Determine whether id1 or id2 is closer to this */
-    int xorCmp(const Hash& id1, const Hash& id2) const
+    constexpr int xorCmp(const Hash& id1, const Hash& id2) const
     {
         for (unsigned i = 0; i < N; i++) {
             if (id1.data_[i] == id2.data_[i])
@@ -182,7 +194,7 @@ public:
         return 0;
     }
 
-    bool getBit(unsigned nbit) const
+    constexpr bool getBit(unsigned nbit) const
     {
         auto& num = *(data_.cbegin() + (nbit / 8));
         unsigned bit = 7 - (nbit % 8);
@@ -258,7 +270,8 @@ public:
 
 private:
     T data_;
-    void fromString(const char*);
+    static constexpr T fromBytes(const uint8_t*, size_t);
+    static constexpr T fromString(std::string_view);
 };
 
 #define HASH_LEN 20u
@@ -281,30 +294,51 @@ operator>>(std::istream& s, Hash<N>& h)
     std::array<char, h.size() * 2> dat;
     s.exceptions(std::istream::eofbit | std::istream::failbit);
     s.read(&(*dat.begin()), dat.size());
-    fromString(dat.data());
+    h = Hash<N>(std::string_view(dat.data(), dat.size()));
     return s;
 }
 
 template<size_t N>
-void
-Hash<N>::fromString(const char* in)
+constexpr typename Hash<N>::T
+Hash<N>::fromBytes(const uint8_t* in, size_t size)
 {
-    auto hex2bin = [](char c) -> uint8_t {
+    T data {};
+    if (size < N)
+        return data;
+    for (size_t i = 0; i < N; ++i)
+        data[i] = in[i];
+    return data;
+}
+
+template<size_t N>
+constexpr typename Hash<N>::T
+Hash<N>::fromString(std::string_view in)
+{
+    T data {};
+    if (in.size() < 2 * N)
+        return data;
+
+    constexpr auto hex2bin = [](char c, bool& valid) -> uint8_t {
         if (c >= 'a' and c <= 'f')
             return 10 + c - 'a';
         else if (c >= 'A' and c <= 'F')
             return 10 + c - 'A';
         else if (c >= '0' and c <= '9')
             return c - '0';
-        else
-            throw std::domain_error("not an hex character");
+        else {
+            valid = false;
+            return 0;
+        }
     };
-    try {
-        for (size_t i = 0; i < N; i++)
-            data_[i] = (hex2bin(in[2 * i]) << 4) | hex2bin(in[2 * i + 1]);
-    } catch (const std::domain_error&) {
-        data_.fill(0);
+    bool valid = true;
+    for (size_t i = 0; i < N && valid; i++) {
+        uint8_t high = hex2bin(in[2 * i], valid);
+        uint8_t low = hex2bin(in[2 * i + 1], valid);
+        data[i] = (high << 4) | low;
     }
+    if (!valid)
+        return {};
+    return data;
 }
 
 template<size_t N>
@@ -367,6 +401,19 @@ inline std::string
 toHex(const std::vector<uint8_t>& data)
 {
     return toHex(data.data(), data.size());
+}
+
+template<size_t N>
+constexpr std::array<char, N * 2>
+toHexArray(const Hash<N>& h)
+{
+    std::array<char, N * 2> ret {};
+    for (size_t i = 0; i < N; i++) {
+        const auto& m = hex_map[h[i]];
+        ret[i * 2] = m[0];
+        ret[i * 2 + 1] = m[1];
+    }
+    return ret;
 }
 
 template<size_t N>
