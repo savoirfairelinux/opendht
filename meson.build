@@ -118,6 +118,17 @@ opendht = library(
     install: true,
 )
 
+opendht_dep_args = []
+if get_option('default_library') != 'static'
+    opendht_dep_args += '-Dopendht_EXPORTS'
+endif
+
+opendht_dep = declare_dependency(
+    link_with: opendht,
+    include_directories: opendht_interface_inc,
+    compile_args: opendht_dep_args,
+)
+
 # Install library headers.
 install_subdir('include', install_dir: get_option('includedir'), strip_directory: true)
 
@@ -128,6 +139,13 @@ conf_data.set('libdir', join_paths(get_option('prefix'), get_option('libdir')))
 conf_data.set('includedir', join_paths(get_option('prefix'), get_option('includedir')))
 conf_data.set('argon2_lib', ', libargon2')
 conf_data.set('simdutf_lib', ', simdutf')
+conf_data.set('opendht_public_cflags', '')
+conf_data.set('opendht_c_public_cflags', '')
+
+if get_option('default_library') != 'static'
+    conf_data.set('opendht_public_cflags', ' -Dopendht_EXPORTS')
+    conf_data.set('opendht_c_public_cflags', ' -Dopendht_c_EXPORTS')
+endif
 
 configure_file(
     input: 'opendht.pc.in',
@@ -143,9 +161,7 @@ if get_option('c').enabled()
     opendht_c = library(
         'opendht-c',
         ['c/opendht.cpp', 'c/opendht_c.h'],
-        include_directories: opendht_interface_inc,
-        link_with: opendht,
-        dependencies: [msgpack, jsoncpp, fmt],
+        dependencies: [opendht_dep, msgpack, jsoncpp, fmt],
         cpp_args: ['-DOPENDHT_C_BUILD', '-Dopendht_c_EXPORTS'],
         install: true,
     )
@@ -181,10 +197,8 @@ if get_option('python').require(
     py.extension_module(
         'opendht',
         'python/opendht.pyx',
-        include_directories: opendht_interface_inc,
         override_options: ['cython_language=cpp'],
-        link_with: [opendht],
-        dependencies: [msgpack, jsoncpp, fmt, dep_py],
+        dependencies: [opendht_dep, msgpack, jsoncpp, fmt, dep_py],
         install: true,
     )
 endif
@@ -193,25 +207,19 @@ if get_option('tools').enabled()
     dhtnode = executable(
         'dhtnode',
         'tools/dhtnode.cpp',
-        include_directories: opendht_interface_inc,
-        link_with: opendht,
-        dependencies: [readline, jsoncpp, msgpack, fmt, openssl],
+        dependencies: [opendht_dep, readline, jsoncpp, msgpack, fmt, openssl],
         install: true,
     )
     dhtchat = executable(
         'dhtchat',
         'tools/dhtchat.cpp',
-        include_directories: opendht_interface_inc,
-        link_with: opendht,
-        dependencies: [readline, jsoncpp, msgpack, fmt, openssl],
+        dependencies: [opendht_dep, readline, jsoncpp, msgpack, fmt, openssl],
         install: true,
     )
     dhtscanner = executable(
         'dhtscanner',
         'tools/dhtscanner.cpp',
-        include_directories: opendht_interface_inc,
-        link_with: opendht,
-        dependencies: [readline, jsoncpp, msgpack, fmt, openssl],
+        dependencies: [opendht_dep, readline, jsoncpp, msgpack, fmt, openssl],
         install: true,
     )
     if llhttp.found()
@@ -224,9 +232,7 @@ if get_option('tools').enabled()
         durl = executable(
             'durl',
             'tools/durl.cpp',
-            include_directories: opendht_interface_inc,
-            link_with: opendht,
-            dependencies: durl_deps,
+            dependencies: [opendht_dep] + durl_deps,
         )
     endif
 endif
@@ -239,9 +245,7 @@ if get_option('tests').enabled()
         'test_infohash',
         'tests/test_infohash.cpp',
         'tests/tests_runner.cpp',
-        include_directories: opendht_interface_inc,
-        link_with: opendht,
-        dependencies: [cppunit, jsoncpp, fmt, openssl, msgpack],
+        dependencies: [opendht_dep, cppunit, jsoncpp, fmt, openssl, msgpack],
     )
     test('Infohash', test_infohash)
 
@@ -249,9 +253,7 @@ if get_option('tests').enabled()
         'test_value',
         'tests/test_value.cpp',
         'tests/tests_runner.cpp',
-        include_directories: opendht_interface_inc,
-        link_with: opendht,
-        dependencies: [cppunit, jsoncpp, fmt, openssl, msgpack],
+        dependencies: [opendht_dep, cppunit, jsoncpp, fmt, openssl, msgpack],
     )
     test('Value', test_value)
 
@@ -259,9 +261,8 @@ if get_option('tests').enabled()
         'test_parsedmessage',
         'tests/test_parsedmessage.cpp',
         'tests/tests_runner.cpp',
-        include_directories: [opendht_interface_inc, opendht_inc],
-        link_with: opendht,
-        dependencies: [cppunit, jsoncpp, fmt, openssl, msgpack],
+        include_directories: opendht_inc,
+        dependencies: [opendht_dep, cppunit, jsoncpp, fmt, openssl, msgpack],
     )
     test('ParsedMessage', test_parsedmessage)
 
@@ -269,9 +270,8 @@ if get_option('tests').enabled()
         'test_networkengine',
         'tests/test_networkengine.cpp',
         'tests/tests_runner.cpp',
-        include_directories: [opendht_interface_inc, opendht_inc],
-        link_with: opendht,
-        dependencies: [cppunit, jsoncpp, fmt, openssl, msgpack],
+        include_directories: opendht_inc,
+        dependencies: [opendht_dep, cppunit, jsoncpp, fmt, openssl, msgpack],
     )
     test('NetworkEngine', test_networkengine)
 
@@ -279,9 +279,7 @@ if get_option('tests').enabled()
         'test_crypto',
         'tests/test_crypto.cpp',
         'tests/tests_runner.cpp',
-        include_directories: opendht_interface_inc,
-        link_with: opendht,
-        dependencies: [cppunit, jsoncpp, fmt, openssl, msgpack, gnutls],
+        dependencies: [opendht_dep, cppunit, jsoncpp, fmt, openssl, msgpack, gnutls],
     )
     test('Crypto', test_crypto)
 
@@ -289,9 +287,7 @@ if get_option('tests').enabled()
         'test_dhtrunner',
         'tests/test_dhtrunner.cpp',
         'tests/tests_runner.cpp',
-        include_directories: opendht_interface_inc,
-        link_with: opendht,
-        dependencies: [cppunit, jsoncpp, fmt, openssl, msgpack],
+        dependencies: [opendht_dep, cppunit, jsoncpp, fmt, openssl, msgpack],
     )
     test('DhtRunner', test_dhtrunner)
 
@@ -299,9 +295,7 @@ if get_option('tests').enabled()
         'test_threadpool',
         'tests/test_threadpool.cpp',
         'tests/tests_runner.cpp',
-        include_directories: opendht_interface_inc,
-        link_with: opendht,
-        dependencies: [cppunit, jsoncpp, fmt, openssl, msgpack],
+        dependencies: [opendht_dep, cppunit, jsoncpp, fmt, openssl, msgpack],
     )
     test('ThreadPool', test_threadpool)
 
@@ -310,9 +304,7 @@ if get_option('tests').enabled()
             'test_http',
             'tests/test_http.cpp',
             'tests/tests_runner.cpp',
-            include_directories: opendht_interface_inc,
-            link_with: opendht,
-            dependencies: [cppunit, jsoncpp, fmt, openssl, msgpack],
+            dependencies: [opendht_dep, cppunit, jsoncpp, fmt, openssl, msgpack],
         )
         test('Http', test_http)
     endif
@@ -322,9 +314,7 @@ if get_option('tests').enabled()
             'test_peerdiscovery',
             'tests/test_peerdiscovery.cpp',
             'tests/tests_runner.cpp',
-            include_directories: opendht_interface_inc,
-            link_with: opendht,
-            dependencies: [cppunit, jsoncpp, fmt, openssl, msgpack],
+            dependencies: [opendht_dep, cppunit, jsoncpp, fmt, openssl, msgpack],
         )
         test('PeerDiscovery', test_peerdiscovery)
     endif
@@ -334,9 +324,7 @@ if get_option('tests').enabled()
             'test_dhtproxy',
             'tests/test_dhtproxy.cpp',
             'tests/tests_runner.cpp',
-            include_directories: opendht_interface_inc,
-            link_with: opendht,
-            dependencies: [cppunit, jsoncpp, fmt, openssl, msgpack],
+            dependencies: [opendht_dep, cppunit, jsoncpp, fmt, openssl, msgpack],
         )
         test('DhtProxy', test_proxy)
 
@@ -345,9 +333,7 @@ if get_option('tests').enabled()
                 'test_dhtproxystress',
                 'tests/dhtproxy_stress_tester.cpp',
                 'tests/tests_runner.cpp',
-                include_directories: opendht_interface_inc,
-                link_with: opendht,
-                dependencies: [cppunit, jsoncpp, fmt, openssl, msgpack],
+                dependencies: [opendht_dep, cppunit, jsoncpp, fmt, openssl, msgpack],
             )
             test('DhtProxy Stress', test_proxystress)
         endif
