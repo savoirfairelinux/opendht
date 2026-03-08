@@ -385,7 +385,7 @@ Dht::paginate(std::weak_ptr<Search> ws, Sp<Query> query, SearchNode* n)
     n->pagination_queries[query].push_back(select_q);
 
     if (logger_)
-        logger_->debug("[search {}] [node {}] Sending {}", sr->id.to_view(), n->node->toString(), select_q->toString());
+        logger_->debug("[search {}] [node {}] Sending {}", sr->id.toString(), n->node->toString(), select_q->toString());
     n->getStatus[select_q] = network_engine.sendGetValues(
         n->node, sr->id, *select_q, -1, onSelectDone, std::bind(&Dht::searchNodeGetExpired, this, _1, _2, ws, select_q));
 }
