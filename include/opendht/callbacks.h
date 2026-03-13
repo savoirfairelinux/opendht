@@ -23,7 +23,7 @@ struct Node;
  */
 enum class NodeStatus {
     Disconnected, // 0 nodes
-    Connecting,   // 1+ nodes
+    Connecting,   // bootstrap pending or 1+ nodes
     Connected     // 1+ good nodes
 };
 

@@ -35,6 +35,8 @@ Dht::updateStatus(sa_family_t af)
     auto& d = dht(af);
     auto old = d.status;
     d.status = d.getStatus(scheduler.time());
+    if (d.status == NodeStatus::Disconnected && bootstrapJob && !bootstrap_nodes.empty())
+        d.status = NodeStatus::Connecting;
     if (d.status != old) {
         auto& other = dht(af == AF_INET ? AF_INET6 : AF_INET);
         if (other.status == NodeStatus::Disconnected && d.status == NodeStatus::Disconnected) {
@@ -678,9 +680,7 @@ Dht::searchSynchedNodeListen(const Sp<Search>& sr, SearchNode& n)
             r = n.listenStatus
                     .emplace(std::piecewise_construct,
                              std::forward_as_tuple(query),
-                             std::forward_as_tuple(l.second.get_cb,
-                                                   l.second.sync_cb,
-                                                   openListenSocket()))
+                             std::forward_as_tuple(l.second.get_cb, l.second.sync_cb, openListenSocket()))
                     .first;
             r->second.cacheExpirationJob = scheduler.add(time_point::max(), [this, ws, query, node = n.node] {
                 if (auto sr = ws.lock()) {
