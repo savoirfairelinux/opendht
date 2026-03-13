@@ -3,6 +3,15 @@
 
 #include "test_networkengine.h"
 
+#include <any>
+#include <mutex>
+
+#ifdef _WIN32
+#ifdef opendht_EXPORTS
+#undef opendht_EXPORTS
+#endif
+#endif
+
 #include "opendht/node.h"
 #include "opendht/network_engine.h"
 #include "opendht/network_utils.h"
@@ -29,6 +38,9 @@
 #include "../src/search.h"
 
 // Hack to test internal classes
+#include "../src/op_cache.cpp"
+#include "../src/routing_table.cpp"
+#include "../src/dht.cpp"
 #include "../src/node.cpp"
 #include "../src/node_cache.cpp"
 #include "../src/network_engine.cpp"
