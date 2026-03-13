@@ -2348,9 +2348,13 @@ Dht::importValues(const std::vector<ValuesExport>& import)
 {
     const auto& now = scheduler.time();
 
+    unsigned imported = 0, ignored = 0;
+    size_t imported_size = 0;
     for (const auto& value : import) {
-        if (value.second.empty())
+        if (value.second.empty()) {
+            ignored++;
             continue;
+        }
 
         try {
             msgpack::unpacked msg;
@@ -2371,17 +2375,27 @@ Dht::importValues(const std::vector<ValuesExport>& import)
                 } catch (const std::exception&) {
                     if (logger_)
                         logger_->error("Error reading value at {}", value.first.to_view());
+                    ignored++;
                     continue;
                 }
                 val_time = std::min(val_time, now);
-                storageStore(value.first, std::make_shared<Value>(std::move(tmp_val)), val_time);
+                auto val_size = tmp_val.size();
+                if (storageStore(value.first, std::make_shared<Value>(std::move(tmp_val)), val_time)) {
+                    imported++;
+                    imported_size += val_size;
+                } else {
+                    ignored++;
+                }
             }
         } catch (const std::exception&) {
+            ignored++;
             if (logger_)
                 logger_->error("Error reading values at {}", value.first.to_view());
             continue;
         }
     }
+    if (logger_)
+        logger_->debug("Imported {} values, {}, ignored {}", imported, dht::printByteCount(imported_size), ignored);
 }
 
 std::vector<NodeExport>
