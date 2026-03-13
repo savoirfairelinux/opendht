@@ -38,17 +38,20 @@
 #include "../src/search.h"
 
 // Hack to test internal classes
-#include "../src/base64.cpp"
-#include "../src/default_types.cpp"
 #include "../src/op_cache.cpp"
 #include "../src/routing_table.cpp"
-#include "../src/value.cpp"
 #include "../src/dht.cpp"
 #include "../src/node.cpp"
 #include "../src/node_cache.cpp"
 #include "../src/network_engine.cpp"
 
 #include <string>
+
+#ifdef _WIN32
+namespace dht {
+const ValueType ValueType::USER_DATA = {0, "User Data"};
+} // namespace dht
+#endif
 
 namespace test {
 CPPUNIT_TEST_SUITE_REGISTRATION(NetworkEngineTester);
