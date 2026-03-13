@@ -2238,6 +2238,18 @@ void
 Dht::onConnected()
 {
     stopBootstrap();
+
+    auto restartSearches = [this](std::map<InfoHash, Sp<Search>>& searches) {
+        const auto& now = scheduler.time();
+        for (auto& srp : searches) {
+            auto& sr = *srp.second;
+            if (sr.done)
+                continue;
+            scheduler.edit(sr.nextSearchStep, now);
+        }
+    };
+    restartSearches(dht4.searches);
+    restartSearches(dht6.searches);
     auto callbacks = std::move(onConnectCallbacks_);
     while (not callbacks.empty()) {
         callbacks.front()();
