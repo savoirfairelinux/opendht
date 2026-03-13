@@ -3,8 +3,9 @@
 #pragma once
 
 #include "infohash.h"
-#include "value.h"
 #include "listener.h"
+#include "sockaddr.h"
+#include "value.h"
 
 #include <map>
 #include <utility>
@@ -17,6 +18,11 @@ namespace dht {
 class StorageBucket
 {
 public:
+    StorageBucket() = default;
+    explicit StorageBucket(SockAddr addr)
+        : addr_(std::move(addr))
+    {}
+
     void insert(const InfoHash& id, const Value& value, time_point expiration)
     {
         totalSize_ += value.size();
@@ -56,8 +62,10 @@ public:
     {
         return storedValues_.empty() ? std::pair<InfoHash, Value::Id> {} : storedValues_.begin()->second;
     }
+    const SockAddr& getAddr() const { return addr_; }
 
 private:
+    SockAddr addr_ {};
     std::multimap<time_point, std::pair<InfoHash, Value::Id>> storedValues_;
     size_t totalSize_ {0};
 };

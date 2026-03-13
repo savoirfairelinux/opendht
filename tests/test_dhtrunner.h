@@ -20,6 +20,7 @@ class DhtRunnerTester : public CppUnit::TestFixture
     CPPUNIT_TEST(testListen);
     CPPUNIT_TEST(testListenLotOfBytes);
     CPPUNIT_TEST(testIdOps);
+    CPPUNIT_TEST(testImportValuesPreservesRemoteQuota);
     CPPUNIT_TEST_SUITE_END();
 
     dht::DhtRunner node1 {};
@@ -58,6 +59,7 @@ public:
      * Test methods requiring a node identity
      */
     void testIdOps();
+    void testImportValuesPreservesRemoteQuota();
     /**
      * Test listen method with lot of datas
      */

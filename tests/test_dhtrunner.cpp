@@ -125,6 +125,74 @@ DhtRunnerTester::testPutOverride()
 }
 
 void
+DhtRunnerTester::testImportValuesPreservesRemoteQuota()
+{
+    node1.shutdown();
+    node1.join();
+    node2.shutdown();
+    node2.join();
+
+    dht::DhtRunner::Config config;
+    config.dht_config.node_config.max_peer_req_per_sec = -1;
+    config.dht_config.node_config.max_req_per_sec = -1;
+    config.dht_config.node_config.max_store_size = 1536;
+    config.dht_config.node_config.max_local_store_size = -1;
+    config.dht_config.node_config.max_store_keys = -1;
+
+    node1.run(0, config);
+    node2.run(0, config);
+    auto bound = node1.getBound();
+    if (bound.isUnspecified())
+        bound.setLoopback();
+    node2.bootstrap(bound);
+    std::this_thread::sleep_for(1s);
+
+    auto key1 = dht::InfoHash::get("import-quota-1");
+    auto key2 = dht::InfoHash::get("import-quota-2");
+    auto value1 = std::make_shared<dht::Value>(std::string(1024, 'a'));
+    auto value2 = std::make_shared<dht::Value>(std::string(1024, 'b'));
+
+    std::promise<bool> p1;
+    node2.put(key1, value1, [&](bool ok) { p1.set_value(ok); });
+    CPPUNIT_ASSERT(p1.get_future().get());
+
+    std::this_thread::sleep_for(2s);
+    auto exported = node1.exportValues();
+    CPPUNIT_ASSERT(!exported.empty());
+
+    node1.shutdown();
+    node1.join();
+
+    dht::DhtRunner restored;
+    restored.run(0, config);
+    auto restoredBound = restored.getBound();
+    if (restoredBound.isUnspecified())
+        restoredBound.setLoopback();
+
+    node2.shutdown();
+    node2.join();
+    node2.run(0, config);
+    node2.bootstrap(restoredBound);
+    std::this_thread::sleep_for(1s);
+
+    restored.importValues(exported);
+    std::this_thread::sleep_for(500ms);
+
+    std::promise<bool> p2;
+    node2.put(key2, value2, [&](bool ok) { p2.set_value(ok); });
+    CPPUNIT_ASSERT(p2.get_future().get());
+
+    std::this_thread::sleep_for(2s);
+
+    auto vals1 = restored.get(key1).get();
+    auto vals2 = restored.get(key2).get();
+    CPPUNIT_ASSERT(vals1.size() + vals2.size() <= 1);
+
+    restored.shutdown();
+    restored.join();
+}
+
+void
 DhtRunnerTester::testListen()
 {
     std::mutex mutex;
