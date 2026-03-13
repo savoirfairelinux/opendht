@@ -38,8 +38,11 @@
 #include "../src/search.h"
 
 // Hack to test internal classes
+#include "../src/base64.cpp"
+#include "../src/default_types.cpp"
 #include "../src/op_cache.cpp"
 #include "../src/routing_table.cpp"
+#include "../src/value.cpp"
 #include "../src/dht.cpp"
 #include "../src/node.cpp"
 #include "../src/node_cache.cpp"
@@ -500,12 +503,13 @@ NetworkEngineTester::testUnauthorizedListenFlushClearsListenState()
 
     localDht.searches(AF_INET).emplace(sr->id, sr);
 
-    auto failingReq = std::make_shared<net::Request>(MessageType::Listen,
-                                                     node->getNewTid(),
-                                                     node,
-                                                     Blob {},
-                                                     [](const net::Request&, ParsedMessage&&) {},
-                                                     [](const net::Request&, bool) {});
+    auto failingReq = std::make_shared<net::Request>(
+        MessageType::Listen,
+        node->getNewTid(),
+        node,
+        Blob {},
+        [](const net::Request&, ParsedMessage&&) {},
+        [](const net::Request&, bool) {});
 
     localDht.onError(failingReq,
                      net::DhtProtocolException {net::DhtProtocolException::UNAUTHORIZED,
