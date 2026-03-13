@@ -1376,7 +1376,7 @@ DhtProxyClient::resubscribe([[maybe_unused]] const InfoHash& key,
 
     restinio::http_request_header_t header;
     header.method(restinio::http_method_subscribe());
-    header.request_target("/" + key.toString());
+    header.request_target("/key/" + key.toString());
     if (!listener.refreshSubscriberTimer) {
         listener.refreshSubscriberTimer = std::make_unique<asio::steady_timer>(httpContext_);
     }
