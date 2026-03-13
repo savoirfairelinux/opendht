@@ -579,16 +579,16 @@ private:
      */
     void resetDht();
 
-    mutable std::mutex dht_mtx {};
+    mutable std::mutex dht_mtx;
     std::thread dht_thread {};
     std::condition_variable cv {};
-    std::mutex sock_mtx {};
+    std::mutex sock_mtx;
     net::PacketList rcv {};
     decltype(rcv) rcv_free {};
 
     std::queue<std::function<void(SecureDht&)>> pending_ops_prio {};
     std::queue<std::function<void(SecureDht&)>> pending_ops {};
-    std::mutex storage_mtx {};
+    std::mutex storage_mtx;
 
     std::atomic<State> running {State::Idle};
     std::atomic_size_t ongoing_ops {0};

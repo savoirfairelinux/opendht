@@ -196,7 +196,7 @@ private:
     const LogMethod logger_ = {};
     const std::string tag_ {};
     const std::string prefix_ {};
-    std::mutex children_mutex_ {};
+    std::mutex children_mutex_;
     std::vector<std::weak_ptr<Logger>> children_ {};
     bool enable_ {true};
 };

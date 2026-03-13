@@ -53,7 +53,7 @@ public:
     void detach();
 
 private:
-    std::mutex lock_ {};
+    std::mutex lock_;
     std::condition_variable cv_ {};
     std::queue<std::function<void()>> tasks_ {};
     std::vector<std::unique_ptr<std::thread>> threads_;
@@ -81,7 +81,7 @@ public:
 private:
     std::reference_wrapper<ThreadPool> threadPool_;
     const unsigned maxConcurrent_ {1};
-    std::mutex lock_ {};
+    std::mutex lock_;
     unsigned current_ {0};
     std::queue<std::function<void()>> tasks_ {};
 
@@ -114,7 +114,7 @@ public:
 private:
     struct SharedState
     {
-        std::mutex mtx {};
+        std::mutex mtx;
         std::condition_variable cv {};
         unsigned pendingTasks {0};
         unsigned ongoingTasks {0};

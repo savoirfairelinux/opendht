@@ -214,7 +214,7 @@ private:
     PrivateKey& operator=(const PrivateKey&) = delete;
     Blob decryptBloc(const uint8_t* src, size_t src_size) const;
 
-    mutable std::mutex publicKeyMutex_ {};
+    mutable std::mutex publicKeyMutex_;
     mutable std::shared_ptr<PublicKey> publicKey_ {};
 };
 
@@ -685,7 +685,7 @@ private:
 
     std::set<std::shared_ptr<RevocationList>, crlNumberCmp> revocation_lists;
 
-    mutable std::mutex publicKeyMutex_ {};
+    mutable std::mutex publicKeyMutex_;
     mutable std::shared_ptr<PublicKey> publicKey_ {};
 };
 

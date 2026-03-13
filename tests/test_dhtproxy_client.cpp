@@ -3,6 +3,9 @@
 
 #include "test_dhtproxy_client.h"
 
+#include <any>
+#include <mutex>
+
 #if defined(__clang__)
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wkeyword-macro"
