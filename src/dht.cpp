@@ -1844,15 +1844,18 @@ std::string
 Dht::getStorageLog() const
 {
     std::ostringstream out;
-    for (const auto& s : store)
-        out << printStorageLog(s);
+    for (const auto& s : store) {
+        const auto& st = s.second;
+        out << "Storage " << s.first << " " << st.listeners.size() << " list., " << st.valueCount() << " values, "
+            << printByteCount(st.totalSize()) << "\n";
+    }
     out << std::endl << std::endl;
     std::multimap<size_t, const SockAddr*> q_map;
     for (const auto& ip : store_quota)
         if (ip.second.size())
             q_map.emplace(ip.second.size(), &ip.first);
     for (auto ip = q_map.rbegin(); ip != q_map.rend(); ++ip)
-        out << "IP " << ip->second->toString() << " uses " << ip->first << " bytes" << std::endl;
+        out << "IP " << ip->second->toString() << " uses " << printByteCount(ip->first) << std::endl;
     out << std::endl;
     out << "Total " << store.size() << " storages, " << total_values << " values (";
     if (total_store_size < 1024)
@@ -1875,11 +1878,8 @@ std::string
 Dht::getStorageLog(const InfoHash& h) const
 {
     auto s = store.find(h);
-    if (s == store.end()) {
-        std::ostringstream out;
-        out << "Storage " << h << " empty" << std::endl;
-        return out.str();
-    }
+    if (s == store.end())
+        return fmt::format("Storage {} empty\n", h);
     return printStorageLog(*s);
 }
 
@@ -1889,8 +1889,14 @@ Dht::printStorageLog(const decltype(store)::value_type& s) const
     std::ostringstream out;
     using namespace std::chrono;
     const auto& st = s.second;
-    out << "Storage " << s.first << " " << st.listeners.size() << " list., " << st.valueCount() << " values ("
-        << st.totalSize() << " bytes)" << std::endl;
+    const auto& now = scheduler.time();
+    out << "Storage " << s.first << " " << st.listeners.size() << " list., " << st.valueCount() << " values, "
+        << printByteCount(st.totalSize()) << std::endl;
+    for (const auto& v : st.getValues()) {
+        out << "   Value " << v.data->id << " size: " << printByteCount(v.data->size())
+            << " created: " << print_time_relative(now, v.created)
+            << " expires: " << print_time_relative(now, v.expiration) << std::endl;
+    }
     if (not st.local_listeners.empty())
         out << "   " << st.local_listeners.size() << " local listeners" << std::endl;
     for (const auto& node_listeners : st.listeners) {
