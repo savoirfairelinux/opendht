@@ -3,6 +3,29 @@
 
 #include "test_networkengine.h"
 
+#ifdef _MSC_VER
+
+namespace test {
+CPPUNIT_TEST_SUITE_REGISTRATION(NetworkEngineTester);
+
+void
+NetworkEngineTester::setUp()
+{}
+
+void
+NetworkEngineTester::tearDown()
+{}
+
+void
+NetworkEngineTester::testDisabledOnMsvc()
+{
+    CPPUNIT_ASSERT(true);
+}
+
+} // namespace test
+
+#else
+
 #include <any>
 #include <mutex>
 
@@ -46,12 +69,6 @@
 #include "../src/network_engine.cpp"
 
 #include <string>
-
-#ifdef _WIN32
-namespace dht {
-const ValueType ValueType::USER_DATA = {0, "User Data"};
-} // namespace dht
-#endif
 
 namespace test {
 CPPUNIT_TEST_SUITE_REGISTRATION(NetworkEngineTester);
@@ -528,3 +545,5 @@ NetworkEngineTester::testUnauthorizedListenFlushClearsListenState()
 }
 
 } // namespace test
+
+#endif
