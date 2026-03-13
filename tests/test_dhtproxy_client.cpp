@@ -52,4 +52,39 @@ DhtProxyClientTester::testResubscribeUsesKeyRoute()
 #endif
 }
 
+void
+DhtProxyClientTester::testSetPushNotificationTokenResubscribesWithNewToken()
+{
+#ifdef OPENDHT_PUSH_NOTIFICATIONS
+    DhtProxyClient client({}, {}, [] {}, "http://127.0.0.1:8080", "OpenDHT-Test", "client-id", "old-token");
+
+    client.statusIpv4_ = NodeStatus::Connected;
+
+    auto key = InfoHash::get("proxy-client-token-rotation");
+    auto& search = client.searches_[key];
+    auto [it, inserted] = search.listeners.emplace(std::piecewise_construct,
+                                                   std::forward_as_tuple(1),
+                                                   std::forward_as_tuple(OpValueCache(
+                                                       [](const std::vector<Sp<Value>>&, bool) { return true; })));
+    CPPUNIT_ASSERT(inserted);
+
+    auto& listener = it->second;
+    listener.opstate = std::make_shared<DhtProxyClient::OperationState>();
+    listener.cb = [](const std::vector<Sp<Value>>&, bool, system_clock::time_point) {
+        return true;
+    };
+
+    client.setPushNotificationToken("new-token");
+
+    CPPUNIT_ASSERT(listener.request);
+    CPPUNIT_ASSERT_EQUAL(std::string("/key/") + key.toString(), std::string(listener.request->header_.request_target()));
+    CPPUNIT_ASSERT(listener.request->body_.find("new-token") != std::string::npos);
+    CPPUNIT_ASSERT(listener.request->body_.find("old-token") == std::string::npos);
+    CPPUNIT_ASSERT(listener.request->body_.find("\"refresh\"") != std::string::npos);
+    CPPUNIT_ASSERT(listener.request->body_.find("true") != std::string::npos);
+#else
+    CPPUNIT_ASSERT(true);
+#endif
+}
+
 } // namespace test

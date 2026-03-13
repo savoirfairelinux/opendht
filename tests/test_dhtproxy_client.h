@@ -11,10 +11,12 @@ class DhtProxyClientTester : public CppUnit::TestFixture
 {
     CPPUNIT_TEST_SUITE(DhtProxyClientTester);
     CPPUNIT_TEST(testResubscribeUsesKeyRoute);
+    CPPUNIT_TEST(testSetPushNotificationTokenResubscribesWithNewToken);
     CPPUNIT_TEST_SUITE_END();
 
 public:
     void testResubscribeUsesKeyRoute();
+    void testSetPushNotificationTokenResubscribesWithNewToken();
 };
 
 } // namespace test
