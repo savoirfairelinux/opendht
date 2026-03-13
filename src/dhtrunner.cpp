@@ -161,6 +161,16 @@ DhtRunner::run(const Config& config, Context&& context)
                 outConfig << context.sock->getBoundRef(AF_INET).getPort() << std::endl;
                 outConfig << context.sock->getBoundRef(AF_INET6).getPort() << std::endl;
             }
+
+            // Cache bound addresses for lock-free access from getBoundPort()
+            {
+                std::lock_guard bound_lck(bound_mtx_);
+                bound4_ = context.sock->getBound(AF_INET);
+                bound6_ = context.sock->getBound(AF_INET6);
+            }
+            boundPort4_.store(context.sock->getPort(AF_INET), std::memory_order_relaxed);
+            boundPort6_.store(context.sock->getPort(AF_INET6), std::memory_order_relaxed);
+
             auto dht = std::make_unique<Dht>(std::move(context.sock),
                                              SecureDht::getConfig(config.dht_config),
                                              context.logger,
@@ -393,26 +403,30 @@ DhtRunner::join()
         status4 = NodeStatus::Disconnected;
         status6 = NodeStatus::Disconnected;
     }
+
+    // Clear cached bound addresses
+    {
+        std::lock_guard lck(bound_mtx_);
+        bound4_ = {};
+        bound6_ = {};
+    }
+    boundPort4_.store(0, std::memory_order_relaxed);
+    boundPort6_.store(0, std::memory_order_relaxed);
 }
 
 SockAddr
 DhtRunner::getBound(sa_family_t af) const
 {
-    std::lock_guard<std::mutex> lck(dht_mtx);
-    if (dht_)
-        if (auto sock = dht_->getSocket())
-            return sock->getBound(af);
-    return SockAddr {};
+    std::lock_guard lck(bound_mtx_);
+    return (af == AF_INET6) ? bound6_ : bound4_;
 }
 
 in_port_t
 DhtRunner::getBoundPort(sa_family_t af) const
 {
-    std::lock_guard<std::mutex> lck(dht_mtx);
-    if (dht_)
-        if (auto sock = dht_->getSocket())
-            return sock->getPort(af);
-    return 0;
+    // Use cached atomic values to avoid blocking on dht_mtx
+    // which may be held during potentially blocking periodic() calls
+    return (af == AF_INET6) ? boundPort6_.load(std::memory_order_relaxed) : boundPort4_.load(std::memory_order_relaxed);
 }
 
 void
