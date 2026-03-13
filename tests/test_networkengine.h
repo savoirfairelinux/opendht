@@ -15,6 +15,7 @@ class NetworkEngineTester : public CppUnit::TestFixture
     CPPUNIT_TEST(testKeepsSessionForWrongSourceFragment);
     CPPUNIT_TEST(testListenConfirmationCarriesToken);
     CPPUNIT_TEST(testListenReopensSocketAfterNodeExpiration);
+    CPPUNIT_TEST(testUnauthorizedListenFlushClearsListenState);
     CPPUNIT_TEST_SUITE_END();
 
 public:
@@ -26,6 +27,7 @@ public:
     void testKeepsSessionForWrongSourceFragment();
     void testListenConfirmationCarriesToken();
     void testListenReopensSocketAfterNodeExpiration();
+    void testUnauthorizedListenFlushClearsListenState();
 };
 
 } // namespace test

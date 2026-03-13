@@ -870,6 +870,12 @@ if (BUILD_TESTING)
         tests/test_networkengine.h
         tests/test_networkengine.cpp
     )
+    if (OPENDHT_PROXY_CLIENT)
+        list (APPEND test_FILES
+            tests/test_dhtproxy_client.h
+            tests/test_dhtproxy_client.cpp
+        )
+    endif()
     if (OPENDHT_TESTS_NETWORK)
         if (OPENDHT_PROXY_SERVER AND OPENDHT_PROXY_CLIENT)
             list (APPEND test_FILES

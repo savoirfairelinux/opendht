@@ -404,4 +404,63 @@ NetworkEngineTester::testListenReopensSocketAfterNodeExpiration()
     CPPUNIT_ASSERT(node->getSocket(listenIt->second.socketId));
 }
 
+void
+NetworkEngineTester::testUnauthorizedListenFlushClearsListenState()
+{
+    Config config {};
+    config.max_req_per_sec = -1;
+    config.max_peer_req_per_sec = -1;
+
+    auto rd = std::make_unique<std::mt19937_64>(5);
+    Dht localDht(std::make_unique<TestDatagramSocket>(), config, {}, std::move(rd));
+
+    auto node = std::make_shared<Node>(InfoHash::getRandom(localDht.rd),
+                                       makeIPv4("127.0.0.2", 5005),
+                                       localDht.rd,
+                                       false);
+    auto sr = std::make_shared<Dht::Search>();
+    auto query = std::make_shared<Query>();
+    ValueCallback valueCallback = [](const std::vector<std::shared_ptr<Value>>&, bool) {
+        return true;
+    };
+    dht::SyncCallback syncCallback {};
+
+    sr->id = InfoHash::getRandom(localDht.rd);
+    sr->af = AF_INET;
+
+    auto searchNode = std::make_unique<Dht::SearchNode>(node);
+    auto socketId = node->openSocket([](const Sp<Node>&, net::RequestAnswer&&) {});
+    auto listenIt = searchNode->listenStatus
+                        .emplace(std::piecewise_construct,
+                                 std::forward_as_tuple(query),
+                                 std::forward_as_tuple(valueCallback, syncCallback, socketId))
+                        .first;
+    listenIt->second.req = std::make_shared<net::Request>();
+    listenIt->second.refresh = localDht.scheduler.add(localDht.scheduler.time() + std::chrono::seconds(1), [] {});
+    searchNode->token = Blob {0x10, 0x11, 0x12};
+    searchNode->last_get_reply = localDht.scheduler.time();
+    auto* searchNodePtr = sr->nodes.emplace_back(std::move(searchNode)).get();
+
+    localDht.searches(AF_INET).emplace(sr->id, sr);
+
+    auto failingReq = std::make_shared<net::Request>(MessageType::Listen,
+                                                     node->getNewTid(),
+                                                     node,
+                                                     Blob {},
+                                                     [](const net::Request&, ParsedMessage&&) {},
+                                                     [](const net::Request&, bool) {});
+
+    localDht.onError(failingReq,
+                     net::DhtProtocolException {net::DhtProtocolException::UNAUTHORIZED,
+                                                net::DhtProtocolException::LISTEN_WRONG_TOKEN});
+
+    CPPUNIT_ASSERT(searchNodePtr->token.empty());
+    CPPUNIT_ASSERT(searchNodePtr->last_get_reply == time_point::min());
+
+    auto listenStatusIt = searchNodePtr->listenStatus.find(query);
+    CPPUNIT_ASSERT(listenStatusIt != searchNodePtr->listenStatus.end());
+    CPPUNIT_ASSERT(!listenStatusIt->second.req);
+    CPPUNIT_ASSERT(!listenStatusIt->second.refresh);
+}
+
 } // namespace test
