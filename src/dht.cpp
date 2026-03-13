@@ -2532,6 +2532,16 @@ Dht::onError(Sp<net::Request> req, net::DhtProtocolException e)
                     continue;
                 n->token.clear();
                 n->last_get_reply = time_point::min();
+                for (auto& listen : n->listenStatus) {
+                    if (listen.second.req and listen.second.req->pending())
+                        n->node->cancelRequest(listen.second.req);
+                    listen.second.req = {};
+                    if (listen.second.refresh) {
+                        listen.second.refresh->cancel();
+                        listen.second.refresh = {};
+                    }
+                    listen.second.cache.onSynced(false);
+                }
                 searchSendGetValues(sr);
                 scheduler.edit(sr->nextSearchStep, scheduler.time());
                 break;
