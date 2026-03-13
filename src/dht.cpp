@@ -654,6 +654,19 @@ Dht::searchSynchedNodeListen(const Sp<Search>& sr, SearchNode& n)
     for (const auto& l : sr->listeners) {
         const auto& query = l.second.query;
 
+        auto openListenSocket = [this, ws, query, node = n.node] {
+            return node->openSocket([this, ws, query](const Sp<Node>& node, net::RequestAnswer&& answer) mutable {
+                /* on new values */
+                if (auto sr = ws.lock()) {
+                    scheduler.edit(sr->nextSearchStep, scheduler.time());
+                    sr->insertNode(node, scheduler.time(), answer.ntoken);
+                    if (auto sn = sr->getNode(node)) {
+                        sn->onValues(query, std::move(answer), types, scheduler);
+                    }
+                }
+            });
+        };
+
         auto r = n.listenStatus.find(query);
         if (n.getListenTime(r, listenExp) > scheduler.time())
             continue;
@@ -667,19 +680,7 @@ Dht::searchSynchedNodeListen(const Sp<Search>& sr, SearchNode& n)
                              std::forward_as_tuple(query),
                              std::forward_as_tuple(l.second.get_cb,
                                                    l.second.sync_cb,
-                                                   n.node->openSocket([this,
-                                                                       ws,
-                                                                       query](const Sp<Node>& node,
-                                                                              net::RequestAnswer&& answer) mutable {
-                                                       /* on new values */
-                                                       if (auto sr = ws.lock()) {
-                                                           scheduler.edit(sr->nextSearchStep, scheduler.time());
-                                                           sr->insertNode(node, scheduler.time(), answer.ntoken);
-                                                           if (auto sn = sr->getNode(node)) {
-                                                               sn->onValues(query, std::move(answer), types, scheduler);
-                                                           }
-                                                       }
-                                                   })))
+                                                   openListenSocket()))
                     .first;
             r->second.cacheExpirationJob = scheduler.add(time_point::max(), [this, ws, query, node = n.node] {
                 if (auto sr = ws.lock()) {
@@ -688,6 +689,8 @@ Dht::searchSynchedNodeListen(const Sp<Search>& sr, SearchNode& n)
                     }
                 }
             });
+        } else if (not n.node->getSocket(r->second.socketId)) {
+            r->second.socketId = openListenSocket();
         }
         auto new_req = network_engine.sendListen(
             n.node,
