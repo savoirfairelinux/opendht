@@ -200,11 +200,20 @@ DhtRunnerTester::testImportValuesPreservesStoredExpiration()
     node1.registerInsecureType(SHORT_LIVED_TYPE);
 
     auto key = dht::InfoHash::get("import-expiration");
-    auto value = std::make_shared<dht::Value>(SHORT_LIVED_TYPE.id, std::string("short-lived"));
+    auto now = dht::clock::now();
+    auto created = now;
+    auto expiration = now + SHORT_LIVED_TYPE.expiration;
 
-    std::promise<bool> putDone;
-    node1.put(key, value, [&](bool ok) { putDone.set_value(ok); });
-    CPPUNIT_ASSERT(putDone.get_future().get());
+    msgpack::sbuffer buffer;
+    msgpack::packer<msgpack::sbuffer> pk(&buffer);
+    pk.pack_array(1);
+    pk.pack_array(4);
+    pk.pack(created.time_since_epoch().count());
+    dht::Value {SHORT_LIVED_TYPE.id, std::string("short-lived")}.msgpack_pack(pk);
+    pk.pack_bin(0);
+    pk.pack(expiration.time_since_epoch().count());
+
+    node1.importValues({dht::ValuesExport {key, {buffer.data(), buffer.data() + buffer.size()}}});
 
     auto exported = node1.exportValues();
     CPPUNIT_ASSERT(!exported.empty());
@@ -233,6 +242,89 @@ DhtRunnerTester::testImportValuesPreservesStoredExpiration()
 
     restored.shutdown();
     restored.join();
+}
+
+void
+DhtRunnerTester::testBootstrapSetsConnectingState()
+{
+    node1.shutdown();
+    node1.join();
+    node2.shutdown();
+    node2.join();
+
+    dht::DhtRunner::Config config;
+    config.dht_config.node_config.max_peer_req_per_sec = -1;
+    config.dht_config.node_config.max_req_per_sec = -1;
+    config.dht_config.node_config.max_store_size = -1;
+    config.dht_config.node_config.max_store_keys = -1;
+
+    std::mutex mutex;
+    std::condition_variable cv;
+    bool sawConnecting {false};
+
+    dht::DhtRunner::Context context;
+    context.statusChangedCallback = [&](dht::NodeStatus status4, dht::NodeStatus status6) {
+        std::lock_guard<std::mutex> lock(mutex);
+        sawConnecting = sawConnecting || status4 == dht::NodeStatus::Connecting || status6 == dht::NodeStatus::Connecting;
+        cv.notify_all();
+    };
+
+    dht::DhtRunner bootstrapNode;
+    dht::DhtRunner clientNode;
+    bootstrapNode.run(0, config);
+    clientNode.run(config, std::move(context));
+
+    auto bound = bootstrapNode.getBound();
+    if (bound.isUnspecified())
+        bound.setLoopback();
+
+    clientNode.bootstrap("127.0.0.1", std::to_string(bound.getPort()).c_str());
+
+    std::unique_lock<std::mutex> lock(mutex);
+    CPPUNIT_ASSERT(cv.wait_for(lock, 5s, [&] { return sawConnecting; }));
+
+    bootstrapNode.shutdown();
+    bootstrapNode.join();
+    clientNode.shutdown();
+    clientNode.join();
+}
+
+void
+DhtRunnerTester::testBootstrapThenPutNoRace()
+{
+    node1.shutdown();
+    node1.join();
+    node2.shutdown();
+    node2.join();
+
+    dht::DhtRunner::Config config;
+    config.dht_config.node_config.max_peer_req_per_sec = -1;
+    config.dht_config.node_config.max_req_per_sec = -1;
+    config.dht_config.node_config.max_store_size = -1;
+    config.dht_config.node_config.max_store_keys = -1;
+
+    dht::DhtRunner bootstrapNode;
+    dht::DhtRunner clientNode;
+    bootstrapNode.run(0, config);
+    clientNode.run(0, config);
+
+    auto bound = bootstrapNode.getBound();
+    if (bound.isUnspecified())
+        bound.setLoopback();
+
+    clientNode.bootstrap(bound);
+
+    std::promise<bool> putDone;
+    clientNode.put(dht::InfoHash::get("bootstrap-then-put"), dht::Value {"value"}, [&](bool ok) { putDone.set_value(ok); });
+    CPPUNIT_ASSERT(putDone.get_future().get());
+
+    auto vals = bootstrapNode.get(dht::InfoHash::get("bootstrap-then-put")).get();
+    CPPUNIT_ASSERT(!vals.empty());
+
+    bootstrapNode.shutdown();
+    bootstrapNode.join();
+    clientNode.shutdown();
+    clientNode.join();
 }
 
 void
