@@ -32,14 +32,21 @@ meson setup build . && cd build && ninja
 ctest --output-on-failure --test-dir build
 
 # Single test executable
-./build/test_dhtrunner
-./build/test_crypto
-./build/test_value
-./build/test_infohash
-./build/test_storage
-./build/test_threadpool
+./build/test_testName
 ```
-Network-dependent tests (`test_http`, `test_dhtproxy`, `test_peerdiscovery`) require their corresponding CMake features enabled at configure time.
+
+## dhtnode
+
+The `dhtnode` CLI tool is a simple DHT node implementation using `DhtRunner`.
+
+---
+
+## Commit
+
+After implementing a feature or fixing a bug, commit your changes in clean, atomic commits with descriptive messages with format:
+`topic: short description`
+
+If any test are added or modified, commit them separately before the fix (if any).
 
 ---
 
@@ -65,7 +72,3 @@ DhtRunner          (public API — thread-safe, manages lifecycle & I/O threads)
 Optional components (`DhtProxyServer`, `DhtProxyClient`, `PeerDiscovery`) are compiled in only when the corresponding CMake options are enabled.
 
 ---
-
-## dhtnode
-
-The `dhtnode` CLI tool is a simple DHT node implementation using `DhtRunner`.
