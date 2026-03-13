@@ -54,6 +54,9 @@
 #include <sstream>
 #include <fstream>
 
+namespace dht {
+namespace tools {
+
 /*
  * The mapString shall have the following format:
  *
@@ -117,21 +120,6 @@ loadFile(const std::string& path)
     if (!file.read((char*) buffer.data(), size))
         throw std::runtime_error("Can't load file: " + path);
     return buffer;
-}
-
-std::string
-printByteCount(size_t bytes)
-{
-    static constexpr std::string_view suffixes[] = {"B", "KB", "MB", "GB", "TB"};
-    size_t suffixIndex = 0;
-    double count = static_cast<double>(bytes);
-    while (count >= 1024 && suffixIndex < std::size(suffixes) - 1) {
-        count /= 1024;
-        suffixIndex++;
-    }
-    if (suffixIndex == 0)
-        return fmt::format("{} {}", bytes, suffixes[suffixIndex]);
-    return fmt::format("{:.2f} {} ({} bytes)", count, suffixes[suffixIndex], bytes);
 }
 
 struct dht_params
@@ -504,3 +492,6 @@ daemonize()
     close(STDERR_FILENO);
 #endif
 }
+
+} // namespace tools
+} // namespace dht

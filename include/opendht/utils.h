@@ -126,6 +126,8 @@ print_time_relative(TimePoint now, TimePoint d)
     return (d > now) ? concat("in "sv, print_duration(d - now)) : concat(print_duration(now - d), " ago"sv);
 }
 
+OPENDHT_PUBLIC std::string printByteCount(size_t bytes);
+
 template<typename Duration = duration>
 class uniform_duration_distribution : public std::uniform_int_distribution<typename Duration::rep>
 {

@@ -12,10 +12,10 @@ extern "C" {
 }
 #include <ctime>
 
-using namespace dht;
+namespace dht {
+namespace tools {
 
 static std::mt19937_64 rd {dht::crypto::getSeededRandomEngine<std::mt19937_64>()};
-static std::uniform_int_distribution<dht::Value::Id> rand_id;
 
 const std::string
 printTime(const std::time_t& now)
@@ -34,12 +34,18 @@ print_usage()
     std::cout << "Report bugs to: https://opendht.net" << std::endl;
 }
 
+} // namespace tools
+} // namespace dht
+
 int
 main(int argc, char** argv)
 {
-    auto params = parseArgs(argc, argv);
+    using namespace dht;
+    using IdDist = std::uniform_int_distribution<dht::Value::Id>;
+
+    auto params = tools::parseArgs(argc, argv);
     if (params.help) {
-        print_usage();
+        tools::print_usage();
         return 0;
     }
 #ifdef _MSC_VER
@@ -58,14 +64,14 @@ main(int argc, char** argv)
         if (not params.bootstrap.empty())
             dht.bootstrap(params.bootstrap);
 
-        print_node_info(dht.getNodeInfo());
+        tools::print_node_info(dht.getNodeInfo());
         std::cout << "  type 'c {hash}' to join a channel" << std::endl << std::endl;
 
         bool connected {false};
         InfoHash room;
         std::future<size_t> token;
 
-        const InfoHash myid = dht.getId();
+        const auto mypk = dht.getPublicKey();
 
 #ifndef _MSC_VER
         // using the GNU History API
@@ -74,7 +80,7 @@ main(int argc, char** argv)
 
         while (true) {
             // using the GNU Readline API
-            std::string line = readLine(connected ? PROMPT : "> ");
+            std::string line = tools::readLine(connected ? tools::PROMPT : "> ");
             if (!line.empty() && line[0] == '\0')
                 break;
             if (line.empty())
@@ -95,12 +101,12 @@ main(int argc, char** argv)
                     }
 
                     token = dht.listen<dht::ImMessage>(room, [&](dht::ImMessage&& msg) {
-                        if (msg.from != myid)
-                            std::cout << msg.from.toString() << " at " << printTime(msg.date) << " (took "
+                        if (msg.owner && msg.owner->getLongId() != mypk->getLongId())
+                            std::cout << msg.from.toString() << " at " << tools::printTime(msg.date) << " (took "
                                       << print_duration(std::chrono::system_clock::now()
                                                         - std::chrono::system_clock::from_time_t(msg.date))
-                                      << ") " << (msg.to == myid ? "ENCRYPTED " : "") << ": " << msg.id << " - "
-                                      << msg.msg << std::endl;
+                                      << ") " << (msg.to == mypk->getId() ? "ENCRYPTED " : "") << ": " << msg.id
+                                      << " - " << msg.msg << std::endl;
                         return true;
                     });
                     connected = true;
@@ -118,14 +124,14 @@ main(int argc, char** argv)
                     std::getline(iss, line);
                     dht.putEncrypted(room,
                                      InfoHash(idstr),
-                                     dht::ImMessage(rand_id(rd), std::move(line), now),
+                                     dht::ImMessage(IdDist()(tools::rd), std::move(line), now),
                                      [](bool ok) {
                                          // dht.cancelPut(room, id);
                                          if (not ok)
                                              std::cout << "Message publishing failed !" << std::endl;
                                      });
                 } else {
-                    dht.putSigned(room, dht::ImMessage(rand_id(rd), std::move(line), now), [](bool ok) {
+                    dht.putSigned(room, dht::ImMessage(IdDist()(tools::rd), std::move(line), now), [](bool ok) {
                         // dht.cancelPut(room, id);
                         if (not ok)
                             std::cout << "Message publishing failed !" << std::endl;

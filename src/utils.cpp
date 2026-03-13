@@ -296,4 +296,19 @@ findMapValue(const msgpack::object& map, const char* key, size_t key_length)
     return nullptr;
 }
 
+std::string
+printByteCount(size_t bytes)
+{
+    static constexpr std::string_view suffixes[] = {"B", "KB", "MB", "GB", "TB"};
+    size_t suffixIndex = 0;
+    double count = static_cast<double>(bytes);
+    while (count >= 1024 && suffixIndex < std::size(suffixes) - 1) {
+        count /= 1024;
+        suffixIndex++;
+    }
+    if (suffixIndex == 0)
+        return fmt::format("{} {}", bytes, suffixes[suffixIndex]);
+    return fmt::format("{:.2f} {} ({} bytes)", count, suffixes[suffixIndex], bytes);
+}
+
 } // namespace dht

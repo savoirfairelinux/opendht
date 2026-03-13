@@ -15,7 +15,8 @@ extern "C" {
 #include <condition_variable>
 #include <mutex>
 
-using namespace dht;
+namespace dht {
+namespace tools {
 
 void
 print_usage()
@@ -82,9 +83,13 @@ step(DhtRunner& dht, std::atomic_uint& done, std::shared_ptr<NodeSet> all_nodes,
         });
 }
 
+} // namespace tools
+} // namespace dht
+
 int
 main(int argc, char** argv)
 {
+    using namespace dht::tools;
 #ifdef _MSC_VER
     if (auto err = gnutls_global_init()) {
         fmt::print(stderr, "Failed to initialize GnuTLS: {}\n", gnutls_strerror(err));
@@ -97,7 +102,7 @@ main(int argc, char** argv)
         return EXIT_SUCCESS;
     }
 
-    DhtRunner dht;
+    dht::DhtRunner dht;
     try {
         auto [config, context] = getDhtConfig(params);
         config.dht_config.node_config.client_mode = true;

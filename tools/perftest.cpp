@@ -14,6 +14,14 @@ extern "C" {
 #include <mutex>
 #include <atomic>
 
+namespace dht {
+namespace tests {
+
+constexpr unsigned PINGPONG_MAX = 2048;
+
+using clock = std::chrono::high_resolution_clock;
+using duration = clock::duration;
+
 void
 print_usage()
 {
@@ -21,14 +29,6 @@ print_usage()
     std::cout << "perftest, a simple OpenDHT basic performance tester." << std::endl;
     std::cout << "Report bugs to: https://opendht.net" << std::endl;
 }
-constexpr unsigned PINGPONG_MAX = 2048;
-using namespace dht;
-
-namespace tests {
-
-using clock = std::chrono::high_resolution_clock;
-using duration = clock::duration;
-
 duration
 benchPingPong(unsigned netSize, unsigned n_parallel)
 {
@@ -115,10 +115,13 @@ benchPingPong(unsigned netSize, unsigned n_parallel)
 }
 
 } // namespace tests
+} // namespace dht
 
 int
 main(int argc, char** argv)
 {
+    using namespace dht::tools;
+    using namespace dht::tests;
 #ifdef _MSC_VER
     if (auto err = gnutls_global_init()) {
         std::cerr << "Failed to initialize GnuTLS: " << gnutls_strerror(err) << std::endl;
@@ -140,10 +143,10 @@ main(int argc, char** argv)
         results.reserve(8);
         duration total {0};
         for (unsigned i = 2; i < 32; i *= 2) {
-            auto dt = tests::benchPingPong(i - 2, nparallel);
+            auto dt = benchPingPong(i - 2, nparallel);
             std::cout << "Network size: " << i << std::endl;
-            std::cout << max << " ping-pong done, took " << print_duration(dt) << std::endl;
-            std::cout << print_duration(dt / max) << " per rt, " << max / std::chrono::duration<double>(dt).count()
+            std::cout << max << " ping-pong done, took " << dht::print_duration(dt) << std::endl;
+            std::cout << dht::print_duration(dt / max) << " per rt, " << max / std::chrono::duration<double>(dt).count()
                       << " ping per s" << std::endl
                       << std::endl;
             total += dt;
@@ -155,14 +158,14 @@ main(int argc, char** argv)
 
         std::cout << "Total for " << nparallel << std::endl;
         auto totNum = max * results.size();
-        std::cout << totNum << " ping-pong done, took " << print_duration(total) << std::endl;
-        std::cout << print_duration(total / totNum) << " per rt, "
+        std::cout << totNum << " ping-pong done, took " << dht::print_duration(total) << std::endl;
+        std::cout << dht::print_duration(total / totNum) << " per rt, "
                   << totNum / std::chrono::duration<double>(total).count() << " ping per s" << std::endl
                   << std::endl;
     }
 
-    std::cout << std::endl << "Grand total: " << print_duration(totalTime) << " for " << totalOps << std::endl;
-    std::cout << print_duration(totalTime / totalOps) << " per rt, "
+    std::cout << std::endl << "Grand total: " << dht::print_duration(totalTime) << " for " << totalOps << std::endl;
+    std::cout << dht::print_duration(totalTime / totalOps) << " per rt, "
               << totalOps / std::chrono::duration<double>(totalTime).count() << " ping per s" << std::endl
               << std::endl;
 

@@ -16,7 +16,8 @@ extern "C" {
 #include <set>
 #include <thread> // std::this_thread::sleep_for
 
-using namespace dht;
+namespace dht {
+namespace tools {
 
 void
 print_info()
@@ -548,9 +549,14 @@ cmd_loop(std::shared_ptr<DhtRunner>& node,
     std::cout << std::endl << "Stopping node..." << std::endl;
 }
 
+} // namespace tools
+} // namespace dht
+
 int
 main(int argc, char** argv)
 {
+    using namespace dht;
+    using namespace dht::tools;
 #ifdef _WIN32
     SetConsoleOutputCP(CP_UTF8);
     SetConsoleCP(CP_UTF8);
