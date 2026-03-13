@@ -1417,11 +1417,17 @@ Dht::storageChanged(const InfoHash& id, Storage& st, const Sp<Value>& v, bool ne
 }
 
 bool
-Dht::storageStore(const InfoHash& id, const Sp<Value>& value, time_point created, const SockAddr& sa, bool permanent)
+Dht::storageStore(const InfoHash& id,
+                  const Sp<Value>& value,
+                  time_point created,
+                  const SockAddr& sa,
+                  bool permanent,
+                  time_point expiration)
 {
     const auto& now = scheduler.time();
     created = std::min(created, now);
-    auto expiration = permanent ? time_point::max() : created + getType(value->type).expiration;
+    if (expiration == time_point::min())
+        expiration = permanent ? time_point::max() : created + getType(value->type).expiration;
     if (expiration < now)
         return false;
 
@@ -2339,7 +2345,7 @@ Dht::exportValues() const
         const auto& vals = h.second.getValues();
         pk.pack_array(vals.size());
         for (const auto& v : vals) {
-            pk.pack_array(3);
+            pk.pack_array(4);
             pk.pack(v.created.time_since_epoch().count());
             v.data->msgpack_pack(pk);
             if (const auto& store_addr = v.store_bucket ? v.store_bucket->getAddr() : SockAddr {}) {
@@ -2348,6 +2354,7 @@ Dht::exportValues() const
             } else {
                 pk.pack_bin(0);
             }
+            pk.pack(v.expiration.time_since_epoch().count());
         }
         ve.second = {buffer.data(), buffer.data() + buffer.size()};
         e.push_back(std::move(ve));
@@ -2379,6 +2386,7 @@ Dht::importValues(const std::vector<ValuesExport>& import)
                 if (valel.type != msgpack::type::ARRAY or valel.via.array.size < 2)
                     throw msgpack::type_error();
                 time_point val_time;
+                time_point expiration = time_point::min();
                 Value tmp_val;
                 SockAddr store_addr;
                 try {
@@ -2392,6 +2400,10 @@ Dht::importValues(const std::vector<ValuesExport>& import)
                                                   static_cast<socklen_t>(addr_blob.size()));
                         }
                     }
+                    if (valel.via.array.size >= 4) {
+                        expiration = time_point {
+                            time_point::duration {valel.via.array.ptr[3].as<time_point::duration::rep>()}};
+                    }
                 } catch (const std::exception&) {
                     if (logger_)
                         logger_->error("Error reading value at {}", value.first.to_view());
@@ -2400,7 +2412,12 @@ Dht::importValues(const std::vector<ValuesExport>& import)
                 }
                 val_time = std::min(val_time, now);
                 auto val_size = tmp_val.size();
-                if (storageStore(value.first, std::make_shared<Value>(std::move(tmp_val)), val_time, store_addr)) {
+                if (storageStore(value.first,
+                                 std::make_shared<Value>(std::move(tmp_val)),
+                                 val_time,
+                                 store_addr,
+                                 false,
+                                 expiration)) {
                     imported++;
                     imported_size += val_size;
                 } else {

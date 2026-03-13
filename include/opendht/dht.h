@@ -464,7 +464,8 @@ private:
                       const Sp<Value>& value,
                       time_point created,
                       const SockAddr& sa = {},
-                      bool permanent = false);
+                      bool permanent = false,
+                      time_point expiration = time_point::min());
     bool storageRefresh(const InfoHash& id, Value::Id vid);
     void expireStore();
     void expireStorage(InfoHash h);

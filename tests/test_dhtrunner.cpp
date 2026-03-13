@@ -193,6 +193,49 @@ DhtRunnerTester::testImportValuesPreservesRemoteQuota()
 }
 
 void
+DhtRunnerTester::testImportValuesPreservesStoredExpiration()
+{
+    static const dht::ValueType SHORT_LIVED_TYPE {200, "Short lived", 2s};
+
+    node1.registerInsecureType(SHORT_LIVED_TYPE);
+
+    auto key = dht::InfoHash::get("import-expiration");
+    auto value = std::make_shared<dht::Value>(SHORT_LIVED_TYPE.id, std::string("short-lived"));
+
+    std::promise<bool> putDone;
+    node1.put(key, value, [&](bool ok) { putDone.set_value(ok); });
+    CPPUNIT_ASSERT(putDone.get_future().get());
+
+    auto exported = node1.exportValues();
+    CPPUNIT_ASSERT(!exported.empty());
+
+    dht::DhtRunner restored;
+    dht::DhtRunner::Config config;
+    config.dht_config.node_config.max_peer_req_per_sec = -1;
+    config.dht_config.node_config.max_req_per_sec = -1;
+    config.dht_config.node_config.max_store_size = -1;
+    config.dht_config.node_config.max_store_keys = -1;
+    restored.run(0, config);
+
+    restored.importValues(exported);
+    CPPUNIT_ASSERT(!restored.exportValues().empty());
+
+    std::this_thread::sleep_for(3s);
+
+    auto restoredValues = restored.exportValues();
+    CPPUNIT_ASSERT_EQUAL(size_t(1), restoredValues.size());
+
+    msgpack::unpacked msg;
+    msgpack::unpack(msg, (const char*) restoredValues.front().second.data(), restoredValues.front().second.size());
+    auto valarr = msg.get();
+    CPPUNIT_ASSERT(valarr.type == msgpack::type::ARRAY);
+    CPPUNIT_ASSERT_EQUAL(uint32_t(0), valarr.via.array.size);
+
+    restored.shutdown();
+    restored.join();
+}
+
+void
 DhtRunnerTester::testListen()
 {
     std::mutex mutex;
