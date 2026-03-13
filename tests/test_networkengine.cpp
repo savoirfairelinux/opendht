@@ -353,6 +353,51 @@ NetworkEngineTester::testListenConfirmationCarriesToken()
 }
 
 void
+NetworkEngineTester::testListenConfirmationUpdatesSearchNodeToken()
+{
+    Config config {};
+    config.max_req_per_sec = -1;
+    config.max_peer_req_per_sec = -1;
+
+    auto rd = std::make_unique<std::mt19937_64>(6);
+    Dht localDht(std::make_unique<TestDatagramSocket>(), config, {}, std::move(rd));
+
+    auto node = std::make_shared<Node>(InfoHash::getRandom(localDht.rd),
+                                       makeIPv4("127.0.0.2", 5006),
+                                       localDht.rd,
+                                       false);
+    auto sr = std::make_shared<Dht::Search>();
+    auto query = std::make_shared<Query>();
+    ValueCallback valueCallback = [](const std::vector<std::shared_ptr<Value>>&, bool) {
+        return true;
+    };
+
+    sr->id = InfoHash::getRandom(localDht.rd);
+    sr->af = AF_INET;
+    sr->nextSearchStep = localDht.scheduler.add(time_point::max(), [] {});
+    sr->listeners.emplace(1, Dht::Search::SearchListener {query, valueCallback, {}});
+
+    auto searchNode = std::make_unique<Dht::SearchNode>(node);
+    auto socketId = node->openSocket([](const Sp<Node>&, net::RequestAnswer&&) {});
+    searchNode->listenStatus.emplace(std::piecewise_construct,
+                                     std::forward_as_tuple(query),
+                                     std::forward_as_tuple(valueCallback, dht::SyncCallback {}, socketId));
+    auto* searchNodePtr = sr->nodes.emplace_back(std::move(searchNode)).get();
+
+    CPPUNIT_ASSERT(searchNodePtr->token.empty());
+    CPPUNIT_ASSERT(!searchNodePtr->isSynced(localDht.scheduler.time()));
+
+    net::RequestAnswer answer {};
+    answer.ntoken = Blob {0xaa, 0xbb, 0xcc, 0xdd};
+
+    localDht.onListenDone(node, answer, sr);
+
+    CPPUNIT_ASSERT(searchNodePtr->token == answer.ntoken);
+    CPPUNIT_ASSERT(searchNodePtr->last_get_reply == localDht.scheduler.time());
+    CPPUNIT_ASSERT(searchNodePtr->isSynced(localDht.scheduler.time()));
+}
+
+void
 NetworkEngineTester::testListenReopensSocketAfterNodeExpiration()
 {
     Config config {};
