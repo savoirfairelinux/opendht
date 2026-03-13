@@ -9,7 +9,24 @@
 #include "opendht/utils.h"
 #include "opendht/value.h"
 
+#if defined(__clang__)
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wkeyword-macro"
+#elif defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wpedantic"
+#endif
+#define private public
+#include "opendht/dht.h"
+#undef private
+#if defined(__clang__)
+#pragma clang diagnostic pop
+#elif defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
+
 #include "../src/parsed_message.h"
+#include "../src/search.h"
 
 // Hack to test internal classes
 #include "../src/node.cpp"
@@ -333,6 +350,58 @@ NetworkEngineTester::testListenConfirmationCarriesToken()
     CPPUNIT_ASSERT(reply.type == MessageType::Reply);
     CPPUNIT_ASSERT_EQUAL(myid, reply.id);
     CPPUNIT_ASSERT(reply.token == responseToken);
+}
+
+void
+NetworkEngineTester::testListenReopensSocketAfterNodeExpiration()
+{
+    Config config {};
+    config.max_req_per_sec = -1;
+    config.max_peer_req_per_sec = -1;
+
+    auto rd = std::make_unique<std::mt19937_64>(4);
+    Dht localDht(std::make_unique<TestDatagramSocket>(), config, {}, std::move(rd));
+
+    auto node = std::make_shared<Node>(InfoHash::getRandom(localDht.rd),
+                                       makeIPv4("127.0.0.2", 5004),
+                                       localDht.rd,
+                                       false);
+    auto sr = std::make_shared<Dht::Search>();
+    auto query = std::make_shared<Query>();
+    ValueCallback valueCallback = [](const std::vector<std::shared_ptr<Value>>&, bool) {
+        return true;
+    };
+    dht::SyncCallback syncCallback {};
+
+    sr->id = InfoHash::getRandom(localDht.rd);
+    sr->af = AF_INET;
+    sr->listeners.emplace(1, Dht::Search::SearchListener {query, valueCallback, {}});
+
+    auto searchNode = std::make_unique<Dht::SearchNode>(node);
+    auto staleSocketId = node->openSocket([](const Sp<Node>&, net::RequestAnswer&&) {});
+    auto status = searchNode->listenStatus
+                      .emplace(std::piecewise_construct,
+                               std::forward_as_tuple(query),
+                               std::forward_as_tuple(valueCallback, syncCallback, staleSocketId))
+                      .first;
+    status->second.req = std::make_shared<net::Request>(net::Request::State::COMPLETED);
+    status->second.req->reply_time = time_point::min();
+
+    node->setExpired();
+    CPPUNIT_ASSERT(!node->getSocket(staleSocketId));
+
+    auto* searchNodePtr = sr->nodes.emplace_back(std::move(searchNode)).get();
+    searchNodePtr->token = Blob {0x42};
+    searchNodePtr->last_get_reply = localDht.scheduler.time();
+
+    localDht.searchSynchedNodeListen(sr, *searchNodePtr);
+
+    auto listenIt = searchNodePtr->listenStatus.find(query);
+    CPPUNIT_ASSERT(listenIt != searchNodePtr->listenStatus.end());
+    CPPUNIT_ASSERT(listenIt->second.req);
+    CPPUNIT_ASSERT(listenIt->second.socketId);
+    CPPUNIT_ASSERT(listenIt->second.socketId != staleSocketId);
+    CPPUNIT_ASSERT(node->getSocket(listenIt->second.socketId));
 }
 
 } // namespace test
