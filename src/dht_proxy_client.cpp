@@ -1422,17 +1422,20 @@ void
 DhtProxyClient::setPushNotificationToken([[maybe_unused]] const std::string& token)
 {
 #ifdef OPENDHT_PUSH_NOTIFICATIONS
-    std::unique_lock<std::mutex> l(lockCurrentProxyInfos_);
-    if (deviceKey_ != token) {
+    {
+        std::unique_lock<std::mutex> l(lockCurrentProxyInfos_);
+        if (deviceKey_ == token)
+            return;
         deviceKey_ = token;
-        if (statusIpv4_ == NodeStatus::Connected || statusIpv6_ == NodeStatus::Connected) {
-            if (logger_)
-                logger_->debug("[proxy:client] [push] token changed, resubscribing");
-            for (auto& search : searches_) {
-                for (auto& listener : search.second.listeners) {
-                    resubscribe(search.first, listener.first, listener.second);
-                }
-            }
+        if (!(statusIpv4_ == NodeStatus::Connected || statusIpv6_ == NodeStatus::Connected))
+            return;
+    }
+    if (logger_)
+        logger_->debug("[proxy:client] [push] token changed, resubscribing");
+    std::lock_guard<std::mutex> lock(searchLock_);
+    for (auto& search : searches_) {
+        for (auto& listener : search.second.listeners) {
+            resubscribe(search.first, listener.first, listener.second);
         }
     }
 #endif
