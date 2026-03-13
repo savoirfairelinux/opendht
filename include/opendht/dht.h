@@ -627,7 +627,7 @@ private:
     /* when we receive a listen request */
     net::RequestAnswer onListen(
         Sp<Node> node, const InfoHash& hash, const Blob& token, size_t socket_id, const Query& query, int version = 0);
-    void onListenDone(const Sp<Node>& status, net::RequestAnswer& a, Sp<Search>& sr);
+    void onListenDone(const Sp<Node>& node, net::RequestAnswer& a, Sp<Search>& sr);
     /* when we receive an announce request */
     net::RequestAnswer onAnnounce(Sp<Node> node,
                                   const InfoHash& hash,

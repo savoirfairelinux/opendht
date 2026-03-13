@@ -2704,7 +2704,7 @@ Dht::onListen(Sp<Node> node, const InfoHash& hash, const Blob& token, size_t soc
 }
 
 void
-Dht::onListenDone(const Sp<Node>& /* node */, net::RequestAnswer& /* answer */, Sp<Search>& sr)
+Dht::onListenDone(const Sp<Node>& node, net::RequestAnswer& answer, Sp<Search>& sr)
 {
     // if (logger_)
     //     logger_->d(sr->id, node->id, "[search %s] [node %s] Got listen confirmation",
@@ -2712,6 +2712,7 @@ Dht::onListenDone(const Sp<Node>& /* node */, net::RequestAnswer& /* answer */, 
 
     if (not sr->done) {
         const auto& now = scheduler.time();
+        sr->insertNode(node, now, answer.ntoken);
         searchSendGetValues(sr);
         scheduler.edit(sr->nextSearchStep, now);
     }
