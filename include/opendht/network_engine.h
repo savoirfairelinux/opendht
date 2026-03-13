@@ -547,7 +547,7 @@ private:
     std::pair<Blob, Blob> bufferNodes(
         sa_family_t af, const InfoHash& id, want_t want, std::vector<Sp<Node>>& nodes, std::vector<Sp<Node>>& nodes6);
     /* answer to a listen request */
-    void sendListenConfirmation(const SockAddr& addr, Tid tid);
+    void sendListenConfirmation(const SockAddr& addr, Tid tid, const Blob& token = {});
     /* answer to put request */
     void sendValueAnnounced(const SockAddr& addr, Tid, Value::Id);
     /* answer in case of error */

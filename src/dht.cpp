@@ -2673,7 +2673,9 @@ Dht::onListen(Sp<Node> node, const InfoHash& hash, const Blob& token, size_t soc
     }
     Query q = query;
     storageAddListener(hash, node, socket_id, std::move(q), version);
-    return {};
+    net::RequestAnswer answer {};
+    answer.ntoken = makeToken(node->getAddr(), false);
+    return answer;
 }
 
 void

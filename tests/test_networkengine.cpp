@@ -116,6 +116,35 @@ makeValueDataPacketBlob(Tid tid, unsigned index, size_t offset, const Blob& data
     return {buffer.data(), buffer.data() + buffer.size()};
 }
 
+static Blob
+makeListenPacketBlob(const InfoHash& id, const InfoHash& hash, Tid tid, Tid socketId, const Blob& token)
+{
+    msgpack::sbuffer buffer;
+    msgpack::packer<msgpack::sbuffer> pk(&buffer);
+
+    pk.pack_map(4);
+    pk.pack(KEY_A);
+    pk.pack_map(5);
+    pk.pack(KEY_REQ_ID);
+    pk.pack(id);
+    pk.pack(KEY_VERSION);
+    pk.pack(1);
+    pk.pack(KEY_REQ_H);
+    pk.pack(hash);
+    pk.pack(KEY_REQ_TOKEN);
+    packToken(pk, token);
+    pk.pack(KEY_REQ_SID);
+    pk.pack(socketId);
+    pk.pack(KEY_Q);
+    pk.pack(QUERY_LISTEN);
+    pk.pack(KEY_TID);
+    pk.pack(tid);
+    pk.pack(KEY_Y);
+    pk.pack(KEY_Q);
+
+    return {buffer.data(), buffer.data() + buffer.size()};
+}
+
 static SockAddr
 makeIPv4(const char* ip, in_port_t port)
 {
@@ -245,6 +274,65 @@ NetworkEngineTester::testKeepsSessionForWrongSourceFragment()
 
     CPPUNIT_ASSERT_EQUAL((size_t) 0, engine.getPartialCount());
     CPPUNIT_ASSERT(onNewNodeCalls > 0);
+}
+
+void
+NetworkEngineTester::testListenConfirmationCarriesToken()
+{
+    Scheduler scheduler;
+    std::mt19937_64 rd(3);
+    InfoHash myid = InfoHash::getRandom(rd);
+    InfoHash remoteId = InfoHash::getRandom(rd);
+    InfoHash hash = InfoHash::getRandom(rd);
+    Blob requestToken {0x01, 0x02, 0x03, 0x04};
+    Blob responseToken {0xaa, 0xbb, 0xcc, 0xdd, 0xee};
+    int onNewNodeCalls = 0;
+    net::NetworkConfig config {};
+    config.max_req_per_sec = -1;
+    config.max_peer_req_per_sec = -1;
+
+    auto socket = std::make_unique<TestDatagramSocket>();
+    auto* socketPtr = socket.get();
+    auto engine = net::NetworkEngine(
+        myid,
+        config,
+        std::move(socket),
+        {},
+        rd,
+        scheduler,
+        [](Sp<net::Request>, net::DhtProtocolException) {},
+        [&onNewNodeCalls](const Sp<Node>&, int) { ++onNewNodeCalls; },
+        [](const InfoHash&, const SockAddr&) {},
+        [](Sp<Node>) { return net::RequestAnswer {}; },
+        [](Sp<Node>, const InfoHash&, want_t) { return net::RequestAnswer {}; },
+        [](Sp<Node>, const InfoHash&, want_t, const Query&) { return net::RequestAnswer {}; },
+        [responseToken](Sp<Node>, const InfoHash&, const Blob&, Tid, const Query&, int) {
+            net::RequestAnswer answer {};
+            answer.ntoken = responseToken;
+            return answer;
+        },
+        [](Sp<Node>, const InfoHash&, const Blob&, const std::vector<Sp<Value>>&, const time_point&) {
+            return net::RequestAnswer {};
+        },
+        [](Sp<Node>, const InfoHash&, const Blob&, const Value::Id&) { return net::RequestAnswer {}; });
+
+    auto from = makeIPv4("127.0.0.2", 5003);
+    auto packet = makeListenPacketBlob(remoteId, hash, 17, 23, requestToken);
+
+    engine.processMessage(packet.data(), packet.size(), from);
+
+    CPPUNIT_ASSERT_EQUAL((size_t) 1, socketPtr->sends.size());
+
+    const auto& sent = socketPtr->sends.front();
+    CPPUNIT_ASSERT(sent.dest == from);
+
+    auto replyObject = msgpack::unpack((const char*) sent.data.data(), sent.data.size());
+    ParsedMessage reply;
+    reply.msgpack_unpack(replyObject.get());
+
+    CPPUNIT_ASSERT(reply.type == MessageType::Reply);
+    CPPUNIT_ASSERT_EQUAL(myid, reply.id);
+    CPPUNIT_ASSERT(reply.token == responseToken);
 }
 
 } // namespace test

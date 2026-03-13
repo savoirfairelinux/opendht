@@ -13,6 +13,7 @@ class NetworkEngineTester : public CppUnit::TestFixture
     CPPUNIT_TEST(testIgnoresUnknownPartialData);
     CPPUNIT_TEST(testCompletesPartialSessionFromSameSource);
     CPPUNIT_TEST(testKeepsSessionForWrongSourceFragment);
+    CPPUNIT_TEST(testListenConfirmationCarriesToken);
     CPPUNIT_TEST_SUITE_END();
 
 public:
@@ -22,6 +23,7 @@ public:
     void testIgnoresUnknownPartialData();
     void testCompletesPartialSessionFromSameSource();
     void testKeepsSessionForWrongSourceFragment();
+    void testListenConfirmationCarriesToken();
 };
 
 } // namespace test

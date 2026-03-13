@@ -700,7 +700,7 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
                 RequestAnswer answer
                     = onListen(node, msg->info_hash, msg->token, msg->socket_id, std::move(msg->query), msg->version);
                 auto nnodes = bufferNodes(from.getFamily(), msg->info_hash, msg->want, answer.nodes4, answer.nodes6);
-                sendListenConfirmation(from, msg->tid);
+                sendListenConfirmation(from, msg->tid, answer.ntoken);
                 break;
             }
             case MessageType::UpdateValue: {
@@ -1279,17 +1279,21 @@ NetworkEngine::sendListen(const Sp<Node>& n,
 }
 
 void
-NetworkEngine::sendListenConfirmation(const SockAddr& addr, Tid tid)
+NetworkEngine::sendListenConfirmation(const SockAddr& addr, Tid tid, const Blob& token)
 {
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
     pk.pack_map(4 + (config.network ? 1 : 0) + (config.is_client ? 1 : 0));
 
     pk.pack(KEY_R);
-    pk.pack_map(2);
+    pk.pack_map(2 + (not token.empty() ? 1 : 0));
     pk.pack(KEY_REQ_ID);
     pk.pack(myid);
     insertAddr(pk, addr);
+    if (not token.empty()) {
+        pk.pack(KEY_REQ_TOKEN);
+        packToken(pk, token);
+    }
 
     pk.pack(KEY_TID);
     pk.pack(tid);
