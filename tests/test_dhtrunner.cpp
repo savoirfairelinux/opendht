@@ -15,6 +15,14 @@ using namespace std::literals;
 namespace test {
 CPPUNIT_TEST_SUITE_REGISTRATION(DhtRunnerTester);
 
+template<typename T>
+T
+getFutureValue(std::future<T> future, std::chrono::steady_clock::duration timeout = 30s)
+{
+    CPPUNIT_ASSERT(std::future_status::ready == future.wait_for(timeout));
+    return future.get();
+}
+
 void
 DhtRunnerTester::setUp()
 {
@@ -73,9 +81,10 @@ DhtRunnerTester::testGetPut()
     dht::Value val {"hey"};
     auto val_data = val.data;
     std::promise<bool> p;
+    auto future = p.get_future();
     node2.put(key, std::move(val), [&](bool ok) { p.set_value(ok); });
-    CPPUNIT_ASSERT(p.get_future().get());
-    auto vals = node1.get(key).get();
+    CPPUNIT_ASSERT(getFutureValue(std::move(future)));
+    auto vals = getFutureValue(node1.get(key));
     CPPUNIT_ASSERT(not vals.empty());
     CPPUNIT_ASSERT(vals.front()->data == val_data);
 }
@@ -89,13 +98,15 @@ DhtRunnerTester::testPutDuplicate()
     auto val_data = val->data;
     std::promise<bool> p1;
     std::promise<bool> p2;
+    auto p1future = p1.get_future();
+    auto p2future = p2.get_future();
     node2.put(key, val, [&](bool ok) { p1.set_value(ok); });
     node2.put(key, val, [&](bool ok) { p2.set_value(ok); });
-    auto p1ret = p1.get_future().get();
-    auto p2ret = p2.get_future().get();
+    auto p1ret = getFutureValue(std::move(p1future));
+    auto p2ret = getFutureValue(std::move(p2future));
     CPPUNIT_ASSERT(p1ret);
     CPPUNIT_ASSERT(p2ret);
-    auto vals = node1.get(key).get();
+    auto vals = getFutureValue(node1.get(key));
     CPPUNIT_ASSERT(not vals.empty());
     CPPUNIT_ASSERT(vals.size() == 1);
     CPPUNIT_ASSERT(vals.front()->data == val_data);
@@ -113,13 +124,15 @@ DhtRunnerTester::testPutOverride()
     auto val_data = val2->data;
     std::promise<bool> p1;
     std::promise<bool> p2;
+    auto p1future = p1.get_future();
+    auto p2future = p2.get_future();
     node2.put(key, val, [&](bool ok) { p1.set_value(ok); });
     node2.put(key, val2, [&](bool ok) { p2.set_value(ok); });
-    auto p1ret = p1.get_future().get();
-    auto p2ret = p2.get_future().get();
+    auto p1ret = getFutureValue(std::move(p1future));
+    auto p2ret = getFutureValue(std::move(p2future));
     CPPUNIT_ASSERT(!p1ret);
     CPPUNIT_ASSERT(p2ret);
-    auto vals = node1.get(key).get();
+    auto vals = getFutureValue(node1.get(key));
     CPPUNIT_ASSERT(not vals.empty());
     CPPUNIT_ASSERT(vals.size() == 1);
     CPPUNIT_ASSERT(vals.front()->data == val_data);
@@ -154,8 +167,9 @@ DhtRunnerTester::testImportValuesPreservesRemoteQuota()
     auto value2 = std::make_shared<dht::Value>(std::string(1024, 'b'));
 
     std::promise<bool> p1;
+    auto p1future = p1.get_future();
     node2.put(key1, value1, [&](bool ok) { p1.set_value(ok); });
-    CPPUNIT_ASSERT(p1.get_future().get());
+    CPPUNIT_ASSERT(getFutureValue(std::move(p1future)));
 
     std::this_thread::sleep_for(2s);
     auto exported = node1.exportValues();
@@ -180,13 +194,14 @@ DhtRunnerTester::testImportValuesPreservesRemoteQuota()
     std::this_thread::sleep_for(500ms);
 
     std::promise<bool> p2;
+    auto p2future = p2.get_future();
     node2.put(key2, value2, [&](bool ok) { p2.set_value(ok); });
-    CPPUNIT_ASSERT(p2.get_future().get());
+    CPPUNIT_ASSERT(getFutureValue(std::move(p2future)));
 
     std::this_thread::sleep_for(2s);
 
-    auto vals1 = restored.get(key1).get();
-    auto vals2 = restored.get(key2).get();
+    auto vals1 = getFutureValue(restored.get(key1));
+    auto vals2 = getFutureValue(restored.get(key2));
     CPPUNIT_ASSERT(vals1.size() + vals2.size() <= 1);
 
     restored.shutdown();
@@ -319,12 +334,13 @@ DhtRunnerTester::testBootstrapThenPutNoRace()
     clientNode.bootstrap(bound);
 
     std::promise<bool> putDone;
+    auto putFuture = putDone.get_future();
     clientNode.put(dht::InfoHash::get("bootstrap-then-put"), dht::Value {"value"}, [&](bool ok) {
         putDone.set_value(ok);
     });
-    CPPUNIT_ASSERT(putDone.get_future().get());
+    CPPUNIT_ASSERT(getFutureValue(std::move(putFuture)));
 
-    auto vals = bootstrapNode.get(dht::InfoHash::get("bootstrap-then-put")).get();
+    auto vals = getFutureValue(bootstrapNode.get(dht::InfoHash::get("bootstrap-then-put")));
     CPPUNIT_ASSERT(!vals.empty());
 
     bootstrapNode.shutdown();
@@ -502,9 +518,9 @@ DhtRunnerTester::testListen()
     CPPUNIT_ASSERT(ftokenc.valid());
     CPPUNIT_ASSERT(ftokend.valid());
 
-    auto tokena = ftokena.get();
-    auto tokenc = ftokenc.get();
-    auto tokend = ftokend.get();
+    auto tokena = getFutureValue(std::move(ftokena));
+    auto tokenc = getFutureValue(std::move(ftokenc));
+    auto tokend = getFutureValue(std::move(ftokend));
     // tokenb might be 0 since the callback returns false.
 
     CPPUNIT_ASSERT(tokena);
@@ -710,7 +726,7 @@ DhtRunnerTester::testListenLotOfBytes()
         CPPUNIT_ASSERT(cv.wait_for(lk, 30s, [&] { return valueCount == N; }));
     }
 
-    node3.cancelListen(foo, ftokenfoo.get());
+    node3.cancelListen(foo, getFutureValue(std::move(ftokenfoo)));
 }
 
 void
