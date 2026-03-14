@@ -661,8 +661,9 @@ Dht::searchSynchedNodeListen(const Sp<Search>& sr, SearchNode& n)
                 /* on new values */
                 if (auto sr = ws.lock()) {
                     scheduler.edit(sr->nextSearchStep, scheduler.time());
-                    sr->insertNode(node, scheduler.time(), answer.ntoken);
                     if (auto sn = sr->getNode(node)) {
+                        if (not answer.ntoken.empty())
+                            sn->refreshToken(answer.ntoken);
                         sn->onValues(query, std::move(answer), types, scheduler);
                     }
                 }
@@ -2715,7 +2716,9 @@ Dht::onListenDone(const Sp<Node>& node, net::RequestAnswer& answer, Sp<Search>& 
 
     if (not sr->done) {
         const auto& now = scheduler.time();
-        sr->insertNode(node, now, answer.ntoken);
+        if (not answer.ntoken.empty())
+            if (auto sn = sr->getNode(node))
+                sn->refreshToken(answer.ntoken);
         searchSendGetValues(sr);
         scheduler.edit(sr->nextSearchStep, now);
     }

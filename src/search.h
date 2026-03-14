@@ -133,6 +133,16 @@ struct Dht::SearchNode
         return last_get_reply + Node::NODE_EXPIRE_TIME;
     }
 
+    /**
+     * Update the token without refreshing last_get_reply,
+     * so that periodic find_node/get requests still occur.
+     */
+    void refreshToken(const Blob& tok)
+    {
+        if (not tok.empty() and tok.size() <= 64)
+            token = tok;
+    }
+
     friend std::ostream& operator<<(std::ostream& s, const SearchNode& node)
     {
         s << "getStatus:" << node.getStatus.size() << " listenStatus:" << node.listenStatus.size()

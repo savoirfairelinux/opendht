@@ -428,8 +428,10 @@ NetworkEngineTester::testListenConfirmationUpdatesSearchNodeToken()
     localDht.onListenDone(node, answer, sr);
 
     CPPUNIT_ASSERT(searchNodePtr->token == answer.ntoken);
-    CPPUNIT_ASSERT(searchNodePtr->last_get_reply == localDht.scheduler.time());
-    CPPUNIT_ASSERT(searchNodePtr->isSynced(localDht.scheduler.time()));
+    /* last_get_reply should NOT be updated by listen confirmation,
+       so that periodic find_node requests still refresh the search table. */
+    CPPUNIT_ASSERT(searchNodePtr->last_get_reply == time_point::min());
+    CPPUNIT_ASSERT(!searchNodePtr->isSynced(localDht.scheduler.time()));
 }
 
 void
