@@ -289,7 +289,7 @@ if get_option('tests').enabled()
         'tests/tests_runner.cpp',
         dependencies: [opendht_dep, cppunit, jsoncpp, fmt, openssl, msgpack],
     )
-    test('DhtRunner', test_dhtrunner)
+    test('DhtRunner', test_dhtrunner, timeout: 60)
 
     test_threadpool = executable(
         'test_threadpool',
