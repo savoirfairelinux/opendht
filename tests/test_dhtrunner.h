@@ -24,6 +24,7 @@ class DhtRunnerTester : public CppUnit::TestFixture
     CPPUNIT_TEST(testImportValuesPreservesStoredExpiration);
     CPPUNIT_TEST(testBootstrapSetsConnectingState);
     CPPUNIT_TEST(testBootstrapThenPutNoRace);
+    CPPUNIT_TEST(testBootstrapMissingNodeThenPutFails);
     CPPUNIT_TEST_SUITE_END();
 
     dht::DhtRunner node1 {};
@@ -66,6 +67,7 @@ public:
     void testImportValuesPreservesStoredExpiration();
     void testBootstrapSetsConnectingState();
     void testBootstrapThenPutNoRace();
+    void testBootstrapMissingNodeThenPutFails();
     /**
      * Test listen method with lot of datas
      */

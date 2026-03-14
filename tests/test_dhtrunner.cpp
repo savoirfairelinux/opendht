@@ -6,6 +6,7 @@
 #include <opendht/thread_pool.h>
 
 #include <chrono>
+#include <future>
 #include <mutex>
 #include <condition_variable>
 using namespace std::chrono_literals;
@@ -213,7 +214,9 @@ DhtRunnerTester::testImportValuesPreservesStoredExpiration()
     pk.pack_bin(0);
     pk.pack(expiration.time_since_epoch().count());
 
-    node1.importValues({dht::ValuesExport {key, {buffer.data(), buffer.data() + buffer.size()}}});
+    node1.importValues({
+        dht::ValuesExport {key, {buffer.data(), buffer.data() + buffer.size()}}
+    });
 
     auto exported = node1.exportValues();
     CPPUNIT_ASSERT(!exported.empty());
@@ -265,7 +268,8 @@ DhtRunnerTester::testBootstrapSetsConnectingState()
     dht::DhtRunner::Context context;
     context.statusChangedCallback = [&](dht::NodeStatus status4, dht::NodeStatus status6) {
         std::lock_guard<std::mutex> lock(mutex);
-        sawConnecting = sawConnecting || status4 == dht::NodeStatus::Connecting || status6 == dht::NodeStatus::Connecting;
+        sawConnecting = sawConnecting || status4 == dht::NodeStatus::Connecting
+                        || status6 == dht::NodeStatus::Connecting;
         cv.notify_all();
     };
 
@@ -278,7 +282,7 @@ DhtRunnerTester::testBootstrapSetsConnectingState()
     if (bound.isUnspecified())
         bound.setLoopback();
 
-    clientNode.bootstrap("127.0.0.1", std::to_string(bound.getPort()).c_str());
+    clientNode.bootstrap("127.0.0.1", std::to_string(bound.getPort()));
 
     std::unique_lock<std::mutex> lock(mutex);
     CPPUNIT_ASSERT(cv.wait_for(lock, 5s, [&] { return sawConnecting; }));
@@ -315,7 +319,9 @@ DhtRunnerTester::testBootstrapThenPutNoRace()
     clientNode.bootstrap(bound);
 
     std::promise<bool> putDone;
-    clientNode.put(dht::InfoHash::get("bootstrap-then-put"), dht::Value {"value"}, [&](bool ok) { putDone.set_value(ok); });
+    clientNode.put(dht::InfoHash::get("bootstrap-then-put"), dht::Value {"value"}, [&](bool ok) {
+        putDone.set_value(ok);
+    });
     CPPUNIT_ASSERT(putDone.get_future().get());
 
     auto vals = bootstrapNode.get(dht::InfoHash::get("bootstrap-then-put")).get();
@@ -323,6 +329,76 @@ DhtRunnerTester::testBootstrapThenPutNoRace()
 
     bootstrapNode.shutdown();
     bootstrapNode.join();
+    clientNode.shutdown();
+    clientNode.join();
+}
+
+void
+DhtRunnerTester::testBootstrapMissingNodeThenPutFails()
+{
+    node1.shutdown();
+    node1.join();
+    node2.shutdown();
+    node2.join();
+
+    dht::DhtRunner::Config config;
+    config.dht_config.node_config.max_peer_req_per_sec = -1;
+    config.dht_config.node_config.max_req_per_sec = -1;
+    config.dht_config.node_config.max_store_size = -1;
+    config.dht_config.node_config.max_store_keys = -1;
+
+    auto getUnusedPort = [&]() {
+        dht::DhtRunner tmpNode;
+        tmpNode.run(0, config);
+        auto port = tmpNode.getBoundPort();
+        tmpNode.shutdown();
+        tmpNode.join();
+        return port;
+    };
+
+    auto missingPort = getUnusedPort();
+
+    std::mutex mutex;
+    std::condition_variable cv;
+    bool sawConnecting {false};
+    bool sawDisconnectedAfterConnecting {false};
+    bool putReturnedBeforeDisconnect {false};
+
+    dht::DhtRunner::Context context;
+    context.statusChangedCallback = [&](dht::NodeStatus status4, dht::NodeStatus status6) {
+        std::lock_guard<std::mutex> lock(mutex);
+        if (status4 == dht::NodeStatus::Connecting || status6 == dht::NodeStatus::Connecting)
+            sawConnecting = true;
+        if (sawConnecting && status4 == dht::NodeStatus::Disconnected && status6 == dht::NodeStatus::Disconnected)
+            sawDisconnectedAfterConnecting = true;
+        cv.notify_all();
+    };
+
+    dht::DhtRunner clientNode;
+    clientNode.run(0, config, std::move(context));
+    while (clientNode.getBoundPort() == missingPort)
+        missingPort = getUnusedPort();
+
+    std::promise<bool> putDone;
+    auto putFuture = putDone.get_future();
+
+    clientNode.bootstrap("127.0.0.1", std::to_string(missingPort));
+    clientNode.put(dht::InfoHash::get("bootstrap-missing-put"), dht::Value {"value"}, [&](bool ok) {
+        std::lock_guard<std::mutex> lock(mutex);
+        putReturnedBeforeDisconnect = !sawDisconnectedAfterConnecting;
+        putDone.set_value(ok);
+        cv.notify_all();
+    });
+
+    {
+        std::unique_lock<std::mutex> lock(mutex);
+        CPPUNIT_ASSERT(cv.wait_for(lock, 10s, [&] { return sawConnecting; }));
+        CPPUNIT_ASSERT(cv.wait_for(lock, 20s, [&] { return sawDisconnectedAfterConnecting; }));
+    }
+    CPPUNIT_ASSERT(std::future_status::ready == putFuture.wait_for(20s));
+    CPPUNIT_ASSERT(!putFuture.get());
+    CPPUNIT_ASSERT(!putReturnedBeforeDisconnect);
+
     clientNode.shutdown();
     clientNode.join();
 }
