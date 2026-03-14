@@ -420,6 +420,48 @@ DhtRunnerTester::testBootstrapMissingNodeThenPutFails()
 }
 
 void
+DhtRunnerTester::testShutdownCompletesWithPendingPut()
+{
+    node1.shutdown();
+    node1.join();
+    node2.shutdown();
+    node2.join();
+
+    dht::DhtRunner::Config config;
+    config.dht_config.node_config.max_peer_req_per_sec = -1;
+    config.dht_config.node_config.max_req_per_sec = -1;
+    config.dht_config.node_config.max_store_size = -1;
+    config.dht_config.node_config.max_store_keys = -1;
+
+    auto getUnusedPort = [&]() {
+        dht::DhtRunner tmpNode;
+        tmpNode.run(0, config);
+        auto port = tmpNode.getBoundPort();
+        tmpNode.shutdown();
+        tmpNode.join();
+        return port;
+    };
+
+    auto missingPort = getUnusedPort();
+
+    dht::DhtRunner clientNode;
+    clientNode.run(0, config);
+    while (clientNode.getBoundPort() == missingPort)
+        missingPort = getUnusedPort();
+
+    clientNode.bootstrap("127.0.0.1", std::to_string(missingPort));
+    clientNode.put(dht::InfoHash::get("shutdown-pending-put"), dht::Value {"value"}, [](bool) {});
+
+    std::promise<void> shutdownDone;
+    auto shutdownFuture = shutdownDone.get_future();
+    clientNode.shutdown([&]() { shutdownDone.set_value(); });
+
+    CPPUNIT_ASSERT(std::future_status::ready == shutdownFuture.wait_for(5s));
+
+    clientNode.join();
+}
+
+void
 DhtRunnerTester::testListen()
 {
     std::mutex mutex;
