@@ -560,7 +560,7 @@ DhtRunnerTester::testIdOps()
     };
 
     node2.join();
-    node2.run(42232, config2, std::move(context2));
+    node2.run(0, config2, std::move(context2));
     auto bound = node1.getBound();
     if (bound.isUnspecified())
         bound.setLoopback();
@@ -594,7 +594,7 @@ DhtRunnerTester::testIdOps()
 
     config2.dht_config.id = dht::crypto::generateIdentity();
     node1.join();
-    node1.run(42222, config2, std::move(context1));
+    node1.run(0, config2, std::move(context1));
     bound = node2.getBound();
     if (bound.isUnspecified())
         bound.setLoopback();
