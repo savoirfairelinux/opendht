@@ -9,7 +9,7 @@
 #include <string>
 #include <cstring>
 #define close(x)                  closesocket(x)
-#define write(s, b, f)            send(s, b, (int) strlen(b), 0)
+#define write(s, b, f)            send(s, b, (int) (f), 0)
 #define _poll(fds, nfds, timeout) WSAPoll(fds, nfds, timeout)
 #else
 #include <fcntl.h>
