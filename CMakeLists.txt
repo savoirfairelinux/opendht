@@ -130,6 +130,7 @@ if (NOT MSVC)
                 message(STATUS "simdutf not found with pkgconfig")
                 if (OPENDHT_DOWNLOAD_DEPS)
                     message(STATUS "Fallback mode specified, downloading simdutf")
+                    set(SIMDUTF_CXX_STANDARD ${CMAKE_CXX_STANDARD} CACHE INTERNAL "C++ standard for simdutf downloader")
                     set(SIMDUTF_TESTS OFF CACHE INTERNAL "Disable tests for simdutf downloader")
                     set(SIMDUTF_TOOLS OFF CACHE INTERNAL "Disable tools for simdutf downloader")
                     FetchContent_Declare(simdutf
