@@ -35,7 +35,7 @@ Dht::updateStatus(sa_family_t af)
     auto& d = dht(af);
     auto old = d.status;
     d.status = d.getStatus(scheduler.time());
-    if (d.status == NodeStatus::Disconnected && bootstrapJob && !bootstrap_nodes.empty())
+    if (d.status == NodeStatus::Disconnected && bootstrap_pending && bootstrapJob && !bootstrap_nodes.empty())
         d.status = NodeStatus::Connecting;
     if (d.status != old) {
         auto& other = dht(af == AF_INET ? AF_INET6 : AF_INET);
@@ -2271,12 +2271,14 @@ Dht::bootstrap()
         return;
     if (logger_)
         logger_->debug("[{}] Bootstraping", myid.to_view());
+    bool sentPing = false;
     for (const auto& boootstrap : bootstrap_nodes) {
         try {
             auto ips = network_engine.getSocket()->resolve(boootstrap.first, boootstrap.second);
             for (auto& ip : ips) {
                 if (ip.getPort() == 0)
                     ip.setPort(net::DHT_DEFAULT_PORT);
+                sentPing = true;
                 pingNode(ip);
             }
         } catch (const std::exception& e) {
@@ -2288,6 +2290,8 @@ Dht::bootstrap()
                                e.what());
         }
     }
+    if (not sentPing)
+        bootstrap_pending = false;
     scheduler.cancel(bootstrapJob);
     bootstrapJob = scheduler.add(scheduler.time() + bootstrap_period, std::bind(&Dht::bootstrap, this));
     bootstrap_period = std::min(bootstrap_period * 2, BOOTSTRAP_PERIOD_MAX);
@@ -2297,6 +2301,7 @@ void
 Dht::startBootstrap()
 {
     stopBootstrap();
+    bootstrap_pending = !bootstrap_nodes.empty();
     bootstrapJob = scheduler.add(scheduler.time(), std::bind(&Dht::bootstrap, this));
 }
 
@@ -2304,6 +2309,7 @@ void
 Dht::stopBootstrap()
 {
     scheduler.cancel(bootstrapJob);
+    bootstrap_pending = false;
     bootstrap_period = BOOTSTRAP_PERIOD;
 }
 
@@ -2503,14 +2509,18 @@ Dht::pingNode(SockAddr sa, DoneCallbackSimple&& cb)
     count++;
     network_engine.sendPing(
         std::move(sa),
-        [&count, cb](const net::Request&, net::RequestAnswer&&) {
+        [this, &count, cb](const net::Request&, net::RequestAnswer&&) {
             count--;
+            if (bootstrap_pending && dht4.pending_pings == 0 && dht6.pending_pings == 0)
+                bootstrap_pending = false;
             if (cb)
                 cb(true);
         },
-        [&count, cb](const net::Request&, bool last) {
+        [this, &count, cb](const net::Request&, bool last) {
             if (last) {
                 count--;
+                if (bootstrap_pending && dht4.pending_pings == 0 && dht6.pending_pings == 0)
+                    bootstrap_pending = false;
                 if (cb)
                     cb(false);
             }

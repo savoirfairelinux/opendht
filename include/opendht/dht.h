@@ -411,6 +411,7 @@ private:
     std::vector<std::pair<std::string, std::string>> bootstrap_nodes {};
     std::chrono::steady_clock::duration bootstrap_period {BOOTSTRAP_PERIOD};
     Sp<Scheduler::Job> bootstrapJob {};
+    bool bootstrap_pending {false};
 
     std::map<InfoHash, Storage> store;
     std::map<SockAddr, StorageBucket, SockAddr::ipCmp> store_quota;
