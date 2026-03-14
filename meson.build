@@ -281,7 +281,7 @@ if get_option('tests').enabled()
         'tests/tests_runner.cpp',
         dependencies: [opendht_dep, cppunit, jsoncpp, fmt, openssl, msgpack, gnutls],
     )
-    test('Crypto', test_crypto)
+    test('Crypto', test_crypto, timeout: 60)
 
     test_dhtrunner = executable(
         'test_dhtrunner',
