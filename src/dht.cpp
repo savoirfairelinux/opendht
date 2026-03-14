@@ -2540,6 +2540,7 @@ Dht::onError(Sp<net::Request> req, net::DhtProtocolException e)
                     if (listen.second.req and listen.second.req->pending())
                         n->node->cancelRequest(listen.second.req);
                     listen.second.req = {};
+                    n->node->closeSocket(listen.second.socketId);
                     if (listen.second.refresh) {
                         listen.second.refresh->cancel();
                         listen.second.refresh = {};
