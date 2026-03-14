@@ -282,7 +282,7 @@ DhtRunnerTester::testBootstrapSetsConnectingState()
 
     dht::DhtRunner::Context context;
     context.statusChangedCallback = [&](dht::NodeStatus status4, dht::NodeStatus status6) {
-        std::lock_guard<std::mutex> lock(mutex);
+        std::lock_guard lock(mutex);
         sawConnecting = sawConnecting || status4 == dht::NodeStatus::Connecting
                         || status6 == dht::NodeStatus::Connecting;
         cv.notify_all();
@@ -299,8 +299,10 @@ DhtRunnerTester::testBootstrapSetsConnectingState()
 
     clientNode.bootstrap("127.0.0.1", std::to_string(bound.getPort()));
 
-    std::unique_lock<std::mutex> lock(mutex);
-    CPPUNIT_ASSERT(cv.wait_for(lock, 5s, [&] { return sawConnecting; }));
+    {
+        std::unique_lock lock(mutex);
+        CPPUNIT_ASSERT(cv.wait_for(lock, 5s, [&] { return sawConnecting; }));
+    }
 
     bootstrapNode.shutdown();
     bootstrapNode.join();
@@ -382,7 +384,7 @@ DhtRunnerTester::testBootstrapMissingNodeThenPutFails()
 
     dht::DhtRunner::Context context;
     context.statusChangedCallback = [&](dht::NodeStatus status4, dht::NodeStatus status6) {
-        std::lock_guard<std::mutex> lock(mutex);
+        std::lock_guard lock(mutex);
         if (status4 == dht::NodeStatus::Connecting || status6 == dht::NodeStatus::Connecting)
             sawConnecting = true;
         if (sawConnecting && status4 == dht::NodeStatus::Disconnected && status6 == dht::NodeStatus::Disconnected)
@@ -400,14 +402,14 @@ DhtRunnerTester::testBootstrapMissingNodeThenPutFails()
 
     clientNode.bootstrap("127.0.0.1", std::to_string(missingPort));
     clientNode.put(dht::InfoHash::get("bootstrap-missing-put"), dht::Value {"value"}, [&](bool ok) {
-        std::lock_guard<std::mutex> lock(mutex);
+        std::lock_guard lock(mutex);
         putReturnedBeforeDisconnect = !sawDisconnectedAfterConnecting;
         putDone.set_value(ok);
         cv.notify_all();
     });
 
     {
-        std::unique_lock<std::mutex> lock(mutex);
+        std::unique_lock lock(mutex);
         CPPUNIT_ASSERT(cv.wait_for(lock, 10s, [&] { return sawConnecting; }));
         CPPUNIT_ASSERT(cv.wait_for(lock, 20s, [&] { return sawDisconnectedAfterConnecting; }));
     }
