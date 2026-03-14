@@ -2271,14 +2271,13 @@ Dht::bootstrap()
         return;
     if (logger_)
         logger_->debug("[{}] Bootstraping", myid.to_view());
-    bool sentPing = false;
+    bootstrap_pending = false;
     for (const auto& boootstrap : bootstrap_nodes) {
         try {
             auto ips = network_engine.getSocket()->resolve(boootstrap.first, boootstrap.second);
             for (auto& ip : ips) {
                 if (ip.getPort() == 0)
                     ip.setPort(net::DHT_DEFAULT_PORT);
-                sentPing = true;
                 pingNode(ip);
             }
         } catch (const std::exception& e) {
@@ -2290,8 +2289,6 @@ Dht::bootstrap()
                                e.what());
         }
     }
-    if (not sentPing)
-        bootstrap_pending = false;
     scheduler.cancel(bootstrapJob);
     bootstrapJob = scheduler.add(scheduler.time() + bootstrap_period, std::bind(&Dht::bootstrap, this));
     bootstrap_period = std::min(bootstrap_period * 2, BOOTSTRAP_PERIOD_MAX);
@@ -2509,18 +2506,14 @@ Dht::pingNode(SockAddr sa, DoneCallbackSimple&& cb)
     count++;
     network_engine.sendPing(
         std::move(sa),
-        [this, &count, cb](const net::Request&, net::RequestAnswer&&) {
+        [&count, cb](const net::Request&, net::RequestAnswer&&) {
             count--;
-            if (bootstrap_pending && dht4.pending_pings == 0 && dht6.pending_pings == 0)
-                bootstrap_pending = false;
             if (cb)
                 cb(true);
         },
-        [this, &count, cb](const net::Request&, bool last) {
+        [&count, cb](const net::Request&, bool last) {
             if (last) {
                 count--;
-                if (bootstrap_pending && dht4.pending_pings == 0 && dht6.pending_pings == 0)
-                    bootstrap_pending = false;
                 if (cb)
                     cb(false);
             }
