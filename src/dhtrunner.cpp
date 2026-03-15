@@ -1195,7 +1195,7 @@ DhtRunner::enableProxy(bool proxify)
             [this] {
                 if (config_.threaded) {
                     std::lock_guard lck(storage_mtx);
-                    pending_ops_prio.emplace([=](SecureDht&) mutable {});
+                    pending_ops_prio.emplace([](SecureDht&) {});
                     cv.notify_all();
                 }
             },
@@ -1207,11 +1207,8 @@ DhtRunner::enableProxy(bool proxify)
             config_.push_platform,
             logger_);
         dht_ = std::make_unique<SecureDht>(std::move(dht_via_proxy), config_.dht_config, identityAnnouncedCb_, logger_);
-        // and use it
-        use_proxy = proxify;
-    } else {
-        use_proxy = proxify;
     }
+    use_proxy = proxify;
 #else
     if (proxify)
         throw std::runtime_error("DHT proxy requested but OpenDHT built without proxy support.");

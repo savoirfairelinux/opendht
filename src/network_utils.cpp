@@ -286,9 +286,9 @@ UdpSocket::openSockets(const SockAddr& bind4, const SockAddr& bind6)
                         pkt.received = clock::now();
                         onReceived(std::move(pkts));
                     } else if (rc == -1) {
-                        if (logger)
-                            logger->e("Error receiving packet: %s", strerror(errno));
                         int err = errno;
+                        if (logger)
+                            logger->e("Error receiving packet: %s", strerror(err));
                         if (err == EPIPE || err == ENOTCONN || err == ECONNRESET) {
                             if (not running)
                                 break;
