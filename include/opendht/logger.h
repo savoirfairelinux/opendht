@@ -131,7 +131,7 @@ struct OPENDHT_PUBLIC Logger
 
     std::shared_ptr<Logger> createChild(std::string tag)
     {
-        std::lock_guard<std::mutex> lock {children_mutex_};
+        std::lock_guard lock {children_mutex_};
         auto child = std::make_shared<Logger>(*this, std::move(tag));
         children_.push_back(child);
         return child;
@@ -139,7 +139,7 @@ struct OPENDHT_PUBLIC Logger
 
     void setFilter(std::string_view filter)
     {
-        std::lock_guard<std::mutex> lock {children_mutex_};
+        std::lock_guard lock {children_mutex_};
         enable_ = filter.empty() or tag_.find(filter) != std::string_view::npos;
         for (auto it = children_.begin(); it != children_.end();) {
             if (auto c = it->lock()) {

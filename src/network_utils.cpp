@@ -107,14 +107,14 @@ UdpSocket::UdpSocket(in_port_t port, const std::shared_ptr<Logger>& l)
     SockAddr bind6;
     bind6.setFamily(AF_INET6);
     bind6.setPort(port);
-    std::lock_guard<std::mutex> lk(lock);
+    std::lock_guard lk(lock);
     openSockets(bind4, bind6);
 }
 
 UdpSocket::UdpSocket(const SockAddr& bind4, const SockAddr& bind6, const std::shared_ptr<Logger>& l)
     : logger(l)
 {
-    std::lock_guard<std::mutex> lk(lock);
+    std::lock_guard lk(lock);
     openSockets(bind4, bind6);
 }
 
@@ -161,7 +161,7 @@ UdpSocket::sendTo(const SockAddr& dest, const uint8_t* data, size_t size, [[mayb
         if (logger)
             logger->d("Can't send message to %s: %s", dest.toString().c_str(), strerror(err));
         if (err == EPIPE || err == ENOTCONN || err == ECONNRESET) {
-            std::lock_guard<std::mutex> lk(lock);
+            std::lock_guard lk(lock);
             auto bind4 = std::move(bound4), bind6 = std::move(bound6);
             openSockets(bind4, bind6);
             return sendTo(dest, data, size, false);
@@ -292,7 +292,7 @@ UdpSocket::openSockets(const SockAddr& bind4, const SockAddr& bind6)
                         if (err == EPIPE || err == ENOTCONN || err == ECONNRESET) {
                             if (not running)
                                 break;
-                            std::unique_lock<std::mutex> lk(lock, std::try_to_lock);
+                            std::unique_lock lk(lock, std::try_to_lock);
                             if (lk.owns_lock()) {
                                 if (not running)
                                     break;
@@ -337,7 +337,7 @@ UdpSocket::openSockets(const SockAddr& bind4, const SockAddr& bind6)
             close(stop_readfd);
         if (stopfd != -1)
             close(stopfd);
-        std::unique_lock<std::mutex> lk(lock, std::try_to_lock);
+        std::unique_lock lk(lock, std::try_to_lock);
         if (lk.owns_lock()) {
             s4 = -1;
             s6 = -1;

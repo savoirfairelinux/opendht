@@ -126,7 +126,7 @@ main(int argc, char** argv)
 
         {
             std::mutex m;
-            std::unique_lock<std::mutex> lk(m);
+            std::unique_lock lk(m);
             cv.wait(lk, [&]() { return done.load() == 0; });
         }
 

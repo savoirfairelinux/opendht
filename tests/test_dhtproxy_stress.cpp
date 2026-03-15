@@ -51,11 +51,11 @@ DhtProxyStressTester::tearDown()
     std::condition_variable cv;
     std::mutex cv_m;
     nodeProxy->shutdown([&] {
-        std::lock_guard<std::mutex> lk(cv_m);
+        std::lock_guard lk(cv_m);
         done = true;
         cv.notify_all();
     });
-    std::unique_lock<std::mutex> lk(cv_m);
+    std::unique_lock lk(cv_m);
     CPPUNIT_ASSERT(cv.wait_for(lk, 15s, [&] { return done; }));
     serverProxy.reset();
     nodeProxy.reset();
@@ -70,7 +70,7 @@ DhtProxyStressTester::testRepeatValues()
 
     std::condition_variable cv;
     std::mutex cv_m;
-    std::unique_lock<std::mutex> lk(cv_m);
+    std::unique_lock lk(cv_m);
     auto key = dht::InfoHash::get("GLaDOs");
     bool done = false;
 
@@ -80,7 +80,7 @@ DhtProxyStressTester::testRepeatValues()
     auto firstVal_data = firstVal.data;
     nodePeer.put(key, std::move(firstVal), [&](bool ok) {
         CPPUNIT_ASSERT(ok);
-        std::lock_guard<std::mutex> lk(cv_m);
+        std::lock_guard lk(cv_m);
         done = true;
         cv.notify_all();
     });
@@ -90,7 +90,7 @@ DhtProxyStressTester::testRepeatValues()
     std::vector<dht::Blob> values;
     auto token = nodeClient.listen(key, [&](const std::vector<std::shared_ptr<dht::Value>>& v, bool expired) {
         if (not expired) {
-            std::lock_guard<std::mutex> lk(cv_m);
+            std::lock_guard lk(cv_m);
             for (const auto& value : v)
                 values.emplace_back(value->data);
             done = true;
@@ -132,7 +132,7 @@ DhtProxyStressTester::testRepeatValues()
         val->id = id++;
         nodePeer.put(key, val, [&](bool ok) {
             CPPUNIT_ASSERT(ok);
-            std::lock_guard<std::mutex> lk(cv_m);
+            std::lock_guard lk(cv_m);
             done = true;
             cv.notify_all();
         });
@@ -145,7 +145,7 @@ DhtProxyStressTester::testRepeatValues()
             if (not expired) {
                 for (const auto& value : v) {
                     if (value->id == val->id) {
-                        std::lock_guard<std::mutex> lk(cv_m);
+                        std::lock_guard lk(cv_m);
                         done = true;
                         cv.notify_all();
                         break;

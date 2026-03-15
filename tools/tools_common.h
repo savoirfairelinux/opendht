@@ -421,7 +421,7 @@ struct ServiceRunner
 {
     bool wait()
     {
-        std::unique_lock<std::mutex> lock(m);
+        std::unique_lock lock(m);
         cv.wait(lock, [&] { return terminate.load(); });
         return !terminate;
     }

@@ -104,7 +104,7 @@ public:
 
     void run(std::function<void()>&& task)
     {
-        std::lock_guard<std::mutex> lock(state_->mtx);
+        std::lock_guard lock(state_->mtx);
         if (state_->shutdown_)
             return;
         state_->pendingTasks++;
@@ -125,7 +125,7 @@ private:
 
         void destroy(bool wait = true)
         {
-            std::unique_lock<std::mutex> lock(mtx);
+            std::unique_lock lock(mtx);
             if (destroyed)
                 return;
             if (wait) {
@@ -141,7 +141,7 @@ private:
         void run(const std::function<void()>& task)
         {
             {
-                std::lock_guard<std::mutex> lock(mtx);
+                std::lock_guard lock(mtx);
                 pendingTasks--;
                 ongoingTasks++;
             }
@@ -149,7 +149,7 @@ private:
                 return;
             task();
             {
-                std::lock_guard<std::mutex> lock(mtx);
+                std::lock_guard lock(mtx);
                 ongoingTasks--;
                 cv.notify_all();
             }

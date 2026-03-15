@@ -58,7 +58,7 @@ public:
 
     inline void setOnReceive(OnReceive&& cb)
     {
-        std::lock_guard<std::mutex> lk(lock);
+        std::lock_guard lk(lock);
         rx_callback = std::move(cb);
     }
 
@@ -67,12 +67,12 @@ public:
 
     SockAddr getBound(sa_family_t family = AF_UNSPEC) const
     {
-        std::lock_guard<std::mutex> lk(lock);
+        std::lock_guard lk(lock);
         return getBoundRef(family);
     }
     in_port_t getPort(sa_family_t family = AF_UNSPEC) const
     {
-        std::lock_guard<std::mutex> lk(lock);
+        std::lock_guard lk(lock);
         return getBoundRef(family).getPort();
     }
 
@@ -102,7 +102,7 @@ protected:
 
     inline void onReceived(PacketList&& packets)
     {
-        std::lock_guard<std::mutex> lk(lock);
+        std::lock_guard lk(lock);
         if (rx_callback) {
             auto r = rx_callback(std::move(packets));
             if (not r.empty() and toRecycle_.size() < RX_QUEUE_MAX_SIZE)
@@ -134,12 +134,12 @@ public:
 
     bool hasIPv4() const override
     {
-        std::lock_guard<std::mutex> lk(lock);
+        std::lock_guard lk(lock);
         return s4 != -1;
     }
     bool hasIPv6() const override
     {
-        std::lock_guard<std::mutex> lk(lock);
+        std::lock_guard lk(lock);
         return s6 != -1;
     }
 

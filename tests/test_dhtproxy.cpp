@@ -57,11 +57,11 @@ DhtProxyTester::tearDown()
     std::condition_variable cv;
     std::mutex cv_m;
     nodeProxy->shutdown([&] {
-        std::lock_guard<std::mutex> lk(cv_m);
+        std::lock_guard lk(cv_m);
         done = true;
         cv.notify_all();
     });
-    std::unique_lock<std::mutex> lk(cv_m);
+    std::unique_lock lk(cv_m);
     CPPUNIT_ASSERT(cv.wait_for(lk, 15s, [&] { return done; }));
     serverProxy.reset();
     nodeProxy.reset();
@@ -81,11 +81,11 @@ DhtProxyTester::testGetPut()
     auto val_data = val.data;
     {
         nodePeer.put(key, std::move(val), [&](bool) {
-            std::lock_guard<std::mutex> lk(cv_m);
+            std::lock_guard lk(cv_m);
             done = true;
             cv.notify_all();
         });
-        std::unique_lock<std::mutex> lk(cv_m);
+        std::unique_lock lk(cv_m);
         CPPUNIT_ASSERT(cv.wait_for(lk, 10s, [&] { return done; }));
     }
 
@@ -101,7 +101,7 @@ DhtProxyTester::testListen()
 
     std::condition_variable cv;
     std::mutex cv_m;
-    std::unique_lock<std::mutex> lk(cv_m);
+    std::unique_lock lk(cv_m);
     auto key = dht::InfoHash::get("GLaDOs");
     bool done = false;
 
@@ -111,7 +111,7 @@ DhtProxyTester::testListen()
     auto firstVal_data = firstVal.data;
     nodePeer.put(key, std::move(firstVal), [&](bool ok) {
         CPPUNIT_ASSERT(ok);
-        std::lock_guard<std::mutex> lk(cv_m);
+        std::lock_guard lk(cv_m);
         done = true;
         cv.notify_all();
     });
@@ -121,7 +121,7 @@ DhtProxyTester::testListen()
     std::vector<dht::Blob> values;
     auto token = nodeClient.listen(key, [&](const std::vector<std::shared_ptr<dht::Value>>& v, bool expired) {
         if (not expired) {
-            std::lock_guard<std::mutex> lk(cv_m);
+            std::lock_guard lk(cv_m);
             for (const auto& value : v)
                 values.emplace_back(value->data);
             done = true;
@@ -156,7 +156,7 @@ DhtProxyTester::testResubscribeGetValues()
     bool done = false;
     std::condition_variable cv;
     std::mutex cv_m;
-    std::unique_lock<std::mutex> lk(cv_m);
+    std::unique_lock lk(cv_m);
     auto key = dht::InfoHash::get("GLaDOs");
 
     // If a peer sent a value, the listen operation from the client
@@ -164,7 +164,7 @@ DhtProxyTester::testResubscribeGetValues()
     dht::Value firstVal {"Hey! It's been a long time. How have you been?"};
     auto firstVal_data = firstVal.data;
     nodePeer.put(key, std::move(firstVal), [&](bool ok) {
-        std::lock_guard<std::mutex> lk(cv_m);
+        std::lock_guard lk(cv_m);
         CPPUNIT_ASSERT(ok);
         done = true;
         cv.notify_all();
@@ -186,7 +186,7 @@ DhtProxyTester::testResubscribeGetValues()
     std::vector<std::shared_ptr<dht::Value>> values;
     auto ftoken = nodeClient.listen(key, [&](const std::vector<std::shared_ptr<dht::Value>>& v, bool expired) {
         if (not expired) {
-            std::lock_guard<std::mutex> lk(cv_m);
+            std::lock_guard lk(cv_m);
             values.insert(values.end(), v.begin(), v.end());
             done = true;
             cv.notify_all();
@@ -218,14 +218,14 @@ DhtProxyTester::testPutGet40KChars()
         mtu.emplace_back((i % 2) ? 'T' : 'M');
     std::condition_variable cv;
     std::mutex cv_m;
-    std::unique_lock<std::mutex> lk(cv_m);
+    std::unique_lock lk(cv_m);
     bool done_put = false;
     bool done_get = false;
 
     // Act
     dht::Value val {mtu};
     nodePeer.put(key, std::move(val), [&](bool ok) {
-        std::lock_guard<std::mutex> lk(cv_m);
+        std::lock_guard lk(cv_m);
         done_put = ok;
         cv.notify_all();
     });
@@ -238,7 +238,7 @@ DhtProxyTester::testPutGet40KChars()
             return true;
         },
         [&](bool ok) {
-            std::lock_guard<std::mutex> lk(cv_m);
+            std::lock_guard lk(cv_m);
             done_get = ok;
             cv.notify_all();
         });
@@ -316,12 +316,12 @@ DhtProxyTester::testShutdownStop()
         std::mutex cv_m;
         nodeTest->shutdown(
             [&] {
-                std::lock_guard<std::mutex> lk(cv_m);
+                std::lock_guard lk(cv_m);
                 done = true;
                 cv.notify_all();
             },
             true);
-        std::unique_lock<std::mutex> lk(cv_m);
+        std::unique_lock lk(cv_m);
         CPPUNIT_ASSERT(cv.wait_for(lk, 10s, [&] { return done; }));
     }
     CPPUNIT_ASSERT_EQUAL(2 * C, callback_count.load());

@@ -239,7 +239,7 @@ Connection::~Connection()
 void
 Connection::close()
 {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::lock_guard lock(mutex_);
     asio::error_code ec;
     if (ssl_socket_) {
         if (ssl_socket_->is_open())
@@ -490,7 +490,7 @@ ocspValidateResponse(const OscpRequestInfo& info,
 void
 Connection::set_ssl_verification(const std::string& hostname, const asio::ssl::verify_mode verify_mode)
 {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::lock_guard lock(mutex_);
     if (ssl_socket_) {
         // Set SNI Hostname (many hosts need this to handshake successfully)
         SSL_set_tlsext_host_name(ssl_socket_->asio_ssl_stream().native_handle(), hostname.c_str());
@@ -576,7 +576,7 @@ Connection::input()
 std::string
 Connection::read_bytes(size_t bytes)
 {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::lock_guard lock(mutex_);
     if (bytes == 0)
         bytes = read_buf_.in_avail();
     std::string content;
@@ -597,7 +597,7 @@ Connection::read_until(const char delim)
 void
 Connection::async_connect(std::vector<asio::ip::tcp::endpoint>&& endpoints, ConnectHandlerCb cb)
 {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::lock_guard lock(mutex_);
     if (!ssl_socket_ && !socket_) {
         cb(asio::error::operation_aborted, {});
         return;
@@ -629,7 +629,7 @@ Connection::async_connect(std::vector<asio::ip::tcp::endpoint>&& endpoints, Conn
 void
 Connection::async_handshake(HandlerCb cb)
 {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::lock_guard lock(mutex_);
     if (ssl_socket_) {
         std::weak_ptr<Connection> wthis = shared_from_this();
         ssl_socket_
@@ -663,7 +663,7 @@ Connection::async_handshake(HandlerCb cb)
 void
 Connection::async_write(BytesHandlerCb cb)
 {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::lock_guard lock(mutex_);
     if (!is_open()) {
         if (cb)
             asio::post(ctx_, [cb]() { cb(asio::error::broken_pipe, 0); });
@@ -680,7 +680,7 @@ Connection::async_write(BytesHandlerCb cb)
 void
 Connection::async_read_until(const char* delim, BytesHandlerCb cb)
 {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::lock_guard lock(mutex_);
     if (!is_open()) {
         if (cb)
             asio::post(ctx_, [cb]() { cb(asio::error::broken_pipe, 0); });
@@ -697,7 +697,7 @@ Connection::async_read_until(const char* delim, BytesHandlerCb cb)
 void
 Connection::async_read_until(char delim, BytesHandlerCb cb)
 {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::lock_guard lock(mutex_);
     if (!is_open()) {
         if (cb)
             asio::post(ctx_, [cb]() { cb(asio::error::broken_pipe, 0); });
@@ -714,7 +714,7 @@ Connection::async_read_until(char delim, BytesHandlerCb cb)
 void
 Connection::async_read(size_t bytes, BytesHandlerCb cb)
 {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::lock_guard lock(mutex_);
     if (!is_open()) {
         if (cb)
             asio::post(ctx_, [cb]() { cb(asio::error::broken_pipe, 0); });
@@ -731,7 +731,7 @@ Connection::async_read(size_t bytes, BytesHandlerCb cb)
 void
 Connection::async_read_some(size_t bytes, BytesHandlerCb cb)
 {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::lock_guard lock(mutex_);
     if (!is_open()) {
         if (cb)
             asio::post(ctx_, [cb]() { cb(asio::error::broken_pipe, 0); });
@@ -751,7 +751,7 @@ Connection::async_read_some(size_t bytes, BytesHandlerCb cb)
 void
 Connection::set_keepalive(uint32_t seconds)
 {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::lock_guard lock(mutex_);
     if (!ssl_socket_ && !socket_)
         return;
 
@@ -871,7 +871,7 @@ Resolver::~Resolver()
 {
     decltype(cbs_) cbs;
     {
-        std::lock_guard<std::mutex> lock(mutex_);
+        std::lock_guard lock(mutex_);
         cbs = std::move(cbs_);
     }
     while (not cbs.empty()) {
@@ -907,7 +907,7 @@ filter(const std::vector<asio::ip::tcp::endpoint>& epts, sa_family_t family)
 void
 Resolver::add_callback(ResolverCb cb, sa_family_t family)
 {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::lock_guard lock(mutex_);
     if (!completed_)
         cbs_.emplace(family == AF_UNSPEC ? std::move(cb)
                                          : [cb, family](const asio::error_code& ec,
@@ -946,7 +946,7 @@ Resolver::resolve(std::string_view host, std::string_view service)
                                 }
                                 decltype(cbs_) cbs;
                                 {
-                                    std::lock_guard<std::mutex> lock(mutex_);
+                                    std::lock_guard lock(mutex_);
                                     ec_ = ec;
                                     endpoints_ = std::vector<asio::ip::tcp::endpoint> {endpoints.begin(),
                                                                                        endpoints.end()};
@@ -1390,7 +1390,7 @@ Request::connect(std::vector<asio::ip::tcp::endpoint>&& endpoints, HandlerCb cb)
                              if (not sthis)
                                  return;
                              auto& this_ = *sthis;
-                             std::lock_guard<std::mutex> lock(this_.mutex_);
+                             std::lock_guard lock(this_.mutex_);
                              if (ec == asio::error::operation_aborted) {
                                  this_.terminate(ec);
                                  return;
@@ -1443,7 +1443,7 @@ Request::send()
         [wthis](const asio::error_code& ec, std::vector<asio::ip::tcp::endpoint> endpoints) {
             if (auto sthis = wthis.lock()) {
                 auto& this_ = *sthis;
-                std::lock_guard<std::mutex> lock(this_.mutex_);
+                std::lock_guard lock(this_.mutex_);
                 if (ec) {
                     if (this_.logger_)
                         this_.logger_->error("[http:request:{:d}] resolve error: {:s}", this_.id_, ec.message());
@@ -1518,7 +1518,7 @@ Request::terminate(const asio::error_code& ec)
 void
 Request::handle_request(const asio::error_code& ec)
 {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::lock_guard lock(mutex_);
     if (ec and ec != asio::error::eof) {
         terminate(ec);
         return;
@@ -1542,7 +1542,7 @@ Request::handle_request(const asio::error_code& ec)
 void
 Request::handle_response(const asio::error_code& ec, size_t /* n_bytes */)
 {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::lock_guard lock(mutex_);
     if (ec && ec != asio::error::eof) {
         terminate(ec);
         return;
@@ -1660,11 +1660,11 @@ const Response&
 Request::await()
 {
     std::mutex mtx;
-    std::unique_lock<std::mutex> lock(mtx);
+    std::unique_lock lock(mtx);
     std::condition_variable cv;
     bool ok {false};
     add_on_done_callback([&](const Response&) {
-        std::lock_guard<std::mutex> lk(mtx);
+        std::lock_guard lk(mtx);
         ok = true;
         cv.notify_all();
     });

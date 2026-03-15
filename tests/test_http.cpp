@@ -338,7 +338,7 @@ HttpTester::test_send_json()
     // Arrange
     std::condition_variable cv;
     std::mutex cv_m;
-    std::unique_lock<std::mutex> lk(cv_m);
+    std::unique_lock lk(cv_m);
     bool done = false;
     unsigned int status = 0;
 
@@ -350,7 +350,7 @@ HttpTester::test_send_json()
                                                         "http://127.0.0.1:8080/key/key",
                                                         json,
                                                         [&](Json::Value value, const dht::http::Response& response) {
-                                                            std::lock_guard<std::mutex> lk(cv_m);
+                                                            std::lock_guard lk(cv_m);
                                                             resp_val = std::move(value);
                                                             status = response.status_code;
                                                             done = true;
@@ -368,7 +368,7 @@ HttpTester::test_send_json()
     request = std::make_shared<dht::http::Request>(serverProxy->io_context(),
         "http://google.ca",
         [&](const dht::http::Response& response) {
-            std::lock_guard<std::mutex> lk(cv_m);
+            std::lock_guard lk(cv_m);
             status = response.status_code;
             done = true;
             cv.notify_all();
@@ -382,7 +382,7 @@ HttpTester::test_send_json()
     request = std::make_shared<dht::http::Request>(serverProxy->io_context(),
         "https://google.ca",
         [&](const dht::http::Response& response) {
-            std::lock_guard<std::mutex> lk(cv_m);
+            std::lock_guard lk(cv_m);
             status = response.status_code;
             done = true;
             cv.notify_all();
@@ -396,7 +396,7 @@ HttpTester::test_send_json()
     request = std::make_shared<dht::http::Request>(serverProxy->io_context(),
         "https://google.ca/sdbjklwGBIP",
         [&](const dht::http::Response& response) {
-            std::lock_guard<std::mutex> lk(cv_m);
+            std::lock_guard lk(cv_m);
             status = response.status_code;
             done = true;
             cv.notify_all();

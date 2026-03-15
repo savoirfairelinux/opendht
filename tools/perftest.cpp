@@ -68,7 +68,7 @@ benchPingPong(unsigned netSize, unsigned n_parallel)
     unsigned max = PINGPONG_MAX * n_parallel;
 
     auto ping = [&](DhtRunner& node, InfoHash h) {
-        std::lock_guard<std::mutex> lk(m);
+        std::lock_guard lk(m);
         if (i < max) {
             i++;
             node.put(h, Value("hey"));
@@ -93,7 +93,7 @@ benchPingPong(unsigned netSize, unsigned n_parallel)
         ping(pong_node, locs[i].first);
 
     {
-        std::unique_lock<std::mutex> lk(m);
+        std::unique_lock lk(m);
         if (not cv.wait_for(lk, std::chrono::minutes(1), [&]() { return i == max; })) {
             throw std::runtime_error(std::string("Timeout: ") + std::to_string(i));
         }

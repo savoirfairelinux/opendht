@@ -54,7 +54,7 @@ PeerDiscoveryTester::testMulticastToTwoNodes()
     unsigned countDht {0};
     unsigned countJami {0};
     {
-        std::unique_lock<std::mutex> l(lock);
+        std::unique_lock l(lock);
         dht::PeerDiscovery testDht(MULTICAST_PORT);
         dht::PeerDiscovery testJami(MULTICAST_PORT);
 
@@ -63,7 +63,7 @@ PeerDiscoveryTester::testMulticastToTwoNodes()
             CPPUNIT_ASSERT_EQUAL(dhtNode.nodeid, v.nodeid);
             CPPUNIT_ASSERT_EQUAL(dhtNode.nid, v.nid);
             {
-                std::lock_guard<std::mutex> l(lock);
+                std::lock_guard l(lock);
                 countDht++;
             }
             cv.notify_all();
@@ -75,7 +75,7 @@ PeerDiscoveryTester::testMulticastToTwoNodes()
             CPPUNIT_ASSERT_EQUAL(jamiNode.cha, v.cha);
             CPPUNIT_ASSERT_EQUAL(jamiNode.str, v.str);
             {
-                std::lock_guard<std::mutex> l(lock);
+                std::lock_guard l(lock);
                 countJami++;
             }
             cv.notify_all();

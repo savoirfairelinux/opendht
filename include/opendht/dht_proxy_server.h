@@ -425,7 +425,7 @@ private:
                 p.pack(clientId);
             }
             if (sessionCtx) {
-                std::lock_guard<std::mutex> l(sessionCtx->lock);
+                std::lock_guard l(sessionCtx->lock);
                 p.pack("sid");
                 p.pack(sessionCtx->sessionId);
             }
@@ -478,7 +478,7 @@ private:
             p.pack("exp");
             p.pack(to_time_t(expiration));
             if (sessionCtx) {
-                std::lock_guard<std::mutex> l(sessionCtx->lock);
+                std::lock_guard l(sessionCtx->lock);
                 p.pack("sid");
                 p.pack(sessionCtx->sessionId);
             }

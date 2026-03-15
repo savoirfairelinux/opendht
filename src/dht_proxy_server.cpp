@@ -176,7 +176,7 @@ DhtProxyServer::ConnectionListener::state_changed(const restinio::connection_sta
 void
 DhtProxyServer::onConnectionClosed(restinio::connection_id_t id)
 {
-    std::lock_guard<std::mutex> lock(lockListener_);
+    std::lock_guard lock(lockListener_);
     auto it = listeners_.find(id);
     if (it != listeners_.end()) {
         dht_->cancelListen(it->second.hash, std::move(it->second.token));
@@ -381,13 +381,13 @@ DhtProxyServer::saveState(Os& stream)
     msgpack::packer<Os> pk(&stream);
     pk.pack_map(2);
     {
-        std::lock_guard<std::mutex> lock(lockSearchPuts_);
+        std::lock_guard lock(lockSearchPuts_);
         pk.pack("puts");
         pk.pack(puts_);
     }
 #ifdef OPENDHT_PUSH_NOTIFICATIONS
     {
-        std::lock_guard<std::mutex> lock(lockListener_);
+        std::lock_guard lock(lockListener_);
         pk.pack("pushListeners");
         pk.pack(pushListeners_);
     }
@@ -408,7 +408,7 @@ DhtProxyServer::loadState(Is& is, size_t size)
             if (oh.get().type != msgpack::type::MAP)
                 continue;
             if (auto puts = findMapValue(oh.get(), "puts"sv)) {
-                std::lock_guard<std::mutex> lock(lockSearchPuts_);
+                std::lock_guard lock(lockSearchPuts_);
                 puts_ = puts->as<decltype(puts_)>();
                 if (logger_)
                     logger_->debug("[proxy:server] Loading {} persistent puts", puts_.size());
@@ -432,7 +432,7 @@ DhtProxyServer::loadState(Is& is, size_t size)
                                 json["to"] = clientId;
                                 json["vid"] = std::to_string(vid);
                                 if (sessionCtx) {
-                                    std::lock_guard<std::mutex> l(sessionCtx->lock);
+                                    std::lock_guard l(sessionCtx->lock);
                                     json["s"] = sessionCtx->sessionId;
                                 }
                                 return json;
@@ -459,7 +459,7 @@ DhtProxyServer::loadState(Is& is, size_t size)
             }
 #ifdef OPENDHT_PUSH_NOTIFICATIONS
             if (auto pushListeners = findMapValue(oh.get(), "pushListeners"sv)) {
-                std::lock_guard<std::mutex> lock(lockListener_);
+                std::lock_guard lock(lockListener_);
                 pushListeners_ = pushListeners->as<decltype(pushListeners_)>();
                 if (logger_)
                     logger_->debug("[proxy:server] Loading {} push listeners", pushListeners_.size());
@@ -496,7 +496,7 @@ DhtProxyServer::loadState(Is& is, size_t size)
                                 Json::Value json;
                                 json["timeout"] = infoHash;
                                 json["to"] = clientId;
-                                std::lock_guard<std::mutex> l(sessionCtx->lock);
+                                std::lock_guard l(sessionCtx->lock);
                                 json["s"] = sessionCtx->sessionId;
                                 return json;
                             };
@@ -546,7 +546,7 @@ DhtProxyServer::~DhtProxyServer()
         saveState(stateFile);
     }
     if (dht_) {
-        std::lock_guard<std::mutex> lock(lockListener_);
+        std::lock_guard lock(lockListener_);
         for (auto& l : listeners_) {
             dht_->cancelListen(l.second.hash, std::move(l.second.token));
             if (l.second.response)
@@ -817,7 +817,7 @@ DhtProxyServer::listen(restinio::request_handle_t request, restinio::router::rou
         auto response = std::make_shared<ResponseByPartsBuilder>(
             initHttpResponse(request->create_response<ResponseByParts>()));
         response->flush();
-        std::lock_guard<std::mutex> lock(lockListener_);
+        std::lock_guard lock(lockListener_);
         // save the listener to handle a disconnect
         auto& session = listeners_[request->connection_id()];
         session.hash = infoHash;
@@ -931,7 +931,7 @@ DhtProxyServer::subscribe(restinio::request_handle_t request, restinio::router::
             logger_->debug("[proxy:server] [subscribe {}] [client {}] [session {}]", infoHash, clientId, sessionId);
 
         // Insert new or return existing push listeners of a token
-        std::lock_guard<std::mutex> lock(lockListener_);
+        std::lock_guard lock(lockListener_);
         auto& pushListener = pushListeners_[pushToken];
         auto& pushListeners = pushListener.listeners[infoHash];
 
@@ -945,7 +945,7 @@ DhtProxyServer::subscribe(restinio::request_handle_t request, restinio::router::
             listIt->clientId = clientId;
             listIt->sessionCtx = std::make_shared<PushSessionContext>(sessionId);
         } else {
-            std::lock_guard<std::mutex> l(listIt->sessionCtx->lock);
+            std::lock_guard l(listIt->sessionCtx->lock);
             listIt->sessionCtx->sessionId = sessionId;
         }
         auto& listener = *listIt;
@@ -963,7 +963,7 @@ DhtProxyServer::subscribe(restinio::request_handle_t request, restinio::router::
             Json::Value json;
             json["timeout"] = h;
             json["to"] = clientId;
-            std::lock_guard<std::mutex> l(sessionCtx->lock);
+            std::lock_guard l(sessionCtx->lock);
             json["s"] = sessionCtx->sessionId;
             return json;
         };
@@ -1110,7 +1110,7 @@ DhtProxyServer::handleCancelPushListen(const asio::error_code& ec,
     }
     if (logger_)
         logger_->debug("[proxy:server] [listen:push {}] cancelled for {}", key, clientId);
-    std::lock_guard<std::mutex> lock(lockListener_);
+    std::lock_guard lock(lockListener_);
 
     auto pushListener = pushListeners_.find(pushToken);
     if (pushListener == pushListeners_.end())
@@ -1151,7 +1151,7 @@ DhtProxyServer::handlePushListen(const InfoHash& infoHash,
     json["t"] = Json::Value::Int64(duration_cast<milliseconds>(system_clock::now().time_since_epoch()).count());
 
     {
-        std::lock_guard<std::mutex> l(sessionCtx->lock);
+        std::lock_guard l(sessionCtx->lock);
         json["s"] = sessionCtx->sessionId;
     }
 
@@ -1302,12 +1302,12 @@ DhtProxyServer::sendPushNotification(
             if (state == http::Request::State::DONE) {
                 if (logger_ and response.status_code != 200)
                     logger_->error("[proxy:server] [notification] push failed: {}", response.status_code);
-                std::lock_guard<std::mutex> l(requestLock_);
+                std::lock_guard l(requestLock_);
                 requests_.erase(reqid);
             }
         });
         {
-            std::lock_guard<std::mutex> l(requestLock_);
+            std::lock_guard l(requestLock_);
             requests_[reqid] = request;
         }
         request->send();
@@ -1330,7 +1330,7 @@ DhtProxyServer::sendPushNotification(
         if (logger_)
             logger_->error("[proxy:server] [notification] error send push: {}", e.what());
         if (reqid) {
-            std::lock_guard<std::mutex> l(requestLock_);
+            std::lock_guard l(requestLock_);
             requests_.erase(reqid);
         }
     }
@@ -1349,7 +1349,7 @@ DhtProxyServer::handleCancelPermamentPut(const asio::error_code& ec, const InfoH
     }
     if (logger_)
         logger_->debug("[proxy:server] [put {}] cancel permament put {}", key, vid);
-    std::lock_guard<std::mutex> lock(lockSearchPuts_);
+    std::lock_guard lock(lockSearchPuts_);
     auto sPuts = puts_.find(key);
     if (sPuts == puts_.end())
         return;
@@ -1406,7 +1406,7 @@ DhtProxyServer::put(restinio::request_handle_t request, restinio::router::route_
                     sessionId = pVal["session_id"].asString();
                     topic = pVal["topic"].asString();
                 }
-                std::lock_guard<std::mutex> lock(lockSearchPuts_);
+                std::lock_guard lock(lockSearchPuts_);
                 auto timeout = std::chrono::steady_clock::now() + proxy::OP_TIMEOUT;
                 auto& sPuts = puts_[infoHash];
                 if (value->id == Value::INVALID_ID) {
@@ -1423,7 +1423,7 @@ DhtProxyServer::put(restinio::request_handle_t request, restinio::router::route_
                                 if (not pp.second.sessionCtx)
                                     pp.second.sessionCtx = std::make_shared<PushSessionContext>(sessionId);
                                 else {
-                                    std::lock_guard<std::mutex> l(pp.second.sessionCtx->lock);
+                                    std::lock_guard l(pp.second.sessionCtx->lock);
                                     pp.second.sessionCtx->sessionId = sessionId;
                                 }
                             }
@@ -1458,7 +1458,7 @@ DhtProxyServer::put(restinio::request_handle_t request, restinio::router::route_
                         if (not pput.sessionCtx)
                             pput.sessionCtx = std::make_shared<PushSessionContext>(sessionId);
                         else {
-                            std::lock_guard<std::mutex> l(pput.sessionCtx->lock);
+                            std::lock_guard l(pput.sessionCtx->lock);
                             pput.sessionCtx->sessionId = sessionId;
                         }
                     }
@@ -1475,7 +1475,7 @@ DhtProxyServer::put(restinio::request_handle_t request, restinio::router::route_
                         json["timeout"] = infoHash.toString();
                         json["to"] = clientId;
                         json["vid"] = std::to_string(vid);
-                        std::lock_guard<std::mutex> l(sessionCtx->lock);
+                        std::lock_guard l(sessionCtx->lock);
                         json["s"] = sessionCtx->sessionId;
                         return json;
                     };

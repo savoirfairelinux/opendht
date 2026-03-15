@@ -499,7 +499,7 @@ public:
      */
     time_point loop()
     {
-        std::lock_guard<std::mutex> lck(dht_mtx);
+        std::lock_guard lck(dht_mtx);
         return loop_();
     }
 

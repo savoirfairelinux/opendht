@@ -649,7 +649,7 @@ main(int argc, char** argv)
     });
 
     // wait for shutdown
-    std::unique_lock<std::mutex> lk(m);
+    std::unique_lock lk(m);
     cv.wait(lk, [&]() { return done; });
 
     node->join();

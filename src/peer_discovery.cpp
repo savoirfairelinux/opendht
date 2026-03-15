@@ -123,7 +123,7 @@ PeerDiscovery::DomainPeerDiscovery::~DomainPeerDiscovery()
 void
 PeerDiscovery::DomainPeerDiscovery::startDiscovery(std::string_view type, ServiceDiscoveredCallback callback)
 {
-    std::lock_guard<std::mutex> lck(dmtx_);
+    std::lock_guard lck(dmtx_);
     callbackmap_[std::string(type)] = callback;
     if (not drunning_) {
         drunning_ = true;
@@ -137,7 +137,7 @@ PeerDiscovery::DomainPeerDiscovery::startDiscovery(std::string_view type, Servic
 void
 PeerDiscovery::DomainPeerDiscovery::loopListener()
 {
-    std::lock_guard<std::mutex> lck(dmtx_);
+    std::lock_guard lck(dmtx_);
     if (not drunning_)
         return;
     sockFd_.async_receive_from(asio::buffer(receiveBuf_),
@@ -163,7 +163,7 @@ PeerDiscovery::DomainPeerDiscovery::loopListener()
                                                    continue;
                                                ServiceDiscoveredCallback cb;
                                                {
-                                                   std::lock_guard<std::mutex> lck(dmtx_);
+                                                   std::lock_guard lck(dmtx_);
                                                    if (drunning_) {
                                                        auto callback = callbackmap_.find(o.key.as<std::string_view>());
                                                        if (callback != callbackmap_.end())
@@ -189,7 +189,7 @@ PeerDiscovery::DomainPeerDiscovery::loopListener()
 void
 PeerDiscovery::DomainPeerDiscovery::query(const asio::ip::udp::endpoint& peer)
 {
-    std::lock_guard<std::mutex> lck(dmtx_);
+    std::lock_guard lck(dmtx_);
     if (not drunning_)
         return;
 
@@ -209,7 +209,7 @@ PeerDiscovery::DomainPeerDiscovery::query(const asio::ip::udp::endpoint& peer)
 void
 PeerDiscovery::DomainPeerDiscovery::publish(const asio::ip::udp::endpoint& peer)
 {
-    std::lock_guard<std::mutex> lck(mtx_);
+    std::lock_guard lck(mtx_);
     if (not lrunning_)
         return;
 
@@ -229,7 +229,7 @@ PeerDiscovery::DomainPeerDiscovery::startPublish(std::string_view type, const ms
     msgpack::sbuffer pack_buf_c(pack_buf.size());
     pack_buf_c.write(pack_buf.data(), pack_buf.size());
 
-    std::lock_guard<std::mutex> lck(mtx_);
+    std::lock_guard lck(mtx_);
     messages_[std::string(type)] = std::move(pack_buf_c);
     reloadMessages();
     lrunning_ = true;
@@ -239,7 +239,7 @@ PeerDiscovery::DomainPeerDiscovery::startPublish(std::string_view type, const ms
 bool
 PeerDiscovery::DomainPeerDiscovery::stopDiscovery(std::string_view type)
 {
-    std::lock_guard<std::mutex> lck(dmtx_);
+    std::lock_guard lck(dmtx_);
     auto it = callbackmap_.find(type);
     if (it != callbackmap_.end()) {
         callbackmap_.erase(it);
@@ -253,7 +253,7 @@ PeerDiscovery::DomainPeerDiscovery::stopDiscovery(std::string_view type)
 bool
 PeerDiscovery::DomainPeerDiscovery::stopPublish(std::string_view type)
 {
-    std::lock_guard<std::mutex> lck(mtx_);
+    std::lock_guard lck(mtx_);
     auto it = messages_.find(type);
     if (it != messages_.end()) {
         messages_.erase(it);
@@ -282,11 +282,11 @@ void
 PeerDiscovery::DomainPeerDiscovery::stop()
 {
     {
-        std::lock_guard<std::mutex> lck(dmtx_);
+        std::lock_guard lck(dmtx_);
         stopDiscovery();
     }
     {
-        std::lock_guard<std::mutex> lck(mtx_);
+        std::lock_guard lck(mtx_);
         stopPublish();
     }
 }
