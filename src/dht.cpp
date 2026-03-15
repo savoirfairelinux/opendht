@@ -2746,10 +2746,9 @@ Dht::onAnnounce(Sp<Node> n,
                                          net::DhtProtocolException::PUT_WRONG_TOKEN};
     }
     {
-        // We store a value only if we think we're part of the
-        // SEARCH_NODES nodes around the target id.
+        // We store a value only if we think we're part of the SEARCH_NODES nodes around the target id.
         auto closest_nodes = buckets(node.getFamily()).findClosestNodes(hash, scheduler.time(), SEARCH_NODES);
-        if (closest_nodes.size() >= TARGET_NODES and hash.xorCmp(closest_nodes.back()->id, myid) < 0) {
+        if (closest_nodes.size() > TARGET_NODES and hash.xorCmp(closest_nodes.back()->id, myid) < 0) {
             if (logger_)
                 logger_->warn("[node {}] Announce too far from the target. Dropping value.", node.toString());
             return {};
@@ -2775,8 +2774,7 @@ Dht::onAnnounce(Sp<Node> n,
                                    node.toString(),
                                    v->id);
             } else {
-                const auto& type = getType(lv->type);
-                if (type.editPolicy(hash, lv, vc, node.id, node.getAddr())) {
+                if (getType(lv->type).editPolicy(hash, lv, vc, node.id, node.getAddr())) {
                     if (logger_)
                         logger_->debug("[store {}] Editing {}", hash.toString(), vc->toString());
                     storageStore(hash, vc, created, node.getAddr());
@@ -2789,11 +2787,9 @@ Dht::onAnnounce(Sp<Node> n,
             }
         } else {
             // Allow the value to be edited by the storage policy
-            const auto& type = getType(vc->type);
-            if (type.storePolicy(hash, vc, node.id, node.getAddr())) {
+            if (getType(vc->type).storePolicy(hash, vc, node.id, node.getAddr())) {
                 // if (logger_)
-                //     logger_->d(hash, node.id, "[store %s] Storing %s", hash.toString().c_str(),
-                //     std::to_string(vc->id).c_str());
+                //     logger_->d(hash, node.id, "[store %s] Storing %s", hash.toString().c_str(), vc->id);
                 storageStore(hash, vc, created, node.getAddr());
             } else {
                 if (logger_)

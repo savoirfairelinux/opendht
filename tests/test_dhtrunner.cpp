@@ -90,6 +90,42 @@ DhtRunnerTester::testGetPut()
 }
 
 void
+DhtRunnerTester::testStoreEmptyValue()
+{
+    dht::DhtRunner::Config config;
+    config.dht_config.node_config.max_peer_req_per_sec = -1;
+    config.dht_config.node_config.max_req_per_sec = -1;
+    config.dht_config.node_config.max_store_size = 100; // Small size to force expireStore()
+    config.dht_config.node_config.max_store_keys = -1;
+
+    dht::DhtRunner testNode;
+    testNode.run(0, config);
+    testNode.bootstrap(node1.getBound());
+
+    auto key = testNode.getId();
+    auto val = std::make_shared<dht::Value>();
+    val->data.clear(); // Ensure size is 0
+    CPPUNIT_ASSERT_EQUAL((size_t) 0, val->size());
+
+    std::promise<bool> p;
+    testNode.put(key, val, [&](bool ok) { p.set_value(ok); });
+    p.get_future().get(); // Wait for put to finish
+
+    // Put a large value to exceed max_store_size and trigger expireStore()
+    auto key2 = dht::InfoHash::get("large_value_test");
+    auto val2 = std::make_shared<dht::Value>();
+    val2->data = std::vector<uint8_t>(200, 0); // 200 bytes
+    std::promise<bool> p2;
+    testNode.put(key2, val2, [&](bool ok) { p2.set_value(ok); });
+    p2.get_future().get(); // Wait for put to finish
+
+    // Wait a bit to ensure the value is processed
+    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+
+    testNode.join();
+}
+
+void
 DhtRunnerTester::testPutDuplicate()
 {
     auto key = dht::InfoHash::get("123");

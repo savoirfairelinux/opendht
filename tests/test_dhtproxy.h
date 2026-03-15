@@ -18,6 +18,8 @@ class DhtProxyTester : public CppUnit::TestFixture
     CPPUNIT_TEST(testGetPut);
     CPPUNIT_TEST(testListen);
     CPPUNIT_TEST(testResubscribeGetValues);
+    CPPUNIT_TEST(testPushNotification);
+    CPPUNIT_TEST(testProxyServerClientFullChain);
     CPPUNIT_TEST(testPutGet40KChars);
     CPPUNIT_TEST(testFuzzy);
     CPPUNIT_TEST(testShutdownStop);
@@ -46,6 +48,14 @@ public:
      * it should retrieve existant values
      */
     void testResubscribeGetValues();
+    /**
+     * Test push notification mechanism and OpValueCache
+     */
+    void testPushNotification();
+    /**
+     * Test end-to-end chain through proxy server and proxy client
+     */
+    void testProxyServerClientFullChain();
     /**
      * Test MTU put/get on dht
      */
