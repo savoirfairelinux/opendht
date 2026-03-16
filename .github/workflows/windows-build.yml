@@ -181,7 +181,7 @@ jobs:
 
       - name: Upload build artifacts
         if: matrix.build_type == 'Release'
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: opendht-windows-${{ matrix.arch }}-cxx${{ matrix.cxx_standard }}-${{ matrix.build_type }}
           path: |
@@ -256,7 +256,7 @@ jobs:
           ctest --build-config ${{ matrix.build_type }} --output-on-failure --parallel 4
 
       - name: Upload static build artifacts
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: opendht-windows-static-${{ matrix.arch }}-cxx${{ matrix.cxx_standard }}-${{ matrix.build_type }}
           path: |
@@ -375,7 +375,7 @@ jobs:
 
       - name: Upload MinGW artifacts
         if: matrix.build_type == 'Release'
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: opendht-windows-mingw-${{ matrix.build_type }}
           path: |
