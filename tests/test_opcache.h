@@ -29,6 +29,8 @@ class OpCacheTester : public CppUnit::TestFixture
     CPPUNIT_TEST(testHighChurnRefCountConsistency);
     CPPUNIT_TEST(testValueUpdateSingleSourcePhantom);
     CPPUNIT_TEST(testExpireAfterUpdate);
+    CPPUNIT_TEST(testSingleSourceMode);
+    CPPUNIT_TEST(testSingleSourceModeSearchCache);
     CPPUNIT_TEST_SUITE_END();
 
 public:
@@ -54,6 +56,8 @@ public:
     void testHighChurnRefCountConsistency();
     void testValueUpdateSingleSourcePhantom();
     void testExpireAfterUpdate();
+    void testSingleSourceMode();
+    void testSingleSourceModeSearchCache();
 };
 
 } // namespace test

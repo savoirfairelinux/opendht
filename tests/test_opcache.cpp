@@ -623,4 +623,52 @@ OpCacheTester::testExpireAfterUpdate()
     CPPUNIT_ASSERT_EQUAL(v1->seq, cache.get(1200)->seq);
 }
 
+void
+OpCacheTester::testSingleSourceMode()
+{
+    // Single-source caches (proxy client) get the same values re-delivered
+    // on refresh: duplicates must not be counted, one expire removes.
+    std::vector<Event> events;
+    dht::OpValueCache cache(recordEvents(events), false);
+    auto v = makeValue(1100, 0, "DUP");
+
+    for (int i = 0; i < 10; i++)
+        cache.onValuesAdded({v});
+    CPPUNIT_ASSERT_EQUAL(1u, count(events, false));
+    CPPUNIT_ASSERT_EQUAL((size_t) 1, cache.size());
+
+    cache.onValuesExpired({v});
+    CPPUNIT_ASSERT_EQUAL(1u, count(events, true));
+    CPPUNIT_ASSERT_EQUAL((size_t) 0, cache.size());
+
+    cache.onValuesExpired({v});
+    CPPUNIT_ASSERT_EQUAL(1u, count(events, true));
+}
+
+void
+OpCacheTester::testSingleSourceModeSearchCache()
+{
+    std::vector<Event> events;
+    dht::SearchCache searchCache(false);
+    auto query = std::make_shared<dht::Query>();
+    dht::ValueCallback vcbStored;
+
+    searchCache.listen(recordEvents(events),
+                       query,
+                       {},
+                       [&](const std::shared_ptr<dht::Query>&, dht::ValueCallback vcb, dht::SyncCallback) -> size_t {
+                           vcbStored = std::move(vcb);
+                           return 1;
+                       });
+
+    auto v = makeValue(1300, 0, "S");
+    vcbStored({v}, false);
+    vcbStored({v}, false); // re-delivery after listen restart
+    CPPUNIT_ASSERT_EQUAL(1u, count(events, false));
+
+    vcbStored({v}, true);
+    CPPUNIT_ASSERT_EQUAL(1u, count(events, true));
+    CPPUNIT_ASSERT_EQUAL((size_t) 0, searchCache.get(dht::Value::Filter {}).size());
+}
+
 } // namespace test

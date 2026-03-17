@@ -25,8 +25,10 @@ struct DhtProxyClient::OperationState
 
 struct DhtProxyClient::Listener
 {
-    Listener(OpValueCache&& c)
-        : cache(std::move(c))
+    // The proxy server is a single logical source that re-delivers values
+    // (push refresh, listen restart): don't count duplicates.
+    Listener(ValueCallback&& cb)
+        : cache(std::move(cb), false)
     {}
 
     OpValueCache cache;
@@ -53,7 +55,7 @@ struct PermanentPut
 
 struct DhtProxyClient::ProxySearch
 {
-    SearchCache ops {};
+    SearchCache ops {false};
     std::unique_ptr<asio::steady_timer> opExpirationTimer;
     std::map<size_t, Listener> listeners {};
     std::map<Value::Id, PermanentPut> puts {};

@@ -37,7 +37,7 @@ DhtProxyClientTester::testResubscribeUsesKeyRoute()
 #ifdef OPENDHT_PUSH_NOTIFICATIONS
     DhtProxyClient client({}, {}, [] {}, "http://127.0.0.1:8080", "OpenDHT-Test", "client-id", "push-token");
 
-    DhtProxyClient::Listener listener {OpValueCache([](const std::vector<Sp<Value>>&, bool) { return true; })};
+    DhtProxyClient::Listener listener {ValueCallback([](const std::vector<Sp<Value>>&, bool) { return true; })};
     listener.opstate = std::make_shared<DhtProxyClient::OperationState>();
     listener.cb = [](const std::vector<Sp<Value>>&, bool, system_clock::time_point) {
         return true;
@@ -67,7 +67,7 @@ DhtProxyClientTester::testSetPushNotificationTokenResubscribesWithNewToken()
     auto& search = client.searches_[key];
     auto [it, inserted] = search.listeners.emplace(std::piecewise_construct,
                                                    std::forward_as_tuple(1),
-                                                   std::forward_as_tuple(OpValueCache(
+                                                   std::forward_as_tuple(ValueCallback(
                                                        [](const std::vector<Sp<Value>>&, bool) { return true; })));
     CPPUNIT_ASSERT(inserted);
 
