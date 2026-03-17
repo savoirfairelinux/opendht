@@ -1,21 +1,5 @@
-/*
- *  Copyright (C) 2025 Savoir-faire Linux Inc.
- *
- *  Author: GitHub Copilot
- *
- *  This program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 3 of the License, or
- *  (at your option) any later version.
- *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with this program. If not, see <https://www.gnu.org/licenses/>.
- */
+// Copyright (c) 2014-2026 Savoir-faire Linux Inc.
+// SPDX-License-Identifier: MIT
 
 #include "test_valuecache.h"
 #include "../src/value_cache.h"
@@ -305,6 +289,7 @@ ValueCacheTester::testUpdateTypeExpiration()
     // Update with new type (long expiration)
     auto v2 = std::make_shared<dht::Value>();
     v2->id = 1;
+    v2->seq = 1;
     v2->type = 99; // long type: 30 min expiration
     v2->data = {'B'};
 
@@ -324,6 +309,48 @@ ValueCacheTester::testUpdateTypeExpiration()
     cache.expireValues(at31min);
     CPPUNIT_ASSERT_EQUAL(1, expireCount);
     CPPUNIT_ASSERT_EQUAL((size_t) 0, cache.size());
+}
+
+void
+ValueCacheTester::testSameSeqEditIgnored()
+{
+    // Like OpValueCache, an edit is only recognized by an increasing seq:
+    // a different payload with the same seq is a refresh, not an edit.
+    int addCount = 0;
+    dht::ValueCache cache([&](const std::vector<std::shared_ptr<dht::Value>>& vals, bool expired) {
+        if (!expired)
+            addCount += vals.size();
+    });
+    dht::TypeStore types;
+    auto now = std::chrono::steady_clock::now();
+
+    auto v1 = std::make_shared<dht::Value>();
+    v1->id = 1;
+    v1->seq = 3;
+    v1->data = {'A'};
+    cache.onValues({v1}, {}, {}, types, now);
+    CPPUNIT_ASSERT_EQUAL(1, addCount);
+
+    auto sameSeq = std::make_shared<dht::Value>();
+    sameSeq->id = 1;
+    sameSeq->seq = 3;
+    sameSeq->data = {'B'};
+    cache.onValues({sameSeq}, {}, {}, types, now);
+    CPPUNIT_ASSERT_EQUAL(1, addCount);
+
+    auto older = std::make_shared<dht::Value>();
+    older->id = 1;
+    older->seq = 2;
+    older->data = {'C'};
+    cache.onValues({older}, {}, {}, types, now);
+    CPPUNIT_ASSERT_EQUAL(1, addCount);
+
+    auto newer = std::make_shared<dht::Value>();
+    newer->id = 1;
+    newer->seq = 4;
+    newer->data = {'D'};
+    cache.onValues({newer}, {}, {}, types, now);
+    CPPUNIT_ASSERT_EQUAL(2, addCount);
 }
 
 void
@@ -449,7 +476,7 @@ ValueCacheTester::testShortExpirationHighChurn()
 }
 
 void
-ValueCacheTester::testNoTimeExpirationWhileSynced()
+ValueCacheTester::testGracePeriodWhileSynced()
 {
     // Verify that when the listen is synced, the proportional grace period
     // (= typeExpiration) delays time-based expiration but doesn't prevent

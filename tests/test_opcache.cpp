@@ -1,19 +1,5 @@
-/*
- *  Copyright (C) 2025 Savoir-faire Linux Inc.
- *
- *  This program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 3 of the License, or
- *  (at your option) any later version.
- *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with this program. If not, see <https://www.gnu.org/licenses/>.
- */
+// Copyright (c) 2014-2026 Savoir-faire Linux Inc.
+// SPDX-License-Identifier: MIT
 
 #include "test_opcache.h"
 
@@ -22,6 +8,49 @@
 
 namespace test {
 CPPUNIT_TEST_SUITE_REGISTRATION(OpCacheTester);
+
+namespace {
+
+using Values = std::vector<std::shared_ptr<dht::Value>>;
+
+struct Event
+{
+    dht::Value::Id id;
+    uint16_t seq;
+    bool expired;
+};
+
+std::shared_ptr<dht::Value>
+makeValue(dht::Value::Id id, uint16_t seq, std::string data)
+{
+    auto v = std::make_shared<dht::Value>();
+    v->id = id;
+    v->seq = seq;
+    v->data = {data.begin(), data.end()};
+    return v;
+}
+
+dht::ValueCallback
+recordEvents(std::vector<Event>& events)
+{
+    return [&events](const Values& vals, bool expired) {
+        for (const auto& v : vals)
+            events.push_back({v->id, v->seq, expired});
+        return true;
+    };
+}
+
+unsigned
+count(const std::vector<Event>& events, bool expired)
+{
+    unsigned n = 0;
+    for (const auto& e : events)
+        if (e.expired == expired)
+            n++;
+    return n;
+}
+
+} // namespace
 
 void
 OpCacheTester::setUp()
@@ -32,55 +61,11 @@ OpCacheTester::tearDown()
 {}
 
 void
-OpCacheTester::testUpdateRefCount()
-{
-    dht::OpValueCache cache([](const std::vector<std::shared_ptr<dht::Value>>&, bool) { return true; });
-
-    auto v1 = std::make_shared<dht::Value>();
-    v1->id = 1;
-    v1->seq = 1;
-    std::string data1 = "data1";
-    v1->data = {data1.begin(), data1.end()};
-
-    auto v2 = std::make_shared<dht::Value>();
-    v2->id = 1;
-    v2->seq = 2;
-    std::string data2 = "data2";
-    v2->data = {data2.begin(), data2.end()};
-
-    // Add v1
-    cache.onValuesAdded({v1});
-    // Should have 1 value
-    CPPUNIT_ASSERT_EQUAL((size_t) 1, cache.size());
-    auto stored = cache.get(1);
-    CPPUNIT_ASSERT(stored);
-    CPPUNIT_ASSERT_EQUAL(v1->seq, stored->seq);
-
-    // Add v2 (update)
-    cache.onValuesAdded({v2});
-    // Should still have 1 value (updated)
-    CPPUNIT_ASSERT_EQUAL((size_t) 1, cache.size());
-    stored = cache.get(1);
-    CPPUNIT_ASSERT(stored);
-    CPPUNIT_ASSERT_EQUAL(v2->seq, stored->seq);
-
-    // Now expire once — since refCount is not incremented on edit,
-    // a single expire removes the value.
-    cache.onValuesExpired({v1});
-
-    stored = cache.get(1);
-    CPPUNIT_ASSERT_MESSAGE("Value should be removed after single expire (refCount=1)", stored == nullptr);
-}
-
-void
 OpCacheTester::testBasicAddExpire()
 {
-    dht::OpValueCache cache([](const std::vector<std::shared_ptr<dht::Value>>&, bool) { return true; });
+    dht::OpValueCache cache([](const Values&, bool) { return true; });
 
-    auto v1 = std::make_shared<dht::Value>();
-    v1->id = 10;
-    v1->data = {'A'};
-
+    auto v1 = makeValue(10, 0, "A");
     cache.onValuesAdded({v1});
     CPPUNIT_ASSERT_EQUAL((size_t) 1, cache.size());
     CPPUNIT_ASSERT(cache.get(10));
@@ -94,218 +79,232 @@ OpCacheTester::testBasicAddExpire()
 void
 OpCacheTester::testMultipleSources()
 {
-    dht::OpValueCache cache([](const std::vector<std::shared_ptr<dht::Value>>&, bool) { return true; });
+    // Two sources report the same value: it must survive until both have
+    // expired it, and the user must see exactly one add and one expire.
+    std::vector<Event> events;
+    dht::OpValueCache cache(recordEvents(events));
 
-    auto v1 = std::make_shared<dht::Value>();
-    v1->id = 20;
-    v1->data = {'B'};
-
-    // Add same value twice (simulating two sources)
-    // refCount does not increment on duplicate: stays at 1.
-    cache.onValuesAdded({v1});
-    cache.onValuesAdded({v1});
-
+    auto v = makeValue(20, 0, "B");
+    cache.onValuesAdded({v}); // source A
+    cache.onValuesAdded({v}); // source B
     CPPUNIT_ASSERT_EQUAL((size_t) 1, cache.size());
+    CPPUNIT_ASSERT_EQUAL(1u, count(events, false));
 
-    // Single expire removes the value
-    cache.onValuesExpired({v1});
+    cache.onValuesExpired({v}); // source A goes away
+    CPPUNIT_ASSERT_EQUAL_MESSAGE("Value still held by source B", (size_t) 1, cache.size());
+    CPPUNIT_ASSERT_EQUAL(0u, count(events, true));
+
+    cache.onValuesExpired({v}); // source B goes away
     CPPUNIT_ASSERT_EQUAL((size_t) 0, cache.size());
+    CPPUNIT_ASSERT_EQUAL(1u, count(events, true));
 }
 
 void
-OpCacheTester::testUpdateSequence()
+OpCacheTester::testEditResetsRefCount()
 {
-    dht::OpValueCache cache([](const std::vector<std::shared_ptr<dht::Value>>&, bool) { return true; });
+    // A and B hold v1. A reports the edit v2: only A is known to hold v2, so
+    // the refcount restarts at 1. B then confirms v2 (refcount 2).
+    std::vector<Event> events;
+    dht::OpValueCache cache(recordEvents(events));
 
-    auto v1 = std::make_shared<dht::Value>();
-    v1->id = 30;
-    v1->seq = 10;
-    v1->data = {'C'};
+    auto v1 = makeValue(1, 1, "data1");
+    auto v2 = makeValue(1, 2, "data2");
 
-    auto v2 = std::make_shared<dht::Value>();
-    v2->id = 30;
-    v2->seq = 20;
-    v2->data = {'D'};
+    cache.onValuesAdded({v1}); // A
+    cache.onValuesAdded({v1}); // B
+    cache.onValuesAdded({v2}); // A edits
+    CPPUNIT_ASSERT_EQUAL((size_t) 1, cache.size());
+    CPPUNIT_ASSERT_EQUAL(v2->seq, cache.get(1)->seq);
+    CPPUNIT_ASSERT_EQUAL(2u, count(events, false));
 
-    auto v3 = std::make_shared<dht::Value>();
-    v3->id = 30;
-    v3->seq = 5;
-    v3->data = {'E'};
+    cache.onValuesExpired({v2}); // A expires v2 -> nobody known to hold it
+    CPPUNIT_ASSERT_EQUAL_MESSAGE("Edit reset the refcount to the editing source", (size_t) 0, cache.size());
+    CPPUNIT_ASSERT_EQUAL(1u, count(events, true));
 
-    // Add seq 10
+    // Same scenario, but B confirms v2 before A expires it.
+    events.clear();
+    cache.onValuesAdded({v1}); // A
+    cache.onValuesAdded({v1}); // B
+    cache.onValuesAdded({v2}); // A edits
+    cache.onValuesAdded({v2}); // B confirms
+    cache.onValuesExpired({v2});
+    CPPUNIT_ASSERT_EQUAL_MESSAGE("Still held by B", (size_t) 1, cache.size());
+    cache.onValuesExpired({v2});
+    CPPUNIT_ASSERT_EQUAL((size_t) 0, cache.size());
+    CPPUNIT_ASSERT_EQUAL(2u, count(events, false));
+    CPPUNIT_ASSERT_EQUAL(1u, count(events, true));
+}
+
+void
+OpCacheTester::testEditChainMultiSource()
+{
+    // Rapid edit chain seen from two sources with interleaving: the user
+    // must see each version once as an add and a single final expire.
+    std::vector<Event> events;
+    dht::OpValueCache cache(recordEvents(events));
+
+    auto v1 = makeValue(7, 1, "v1");
+    auto v2 = makeValue(7, 2, "v2");
+    auto v3 = makeValue(7, 3, "v3");
+
+    cache.onValuesAdded({v1}); // A
+    cache.onValuesAdded({v1}); // B
+    cache.onValuesAdded({v2}); // A
+    cache.onValuesAdded({v3}); // A (B skipped v2)
+    cache.onValuesAdded({v2}); // B, late and stale: ignored
+    cache.onValuesAdded({v3}); // B
+    CPPUNIT_ASSERT_EQUAL(3u, count(events, false));
+    CPPUNIT_ASSERT_EQUAL((uint16_t) 3, cache.get(7)->seq);
+
+    cache.onValuesExpired({v3}); // A
+    CPPUNIT_ASSERT_EQUAL((size_t) 1, cache.size());
+    cache.onValuesExpired({v3}); // B
+    CPPUNIT_ASSERT_EQUAL((size_t) 0, cache.size());
+    CPPUNIT_ASSERT_EQUAL(1u, count(events, true));
+    CPPUNIT_ASSERT_EQUAL((uint16_t) 3, events.back().seq);
+}
+
+void
+OpCacheTester::testStaleAddIgnored()
+{
+    dht::OpValueCache cache([](const Values&, bool) { return true; });
+
+    auto v1 = makeValue(30, 10, "C");
+    auto v2 = makeValue(30, 20, "D");
+    auto v3 = makeValue(30, 5, "E");
+
     cache.onValuesAdded({v1});
-    auto stored = cache.get(30);
-    CPPUNIT_ASSERT_EQUAL((uint16_t) 10, stored->seq);
-
-    // Add seq 20 (update)
+    CPPUNIT_ASSERT_EQUAL((uint16_t) 10, cache.get(30)->seq);
     cache.onValuesAdded({v2});
-    stored = cache.get(30);
-    CPPUNIT_ASSERT_EQUAL((uint16_t) 20, stored->seq);
+    CPPUNIT_ASSERT_EQUAL((uint16_t) 20, cache.get(30)->seq);
 
-    // Add seq 5 (older, should not update content)
+    // Older version from a lagging source: neither stored nor counted
     cache.onValuesAdded({v3});
-    stored = cache.get(30);
-    CPPUNIT_ASSERT_EQUAL((uint16_t) 20, stored->seq);
+    CPPUNIT_ASSERT_EQUAL((uint16_t) 20, cache.get(30)->seq);
+    cache.onValuesExpired({v2});
+    CPPUNIT_ASSERT_MESSAGE("Stale add must not have incremented the refcount", !cache.get(30));
+}
 
-    // RefCount stays at 1 regardless of how many times we add.
-    // A single expire removes the value.
-    cache.onValuesExpired({v1});
-    CPPUNIT_ASSERT(!cache.get(30));
+void
+OpCacheTester::testStaleExpireIgnored()
+{
+    // A source that still holds an older version expiring it must not
+    // affect the newer version held by others.
+    std::vector<Event> events;
+    dht::OpValueCache cache(recordEvents(events));
+
+    auto v1 = makeValue(31, 1, "old");
+    auto v2 = makeValue(31, 2, "new");
+
+    cache.onValuesAdded({v1}); // A
+    cache.onValuesAdded({v1}); // B
+    cache.onValuesAdded({v2}); // A edits; B never receives v2
+
+    cache.onValuesExpired({v1}); // B expires its stale copy
+    CPPUNIT_ASSERT_EQUAL((size_t) 1, cache.size());
+    CPPUNIT_ASSERT_EQUAL(0u, count(events, true));
+
+    cache.onValuesExpired({v2}); // A
+    CPPUNIT_ASSERT_EQUAL((size_t) 0, cache.size());
+    CPPUNIT_ASSERT_EQUAL(1u, count(events, true));
+    CPPUNIT_ASSERT_EQUAL((uint16_t) 2, events.back().seq);
 }
 
 void
 OpCacheTester::testCallbacks()
 {
-    int addCount = 0;
-    int expireCount = 0;
-    dht::OpValueCache cache([&](const std::vector<std::shared_ptr<dht::Value>>& vals, bool expired) {
-        if (expired)
-            expireCount += vals.size();
-        else
-            addCount += vals.size();
-        return true;
-    });
+    std::vector<Event> events;
+    dht::OpValueCache cache(recordEvents(events));
 
-    auto v1 = std::make_shared<dht::Value>();
-    v1->id = 40;
-
+    auto v1 = makeValue(40, 0, "");
     cache.onValuesAdded({v1});
-    CPPUNIT_ASSERT_EQUAL(1, addCount);
-    CPPUNIT_ASSERT_EQUAL(0, expireCount);
+    CPPUNIT_ASSERT_EQUAL(1u, count(events, false));
 
-    // Adding same value again should NOT trigger callback (no new value added)
-    // Wait, looking at code:
-    // if (viop.second) { newValues.emplace_back(v); } ...
-    // return newValues.empty() ? true : callback(newValues, false);
-    // So if it's a duplicate or update, does it callback?
-    // If update: newValues.emplace_back(v) IS called.
-    // If duplicate (refCount++ only): newValues is NOT added.
-
+    // Duplicate from another source: counted, but not re-delivered
     cache.onValuesAdded({v1});
-    CPPUNIT_ASSERT_EQUAL(1, addCount); // Should still be 1
+    CPPUNIT_ASSERT_EQUAL(1u, count(events, false));
 
-    auto v2 = std::make_shared<dht::Value>();
-    v2->id = 40;
-    v2->seq = 100;              // Update
-    v2->data = {'M', 'O', 'D'}; // Change data to ensure inequality
-
+    auto v2 = makeValue(40, 100, "MOD");
     cache.onValuesAdded({v2});
-    CPPUNIT_ASSERT_EQUAL(2, addCount); // Should be 2 now (update triggers callback)
+    CPPUNIT_ASSERT_EQUAL(2u, count(events, false));
 
-    // RefCount is 1 — single expire removes the value.
-    cache.onValuesExpired({v1});
-    CPPUNIT_ASSERT_EQUAL(1, expireCount);
+    // The edit reset the refcount: one expire removes it
+    cache.onValuesExpired({v2});
+    CPPUNIT_ASSERT_EQUAL(1u, count(events, true));
+    CPPUNIT_ASSERT_EQUAL((size_t) 0, cache.size());
 }
 
 void
 OpCacheTester::testFilters()
 {
-    dht::OpValueCache cache([](const std::vector<std::shared_ptr<dht::Value>>&, bool) { return true; });
+    dht::OpValueCache cache([](const Values&, bool) { return true; });
 
-    auto v1 = std::make_shared<dht::Value>();
-    v1->id = 50;
+    auto v1 = makeValue(50, 0, "");
     v1->type = 1;
-
-    auto v2 = std::make_shared<dht::Value>();
-    v2->id = 51;
+    auto v2 = makeValue(51, 0, "");
     v2->type = 2;
-
     cache.onValuesAdded({v1, v2});
 
-    auto f1 = dht::Value::TypeFilter(1);
-    auto res1 = cache.get(f1);
+    auto res1 = cache.get(dht::Value::TypeFilter(1));
     CPPUNIT_ASSERT_EQUAL((size_t) 1, res1.size());
     CPPUNIT_ASSERT_EQUAL(v1->id, res1[0]->id);
 
-    auto f2 = dht::Value::TypeFilter(2);
-    auto res2 = cache.get(f2);
+    auto res2 = cache.get(dht::Value::TypeFilter(2));
     CPPUNIT_ASSERT_EQUAL((size_t) 1, res2.size());
     CPPUNIT_ASSERT_EQUAL(v2->id, res2[0]->id);
 
-    auto all = cache.getValues();
-    CPPUNIT_ASSERT_EQUAL((size_t) 2, all.size());
+    CPPUNIT_ASSERT_EQUAL((size_t) 2, cache.getValues().size());
 }
 
 void
 OpCacheTester::testSyncStatus()
 {
-    dht::OpValueCache cache([](const std::vector<std::shared_ptr<dht::Value>>&, bool) { return true; });
+    dht::OpValueCache cache([](const Values&, bool) { return true; });
 
-    // Initial state
     CPPUNIT_ASSERT(!cache.isSynced());
-
-    // Add a node
     cache.onNodeChanged(dht::ListenSyncStatus::ADDED);
-    // 1 node, 0 synced -> not synced
     CPPUNIT_ASSERT(!cache.isSynced());
-
-    // Sync the node
     cache.onNodeChanged(dht::ListenSyncStatus::SYNCED);
-    // 1 node, 1 synced -> synced
     CPPUNIT_ASSERT(cache.isSynced());
-
-    // Add another node
     cache.onNodeChanged(dht::ListenSyncStatus::ADDED);
-    // 2 nodes, 1 synced -> not synced
     CPPUNIT_ASSERT(!cache.isSynced());
-
-    // Sync second node
     cache.onNodeChanged(dht::ListenSyncStatus::SYNCED);
-    // 2 nodes, 2 synced -> synced
     CPPUNIT_ASSERT(cache.isSynced());
-
-    // Unsync one
     cache.onNodeChanged(dht::ListenSyncStatus::UNSYNCED);
     CPPUNIT_ASSERT(!cache.isSynced());
-
-    // Remove one (the unsynced one)
     cache.onNodeChanged(dht::ListenSyncStatus::REMOVED);
-    // 1 node, 1 synced -> synced
     CPPUNIT_ASSERT(cache.isSynced());
 }
 
 void
 OpCacheTester::testGetWhileSynced()
 {
-    // Test that get() on a SearchCache with a synced listen returns cached values
-    // and completes the get (returns true) without causing duplicate delivery.
     dht::SearchCache searchCache;
-
     int getCallCount = 0;
     bool doneCalled = false;
     bool doneSuccess = false;
 
-    auto v1 = std::make_shared<dht::Value>();
-    v1->id = 100;
-    v1->data = {'X'};
-    auto v2 = std::make_shared<dht::Value>();
-    v2->id = 101;
-    v2->data = {'Y'};
-
+    auto v1 = makeValue(100, 0, "X");
+    auto v2 = makeValue(101, 0, "Y");
     auto query = std::make_shared<dht::Query>();
 
-    // Start a listen
-    size_t listenToken = searchCache.listen([](const std::vector<std::shared_ptr<dht::Value>>&, bool) { return true; },
-                                            query,
-                                            {},
-                                            [&](const std::shared_ptr<dht::Query>& q,
-                                                dht::ValueCallback vcb,
-                                                dht::SyncCallback scb) -> size_t {
-                                                // Simulate node added and synced
-                                                scb(dht::ListenSyncStatus::ADDED);
-                                                // Inject values
-                                                vcb({v1, v2}, false);
-                                                // Mark as synced
-                                                scb(dht::ListenSyncStatus::SYNCED);
-                                                return 1;
-                                            });
-    CPPUNIT_ASSERT(listenToken != 0);
+    auto token = searchCache.listen([](const Values&, bool) { return true; },
+                                    query,
+                                    {},
+                                    [&](const std::shared_ptr<dht::Query>&,
+                                        dht::ValueCallback vcb,
+                                        dht::SyncCallback scb) -> size_t {
+                                        scb(dht::ListenSyncStatus::ADDED);
+                                        vcb({v1, v2}, false);
+                                        scb(dht::ListenSyncStatus::SYNCED);
+                                        return 1;
+                                    });
+    CPPUNIT_ASSERT(token != 0);
 
-    // Now perform a get on the synced cache
     bool result = searchCache.get(
         {},
         query,
-        [&](const std::vector<std::shared_ptr<dht::Value>>& vals) {
+        [&](const Values& vals) {
             getCallCount++;
             CPPUNIT_ASSERT_EQUAL((size_t) 2, vals.size());
             return true;
@@ -315,118 +314,87 @@ OpCacheTester::testGetWhileSynced()
             doneSuccess = success;
         });
 
-    // get should be served from cache
-    CPPUNIT_ASSERT_MESSAGE("get() should return true when cache is synced", result);
-    CPPUNIT_ASSERT_EQUAL_MESSAGE("get callback should be called exactly once", 1, getCallCount);
-    CPPUNIT_ASSERT_MESSAGE("done callback should be called", doneCalled);
-    CPPUNIT_ASSERT_MESSAGE("done callback should indicate success", doneSuccess);
+    CPPUNIT_ASSERT_MESSAGE("get() should be served from a synced cache", result);
+    CPPUNIT_ASSERT_EQUAL(1, getCallCount);
+    CPPUNIT_ASSERT(doneCalled);
+    CPPUNIT_ASSERT(doneSuccess);
 }
 
 void
 OpCacheTester::testGetWhileNotSynced()
 {
-    // Test that when a get() is performed on a non-synced cache, values
-    // are not delivered twice: once from the cache and once from the
-    // simulated network get that Search::get would queue.
+    // An unsynced cache must not answer a get: the caller falls back to the
+    // network and values are delivered once, from the network only.
     dht::SearchCache searchCache;
+    std::vector<dht::Value::Id> deliveries;
 
-    // Track every value delivery with (value_id, source) pairs
-    std::vector<std::pair<dht::Value::Id, std::string>> deliveries;
-
-    auto v1 = std::make_shared<dht::Value>();
-    v1->id = 200;
-    v1->data = {'A'};
-
+    auto v1 = makeValue(200, 0, "A");
     auto query = std::make_shared<dht::Query>();
-
-    // Start a listen but DON'T mark as synced
-    dht::ValueCallback storedVcb;
     dht::SyncCallback storedScb;
-    size_t listenToken = searchCache.listen([](const std::vector<std::shared_ptr<dht::Value>>&, bool) { return true; },
-                                            query,
-                                            {},
-                                            [&](const std::shared_ptr<dht::Query>& q,
-                                                dht::ValueCallback vcb,
-                                                dht::SyncCallback scb) -> size_t {
-                                                storedVcb = vcb;
-                                                storedScb = scb;
-                                                // Node added but NOT synced
-                                                scb(dht::ListenSyncStatus::ADDED);
-                                                // Inject a value
-                                                vcb({v1}, false);
-                                                return 1;
-                                            });
-    CPPUNIT_ASSERT(listenToken != 0);
 
-    // Simulate what Search::get does: try cache first, if false, queue network get
+    auto token = searchCache.listen([](const Values&, bool) { return true; },
+                                    query,
+                                    {},
+                                    [&](const std::shared_ptr<dht::Query>&,
+                                        dht::ValueCallback vcb,
+                                        dht::SyncCallback scb) -> size_t {
+                                        storedScb = scb;
+                                        scb(dht::ListenSyncStatus::ADDED);
+                                        vcb({v1}, false);
+                                        return 1;
+                                    });
+    CPPUNIT_ASSERT(token != 0);
+
     bool doneCalled = false;
-    auto gcb = [&](const std::vector<std::shared_ptr<dht::Value>>& vals) {
+    auto gcb = [&](const Values& vals) {
         for (const auto& v : vals)
-            deliveries.emplace_back(v->id, "get");
+            deliveries.emplace_back(v->id);
         return true;
     };
     auto dcb = [&](bool, const std::vector<std::shared_ptr<dht::Node>>&) {
         doneCalled = true;
     };
 
-    bool servedFromCache = searchCache.get({}, query, gcb, dcb);
+    CPPUNIT_ASSERT(!searchCache.get({}, query, gcb, dcb));
+    CPPUNIT_ASSERT(deliveries.empty());
+    CPPUNIT_ASSERT(!doneCalled);
 
-    // Cache is not synced so get should not be served from cache
-    CPPUNIT_ASSERT_MESSAGE("get() should return false when cache is not synced", !servedFromCache);
-
-    // Simulate the network get completing with the same value
-    // (this is what onGetValuesDone does — calls gcb for each matching get)
+    // Simulated network reply
     gcb({v1});
+    CPPUNIT_ASSERT_EQUAL((size_t) 1, deliveries.size());
 
-    // Exactly one delivery expected — from the network get only
-    CPPUNIT_ASSERT_EQUAL_MESSAGE("Value should be delivered exactly once (from network get only)",
-                                 (size_t) 1,
-                                 deliveries.size());
-    CPPUNIT_ASSERT_EQUAL(v1->id, deliveries[0].first);
-    CPPUNIT_ASSERT_EQUAL(std::string("get"), deliveries[0].second);
-
-    // Now sync the listen and perform another get — this time it should be served from cache
     storedScb(dht::ListenSyncStatus::SYNCED);
-
     deliveries.clear();
-    doneCalled = false;
-    bool servedFromCache2 = searchCache.get({}, query, gcb, dcb);
-    CPPUNIT_ASSERT_MESSAGE("get() should return true once cache is synced", servedFromCache2);
-    CPPUNIT_ASSERT_MESSAGE("done callback should be called when served from synced cache", doneCalled);
-    CPPUNIT_ASSERT_EQUAL_MESSAGE("Synced cache get should deliver the value exactly once",
-                                 (size_t) 1,
-                                 deliveries.size());
+    CPPUNIT_ASSERT(searchCache.get({}, query, gcb, dcb));
+    CPPUNIT_ASSERT(doneCalled);
+    CPPUNIT_ASSERT_EQUAL((size_t) 1, deliveries.size());
 }
 
 void
 OpCacheTester::testGetEmptySynced()
 {
-    // Test that get() on a synced but empty cache calls dcb but not gcb.
     dht::SearchCache searchCache;
-
     int getCallCount = 0;
     bool doneCalled = false;
     bool doneSuccess = false;
-
     auto query = std::make_shared<dht::Query>();
 
-    // Start a listen, inject no values, mark as synced
-    size_t listenToken = searchCache.listen([](const std::vector<std::shared_ptr<dht::Value>>&, bool) { return true; },
-                                            query,
-                                            {},
-                                            [&](const std::shared_ptr<dht::Query>& q,
-                                                dht::ValueCallback vcb,
-                                                dht::SyncCallback scb) -> size_t {
-                                                scb(dht::ListenSyncStatus::ADDED);
-                                                scb(dht::ListenSyncStatus::SYNCED);
-                                                return 1;
-                                            });
-    CPPUNIT_ASSERT(listenToken != 0);
+    auto token = searchCache.listen([](const Values&, bool) { return true; },
+                                    query,
+                                    {},
+                                    [&](const std::shared_ptr<dht::Query>&,
+                                        dht::ValueCallback,
+                                        dht::SyncCallback scb) -> size_t {
+                                        scb(dht::ListenSyncStatus::ADDED);
+                                        scb(dht::ListenSyncStatus::SYNCED);
+                                        return 1;
+                                    });
+    CPPUNIT_ASSERT(token != 0);
 
     bool result = searchCache.get(
         {},
         query,
-        [&](const std::vector<std::shared_ptr<dht::Value>>& vals) {
+        [&](const Values&) {
             getCallCount++;
             return true;
         },
@@ -435,214 +403,272 @@ OpCacheTester::testGetEmptySynced()
             doneSuccess = success;
         });
 
-    // Synced + empty: get should succeed but gcb should not be called
-    CPPUNIT_ASSERT_MESSAGE("get() should return true when cache is synced (even if empty)", result);
-    CPPUNIT_ASSERT_EQUAL_MESSAGE("get callback should NOT be called (no values)", 0, getCallCount);
-    CPPUNIT_ASSERT_MESSAGE("done callback should be called", doneCalled);
-    CPPUNIT_ASSERT_MESSAGE("done callback should indicate success", doneSuccess);
+    CPPUNIT_ASSERT(result);
+    CPPUNIT_ASSERT_EQUAL(0, getCallCount);
+    CPPUNIT_ASSERT(doneCalled);
+    CPPUNIT_ASSERT(doneSuccess);
 }
 
 void
-OpCacheTester::testValueExpirationDuringListen()
+OpCacheTester::testGetWithoutCallback()
 {
-    // Test that values correctly expire via refCount during listen with multiple sources.
-    dht::OpValueCache cache([](const std::vector<std::shared_ptr<dht::Value>>&, bool) { return true; });
+    // Dht::query() passes no GetCallback: the cache cannot answer it and
+    // must let the network path run instead of calling an empty function.
+    dht::SearchCache searchCache;
+    auto v1 = makeValue(300, 0, "Q");
+    auto query = std::make_shared<dht::Query>();
 
-    auto v1 = std::make_shared<dht::Value>();
-    v1->id = 300;
-    v1->data = {'D'};
+    searchCache.listen([](const Values&, bool) { return true; },
+                       query,
+                       {},
+                       [&](const std::shared_ptr<dht::Query>&, dht::ValueCallback vcb, dht::SyncCallback scb) -> size_t {
+                           scb(dht::ListenSyncStatus::ADDED);
+                           vcb({v1}, false);
+                           scb(dht::ListenSyncStatus::SYNCED);
+                           return 1;
+                       });
 
-    // Simulate two nodes reporting the same value
-    cache.onNodeChanged(dht::ListenSyncStatus::ADDED);
-    cache.onNodeChanged(dht::ListenSyncStatus::ADDED);
+    bool doneCalled = false;
+    CPPUNIT_ASSERT(!searchCache.get({}, query, {}, [&](bool, const std::vector<std::shared_ptr<dht::Node>>&) {
+        doneCalled = true;
+    }));
+    CPPUNIT_ASSERT(!doneCalled);
+}
 
-    cache.onValuesAdded({v1}); // source 1
-    cache.onValuesAdded({v1}); // source 2 (no refCount increment)
+void
+OpCacheTester::testGetCallbackReturnsFalse()
+{
+    // A consumer returning false means "I have enough", not a failure.
+    dht::SearchCache searchCache;
+    auto v1 = makeValue(1000, 0, "X");
+    auto query = std::make_shared<dht::Query>();
 
-    CPPUNIT_ASSERT_EQUAL((size_t) 1, cache.size());
-    CPPUNIT_ASSERT(cache.get(300) != nullptr);
+    searchCache.listen([](const Values&, bool) { return true; },
+                       query,
+                       {},
+                       [&](const std::shared_ptr<dht::Query>&, dht::ValueCallback vcb, dht::SyncCallback scb) -> size_t {
+                           scb(dht::ListenSyncStatus::ADDED);
+                           vcb({v1}, false);
+                           scb(dht::ListenSyncStatus::SYNCED);
+                           return 1;
+                       });
 
-    // Single expire removes the value (refCount = 1)
-    cache.onValuesExpired({v1});
-    CPPUNIT_ASSERT_EQUAL((size_t) 0, cache.size());
-    CPPUNIT_ASSERT(cache.get(300) == nullptr);
+    bool doneCalled = false;
+    bool doneSuccess = false;
+    int gcbCallCount = 0;
+    bool result = searchCache.get(
+        {},
+        query,
+        [&](const Values&) {
+            gcbCallCount++;
+            return false;
+        },
+        [&](bool success, const std::vector<std::shared_ptr<dht::Node>>&) {
+            doneCalled = true;
+            doneSuccess = success;
+        });
+
+    CPPUNIT_ASSERT(result);
+    CPPUNIT_ASSERT_EQUAL(1, gcbCallCount);
+    CPPUNIT_ASSERT(doneCalled);
+    CPPUNIT_ASSERT_MESSAGE("Stopping early is reported as success, like the network path", doneSuccess);
 }
 
 void
 OpCacheTester::testTimestampOrdering()
 {
-    // Test that expired values with timestamps older than the last update are ignored.
-    dht::OpValueCache cache([](const std::vector<std::shared_ptr<dht::Value>>&, bool) { return true; });
+    dht::OpValueCache cache([](const Values&, bool) { return true; });
 
-    auto v1 = std::make_shared<dht::Value>();
-    v1->id = 400;
-    v1->data = {'T'};
-
+    auto v1 = makeValue(400, 0, "T");
     auto t1 = std::chrono::system_clock::now();
     auto t2 = t1 + std::chrono::seconds(10);
 
-    // Add value at time t2
     cache.onValue({v1}, false, t2);
     CPPUNIT_ASSERT_EQUAL((size_t) 1, cache.size());
 
-    // Try to expire at time t1 (older) — should be ignored
     cache.onValue({v1}, true, t1);
     CPPUNIT_ASSERT_EQUAL_MESSAGE("Stale expiration should be ignored", (size_t) 1, cache.size());
-    CPPUNIT_ASSERT(cache.get(400) != nullptr);
 
-    // Expire at time t2 — should succeed
     cache.onValue({v1}, true, t2);
     CPPUNIT_ASSERT_EQUAL((size_t) 0, cache.size());
 }
 
 void
-OpCacheTester::testShortExpirationPhantomExpiry()
+OpCacheTester::testSourceDropKeepsValue()
 {
-    // End-to-end test: demonstrates phantom expire / re-add when multiple
-    // per-node ValueCaches feed into a single OpValueCache and a short-lived
-    // value expires from all per-node caches before the listen refresh.
-    //
-    // The fixed behavior (ValueCache does not time-expire while synced)
-    // prevents the phantom.  Here we verify the OpValueCache stays consistent.
+    // Two per-node ValueCaches feed one Search-level OpCache. When one node
+    // leaves the search (its ValueCache is destroyed, expiring everything it
+    // held) the value must stay visible as long as the other node holds it.
+    std::vector<Event> events;
+    dht::SearchCache searchCache;
+    auto query = std::make_shared<dht::Query>();
+    dht::ValueCallback toOpCache;
+    dht::SyncCallback toOpCacheSync;
 
-    using namespace std::chrono;
-    int addCount = 0;
-    int expireCount = 0;
+    searchCache.listen(recordEvents(events),
+                       query,
+                       {},
+                       [&](const std::shared_ptr<dht::Query>&, dht::ValueCallback vcb, dht::SyncCallback scb) -> size_t {
+                           toOpCache = std::move(vcb);
+                           toOpCacheSync = std::move(scb);
+                           return 1;
+                       });
 
-    dht::OpValueCache opCache([&](const std::vector<std::shared_ptr<dht::Value>>& vals, bool expired) {
-        if (expired)
-            expireCount += vals.size();
-        else
-            addCount += vals.size();
-        return true;
-    });
+    dht::TypeStore types;
+    auto now = dht::clock::now();
+    auto v = makeValue(42, 0, "hello");
 
-    auto v = std::make_shared<dht::Value>();
-    v->id = 900;
-    v->data = {'Z'};
+    auto makeNodeCache = [&] {
+        return std::make_unique<dht::ValueCache>([&](const Values& vals, bool expired) { toOpCache(vals, expired); },
+                                                 [&](dht::ListenSyncStatus s) { toOpCacheSync(s); });
+    };
+    auto nodeA = makeNodeCache();
+    auto nodeB = makeNodeCache();
+    nodeA->onValues({v}, {}, {}, types, now);
+    nodeA->onSynced(true);
+    nodeB->onValues({v}, {}, {}, types, now);
+    nodeB->onSynced(true);
+    CPPUNIT_ASSERT_EQUAL(1u, count(events, false));
+    CPPUNIT_ASSERT_EQUAL((size_t) 1, searchCache.get(dht::Value::Filter {}).size());
 
-    // Simulate 3 nodes each adding the same value
-    // refCount stays at 1 (no increment on duplicate adds)
-    opCache.onNodeChanged(dht::ListenSyncStatus::ADDED);
-    opCache.onNodeChanged(dht::ListenSyncStatus::ADDED);
-    opCache.onNodeChanged(dht::ListenSyncStatus::ADDED);
-    opCache.onValuesAdded({v});
-    opCache.onValuesAdded({v});
-    opCache.onValuesAdded({v});
-    CPPUNIT_ASSERT_EQUAL(1, addCount); // first add fires callback
-    CPPUNIT_ASSERT_EQUAL((size_t) 1, opCache.size());
+    nodeA.reset();
+    CPPUNIT_ASSERT_EQUAL_MESSAGE("No expire while another node holds the value", 0u, count(events, true));
+    CPPUNIT_ASSERT_EQUAL((size_t) 1, searchCache.get(dht::Value::Filter {}).size());
 
-    // Single expire removes the value
-    opCache.onValuesExpired({v});
-    CPPUNIT_ASSERT_EQUAL(1, expireCount);
-    CPPUNIT_ASSERT_EQUAL((size_t) 0, opCache.size());
+    nodeB->onValues({v}, {}, {}, types, now + std::chrono::seconds(1));
+    CPPUNIT_ASSERT_EQUAL_MESSAGE("Refresh from the remaining node is not re-delivered", 1u, count(events, false));
 
-    // New nodes report the same value again (re-listen completed)
-    opCache.onValuesAdded({v});
-    opCache.onValuesAdded({v});
-    CPPUNIT_ASSERT_EQUAL(2, addCount); // value re-appeared
-    CPPUNIT_ASSERT_EQUAL((size_t) 1, opCache.size());
-
-    // Single expire removes
-    opCache.onValuesExpired({v});
-    CPPUNIT_ASSERT_EQUAL((size_t) 0, opCache.size());
-    CPPUNIT_ASSERT_EQUAL(2, expireCount);
+    nodeB.reset();
+    CPPUNIT_ASSERT_EQUAL_MESSAGE("Last holder gone: expire once", 1u, count(events, true));
+    CPPUNIT_ASSERT_EQUAL((size_t) 0, searchCache.get(dht::Value::Filter {}).size());
 }
 
 void
 OpCacheTester::testHighChurnRefCountConsistency()
 {
-    // Rapid node churn: nodes join and leave quickly, each reporting the same
-    // value.  Verify that the refCount never goes negative and the value is
-    // correctly expired only when all sources are gone.
+    dht::OpValueCache cache([](const Values&, bool) { return true; });
+    auto v = makeValue(800, 0, "CHURN");
 
-    bool callbackFailed = false;
-    dht::OpValueCache cache([&](const std::vector<std::shared_ptr<dht::Value>>&, bool) { return true; });
-
-    auto v = std::make_shared<dht::Value>();
-    v->id = 800;
-    v->data = {'C', 'H', 'U', 'R', 'N'};
-
-    // Simulate 50 rapid churn cycles:
-    //   - node joins, adds V (first add sets refCount=1)
-    //   - node leaves, expires V (refCount→0, removed)
     for (int i = 0; i < 50; i++) {
         cache.onNodeChanged(dht::ListenSyncStatus::ADDED);
         cache.onValuesAdded({v});
         cache.onValuesExpired({v});
         cache.onNodeChanged(dht::ListenSyncStatus::REMOVED);
     }
+    CPPUNIT_ASSERT_EQUAL((size_t) 0, cache.size());
 
-    // After all churn, value should be completely gone.
-    CPPUNIT_ASSERT_EQUAL_MESSAGE("All sources gone — value must be removed", (size_t) 0, cache.size());
-
-    // Now simulate overlapping churn: add N, add N+1, expire N, expire N+1
-    // Since refCount stays at 1, the first expire removes the value.
-    // The second expire is a no-op.
+    // Overlapping churn: add A, add B, expire A, expire B
     for (int i = 0; i < 20; i++) {
         cache.onNodeChanged(dht::ListenSyncStatus::ADDED);
         cache.onValuesAdded({v});
-
         cache.onNodeChanged(dht::ListenSyncStatus::ADDED);
-        cache.onValuesAdded({v}); // no increment
+        cache.onValuesAdded({v});
 
-        // First node leaves — refCount 1→0, value removed
         cache.onValuesExpired({v});
         cache.onNodeChanged(dht::ListenSyncStatus::REMOVED);
+        CPPUNIT_ASSERT_EQUAL_MESSAGE("Value kept while one source remains", (size_t) 1, cache.size());
 
-        CPPUNIT_ASSERT_EQUAL_MESSAGE("Value removed after single expire", (size_t) 0, cache.size());
-
-        // Second expire is a no-op (value already gone)
         cache.onValuesExpired({v});
         cache.onNodeChanged(dht::ListenSyncStatus::REMOVED);
+        CPPUNIT_ASSERT_EQUAL((size_t) 0, cache.size());
     }
 
+    // Extra expirations from sources that never added must be no-ops
+    cache.onValuesExpired({v});
+    cache.onValuesExpired({v});
     CPPUNIT_ASSERT_EQUAL((size_t) 0, cache.size());
 }
 
 void
 OpCacheTester::testValueUpdateSingleSourcePhantom()
 {
-    // Verify that when a value is edited (same id, higher seq), the user
-    // sees only the new version as an add — no phantom expiration of the
-    // old version.
+    // Editing a value (same id, higher seq) is delivered as a single add of
+    // the new version, without a phantom expiration of the old one.
+    std::vector<Event> events;
+    dht::OpValueCache cache(recordEvents(events));
 
-    std::vector<std::pair<dht::Value::Id, bool>> events; // (id, expired?)
+    auto v1 = makeValue(700, 1, "OLD");
+    auto v2 = makeValue(700, 2, "NEW");
 
-    dht::OpValueCache cache([&](const std::vector<std::shared_ptr<dht::Value>>& vals, bool expired) {
-        for (const auto& v : vals)
-            events.emplace_back(v->id, expired);
-        return true;
-    });
-
-    auto v1 = std::make_shared<dht::Value>();
-    v1->id = 700;
-    v1->seq = 1;
-    v1->data = {'O', 'L', 'D'};
-
-    auto v2 = std::make_shared<dht::Value>();
-    v2->id = 700;
-    v2->seq = 2;
-    v2->data = {'N', 'E', 'W'};
-
-    // Single source adds v1
     cache.onValuesAdded({v1});
-    CPPUNIT_ASSERT_EQUAL((size_t) 1, cache.size());
     events.clear();
-
-    // ValueCache::addValues now only emits add(new) for edits,
-    // so OpValueCache updates in place via onValuesAdded.
     cache.onValuesAdded({v2});
 
-    // User should see exactly one event: the updated value as an add.
-    CPPUNIT_ASSERT_EQUAL_MESSAGE("Expected 1 event (update add)", (size_t) 1, events.size());
-    CPPUNIT_ASSERT_EQUAL_MESSAGE("Event should be an addition", false, events[0].second);
-    CPPUNIT_ASSERT_EQUAL_MESSAGE("Event should carry the new value id", v2->id, events[0].first);
+    CPPUNIT_ASSERT_EQUAL((size_t) 1, events.size());
+    CPPUNIT_ASSERT(!events[0].expired);
+    CPPUNIT_ASSERT_EQUAL(v2->id, events[0].id);
+    CPPUNIT_ASSERT_EQUAL(v2->seq, cache.get(700)->seq);
+}
 
-    // Final state: value exists with updated data
-    auto stored = cache.get(700);
-    CPPUNIT_ASSERT(stored != nullptr);
-    CPPUNIT_ASSERT_EQUAL(v2->seq, stored->seq);
+void
+OpCacheTester::testExpireAfterUpdate()
+{
+    std::vector<Event> events;
+    dht::OpValueCache cache(recordEvents(events));
+
+    auto v1 = makeValue(1200, 1, "V1");
+    auto v2 = makeValue(1200, 5, "V2");
+
+    cache.onValuesAdded({v1});
+    cache.onValuesAdded({v2});
+    CPPUNIT_ASSERT_EQUAL(v2->seq, cache.get(1200)->seq);
+
+    cache.onValuesExpired({v2});
+    CPPUNIT_ASSERT_EQUAL((size_t) 0, cache.size());
+    CPPUNIT_ASSERT_EQUAL(1u, count(events, true));
+    CPPUNIT_ASSERT_EQUAL_MESSAGE("Expired value should be the updated one", v2->seq, events.back().seq);
+
+    // Once gone, an older version is accepted again
+    cache.onValuesAdded({v1});
+    CPPUNIT_ASSERT_EQUAL(v1->seq, cache.get(1200)->seq);
+}
+
+void
+OpCacheTester::testSingleSourceMode()
+{
+    // Single-source caches (proxy client) get the same values re-delivered
+    // on refresh: duplicates must not be counted, one expire removes.
+    std::vector<Event> events;
+    dht::OpValueCache cache(recordEvents(events), false);
+    auto v = makeValue(1100, 0, "DUP");
+
+    for (int i = 0; i < 10; i++)
+        cache.onValuesAdded({v});
+    CPPUNIT_ASSERT_EQUAL(1u, count(events, false));
+    CPPUNIT_ASSERT_EQUAL((size_t) 1, cache.size());
+
+    cache.onValuesExpired({v});
+    CPPUNIT_ASSERT_EQUAL(1u, count(events, true));
+    CPPUNIT_ASSERT_EQUAL((size_t) 0, cache.size());
+
+    cache.onValuesExpired({v});
+    CPPUNIT_ASSERT_EQUAL(1u, count(events, true));
+}
+
+void
+OpCacheTester::testSingleSourceModeSearchCache()
+{
+    std::vector<Event> events;
+    dht::SearchCache searchCache(false);
+    auto query = std::make_shared<dht::Query>();
+    dht::ValueCallback vcbStored;
+
+    searchCache.listen(recordEvents(events),
+                       query,
+                       {},
+                       [&](const std::shared_ptr<dht::Query>&, dht::ValueCallback vcb, dht::SyncCallback) -> size_t {
+                           vcbStored = std::move(vcb);
+                           return 1;
+                       });
+
+    auto v = makeValue(1300, 0, "S");
+    vcbStored({v}, false);
+    vcbStored({v}, false); // re-delivery after listen restart
+    CPPUNIT_ASSERT_EQUAL(1u, count(events, false));
+
+    vcbStored({v}, true);
+    CPPUNIT_ASSERT_EQUAL(1u, count(events, true));
+    CPPUNIT_ASSERT_EQUAL((size_t) 0, searchCache.get(dht::Value::Filter {}).size());
 }
 
 } // namespace test

@@ -8,7 +8,6 @@
 
 #include <opendht/dhtrunner.h>
 #include <opendht/dht_proxy_server.h>
-#include <opendht/log.h>
 
 namespace test {
 
@@ -17,10 +16,21 @@ class DhtProxyTester : public CppUnit::TestFixture
     CPPUNIT_TEST_SUITE(DhtProxyTester);
     CPPUNIT_TEST(testGetPut);
     CPPUNIT_TEST(testListen);
+    CPPUNIT_TEST(testListenValueEdit);
+    CPPUNIT_TEST(testPushListenValueEdit);
     CPPUNIT_TEST(testResubscribeGetValues);
+    CPPUNIT_TEST(testPushNotification);
+    CPPUNIT_TEST(testProxyServerClientFullChain);
     CPPUNIT_TEST(testPutGet40KChars);
     CPPUNIT_TEST(testFuzzy);
     CPPUNIT_TEST(testShutdownStop);
+    CPPUNIT_TEST(testGetAfterListen);
+    CPPUNIT_TEST(testListenDuplicatePut);
+    CPPUNIT_TEST(testPushMultiValueEditExpire);
+    CPPUNIT_TEST(testPushRefreshNoSpuriousExpire);
+    CPPUNIT_TEST(testProxyListenEditChain);
+    CPPUNIT_TEST(testPushRapidEditsNoPhantom);
+    CPPUNIT_TEST(testPushRefreshAfterEditKeepsLatest);
     CPPUNIT_TEST_SUITE_END();
 
 public:
@@ -42,10 +52,27 @@ public:
      */
     void testListen();
     /**
+     * Test that editing a value only triggers an add callback via proxy, no expire
+     */
+    void testListenValueEdit();
+    /**
+     * Test that editing a value only triggers an add callback via push,
+     * no phantom expire, and that real expiration is received.
+     */
+    void testPushListenValueEdit();
+    /**
      * When a proxy redo a subscribe on the proxy
      * it should retrieve existant values
      */
     void testResubscribeGetValues();
+    /**
+     * Test push notification mechanism and OpValueCache
+     */
+    void testPushNotification();
+    /**
+     * Test end-to-end chain through proxy server and proxy client
+     */
+    void testProxyServerClientFullChain();
     /**
      * Test MTU put/get on dht
      */
@@ -54,6 +81,13 @@ public:
     void testFuzzy();
 
     void testShutdownStop();
+    void testGetAfterListen();
+    void testListenDuplicatePut();
+    void testPushMultiValueEditExpire();
+    void testPushRefreshNoSpuriousExpire();
+    void testProxyListenEditChain();
+    void testPushRapidEditsNoPhantom();
+    void testPushRefreshAfterEditKeepsLatest();
 
 private:
     dht::DhtRunner::Config clientConfig {};
