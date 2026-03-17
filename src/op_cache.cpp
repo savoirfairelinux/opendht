@@ -244,15 +244,17 @@ SearchCache::expire(const time_point& now, const std::function<void(size_t)>& on
 bool
 SearchCache::get(const Value::Filter& f, const Sp<Query>& q, const GetCallback& gcb, const DoneCallback& dcb) const
 {
+    if (not gcb)
+        return false;
     auto op = getOp(q);
-    if (op != ops.end() and op->second->isSynced()) {
-        auto vals = op->second->get(f);
-        if (not vals.empty())
-            gcb(vals);
+    if (op == ops.end() or not op->second->isSynced())
+        return false;
+    auto vals = op->second->get(f);
+    if (not vals.empty())
+        gcb(vals); // a consumer stopping early is not a failure
+    if (dcb)
         dcb(true, {});
-        return true;
-    }
-    return false;
+    return true;
 }
 
 std::vector<Sp<Value>>
