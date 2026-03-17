@@ -67,7 +67,7 @@ sudo dnf install python3-Cython python3-devel redhat-rpm-config
 ### macOS
 
 ```sh
-brew install gnutls msgpack-cxx argon2 asio readline jsoncpp fmt
+brew install gnutls msgpack-cxx argon2 asio readline jsoncpp fmt llhttp
 ```
 
 ## Build
@@ -81,7 +81,7 @@ git clone https://github.com/savoirfairelinux/opendht.git
 # Build and install
 cd opendht
 mkdir build && cd build
-cmake -DCMAKE_INSTALL_PREFIX=/usr ..
+cmake ..
 make -j$(nproc)
 sudo make install
 ```
@@ -100,8 +100,7 @@ cmake -DOPENDHT_PYTHON=ON \
       -DOPENDHT_PROXY_SERVER=ON \
       -DOPENDHT_PROXY_SERVER_IDENTITY=ON \
       -DOPENDHT_PROXY_CLIENT=ON \
-      -DOPENDHT_PUSH_NOTIFICATIONS=ON \
-      -DCMAKE_INSTALL_PREFIX=/usr ..
+      -DOPENDHT_PUSH_NOTIFICATIONS=ON ..
 ```
 
 #### Common CMake options
