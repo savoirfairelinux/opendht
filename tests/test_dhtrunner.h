@@ -18,7 +18,9 @@ class DhtRunnerTester : public CppUnit::TestFixture
     CPPUNIT_TEST(testPutDuplicate);
     CPPUNIT_TEST(testPutOverride);
     CPPUNIT_TEST(testListen);
+    CPPUNIT_TEST(testListenValueEdit);
     CPPUNIT_TEST(testListenLotOfBytes);
+    CPPUNIT_TEST(testStoreEmptyValue);
     CPPUNIT_TEST(testIdOps);
     CPPUNIT_TEST(testImportValuesPreservesRemoteQuota);
     CPPUNIT_TEST(testImportValuesPreservesStoredExpiration);
@@ -73,9 +75,17 @@ public:
     void testBootstrapMissingNodeThenPutFails();
     void testShutdownCompletesWithPendingPut();
     /**
+     * Test that editing a value only triggers an add callback, no expire
+     */
+    void testListenValueEdit();
+    /**
      * Test listen method with lot of datas
      */
     void testListenLotOfBytes();
+    /**
+     * Test storing an empty value
+     */
+    void testStoreEmptyValue();
     /**
      * Test multithread
      */

@@ -90,6 +90,42 @@ DhtRunnerTester::testGetPut()
 }
 
 void
+DhtRunnerTester::testStoreEmptyValue()
+{
+    dht::DhtRunner::Config config;
+    config.dht_config.node_config.max_peer_req_per_sec = -1;
+    config.dht_config.node_config.max_req_per_sec = -1;
+    config.dht_config.node_config.max_store_size = 100; // Small size to force expireStore()
+    config.dht_config.node_config.max_store_keys = -1;
+
+    dht::DhtRunner testNode;
+    testNode.run(0, config);
+    testNode.bootstrap(node1.getBound());
+
+    auto key = testNode.getId();
+    auto val = std::make_shared<dht::Value>();
+    val->data.clear(); // Ensure size is 0
+    CPPUNIT_ASSERT_EQUAL((size_t) 0, val->size());
+
+    std::promise<bool> p;
+    testNode.put(key, val, [&](bool ok) { p.set_value(ok); });
+    p.get_future().get(); // Wait for put to finish
+
+    // Put a large value to exceed max_store_size and trigger expireStore()
+    auto key2 = dht::InfoHash::get("large_value_test");
+    auto val2 = std::make_shared<dht::Value>();
+    val2->data = std::vector<uint8_t>(200, 0); // 200 bytes
+    std::promise<bool> p2;
+    testNode.put(key2, val2, [&](bool ok) { p2.set_value(ok); });
+    p2.get_future().get(); // Wait for put to finish
+
+    // Wait a bit to ensure the value is processed
+    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+
+    testNode.join();
+}
+
+void
 DhtRunnerTester::testPutDuplicate()
 {
     auto key = dht::InfoHash::get("123");
@@ -538,6 +574,115 @@ DhtRunnerTester::testShutdownCompletesWithPendingPut()
     CPPUNIT_ASSERT(std::future_status::ready == shutdownFuture.wait_for(5s));
 
     clientNode.join();
+}
+
+void
+DhtRunnerTester::testListenValueEdit()
+{
+    // Register an editable type on both nodes so the DHT allows edits.
+    static constexpr dht::ValueType::Id EDITABLE_TYPE_ID = 9999;
+    const dht::ValueType editableType {EDITABLE_TYPE_ID,
+                                       "editable-test",
+                                       std::chrono::seconds(2),
+                                       dht::ValueType::DEFAULT_STORE_POLICY,
+                                       [](dht::InfoHash,
+                                          const std::shared_ptr<dht::Value>&,
+                                          std::shared_ptr<dht::Value>&,
+                                          const dht::InfoHash&,
+                                          const dht::SockAddr&) { return true; }};
+    node1.registerType(editableType);
+    node2.registerType(editableType);
+
+    auto key = dht::InfoHash::get("listenValueEdit");
+    auto identity = dht::crypto::generateIdentity("ListenEditTester");
+
+    std::mutex mtx;
+    std::condition_variable cv;
+    std::vector<std::pair<dht::Value::Id, bool>> events; // (id, expired?)
+
+    auto ftoken = node1.listen(key, [&](const std::vector<std::shared_ptr<dht::Value>>& vals, bool expired) {
+        std::lock_guard lk(mtx);
+        for (const auto& v : vals) {
+            events.emplace_back(v->id, expired);
+        }
+        cv.notify_all();
+        return true;
+    });
+
+    // Put initial value (signed, editable type)
+    auto val1 = std::make_shared<dht::Value>("version1");
+    val1->type = EDITABLE_TYPE_ID;
+    val1->id = 42;
+    val1->seq = 1;
+    val1->sign(*identity.first);
+    {
+        std::promise<bool> p;
+        node2.put(key, val1, [&](bool ok) { p.set_value(ok); });
+        CPPUNIT_ASSERT(getFutureValue(p.get_future()));
+    }
+
+    // Wait for the first value to be received
+    {
+        std::unique_lock lk(mtx);
+        CPPUNIT_ASSERT(cv.wait_for(lk, 10s, [&] {
+            return std::any_of(events.begin(), events.end(), [](const auto& e) { return !e.second; });
+        }));
+    }
+
+    // Edit the value (same id, higher seq)
+    auto val2 = std::make_shared<dht::Value>("version2");
+    val2->type = EDITABLE_TYPE_ID;
+    val2->id = 42;
+    val2->seq = 2;
+    val2->sign(*identity.first);
+    {
+        std::promise<bool> p;
+        node2.put(key, val2, [&](bool ok) { p.set_value(ok); });
+        CPPUNIT_ASSERT(getFutureValue(p.get_future()));
+    }
+
+    // Wait for the edited value to be received
+    {
+        std::unique_lock lk(mtx);
+        CPPUNIT_ASSERT(cv.wait_for(lk, 10s, [&] {
+            int adds = 0;
+            for (const auto& e : events)
+                if (!e.second)
+                    adds++;
+            return adds >= 2;
+        }));
+    }
+
+    // Give some extra time for any stray callbacks
+    std::this_thread::sleep_for(500ms);
+
+    // Verify: we should have exactly 2 add events, no expire events.
+    // On value edition the listener should see only the new version
+    // (as an add), not an expiration of the old version.
+    {
+        std::lock_guard lk(mtx);
+        int addCount = 0;
+        int expireCount = 0;
+        for (const auto& e : events) {
+            if (e.second)
+                expireCount++;
+            else
+                addCount++;
+        }
+        CPPUNIT_ASSERT_EQUAL_MESSAGE("Should receive 2 add callbacks (original + edit)", 2, addCount);
+        CPPUNIT_ASSERT_EQUAL_MESSAGE("Should receive no expire callbacks on edit", 0, expireCount);
+    }
+
+    // Now wait for the edited value to actually expire.
+    // Type expiration is 2s. The cache may add a grace period.
+    {
+        std::unique_lock lk(mtx);
+        CPPUNIT_ASSERT_MESSAGE("Edited value should eventually expire", cv.wait_for(lk, 60s, [&] {
+            return std::any_of(events.begin(), events.end(), [](const auto& e) { return e.second; });
+        }));
+    }
+
+    node1.cancelListen(key, ftoken.get());
 }
 
 void
