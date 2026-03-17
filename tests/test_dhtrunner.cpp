@@ -897,7 +897,7 @@ DhtRunnerTester::testIdOps()
         valueCountEdit++;
         cv.notify_all();
     });
-    node2.listen(key2, [&](const std::vector<std::shared_ptr<dht::Value>>& values, bool /*expired*/) {
+    auto listenToken = node2.listen(key2, [&](const std::vector<std::shared_ptr<dht::Value>>& values, bool /*expired*/) {
         for (const auto& v : values) {
             if (v->seq == 0)
                 CPPUNIT_ASSERT_EQUAL("v1"s, dht::unpackMsg<std::string>(v->data));
@@ -941,6 +941,8 @@ DhtRunnerTester::testIdOps()
     });
     std::unique_lock lk(mutex);
     CPPUNIT_ASSERT(cv.wait_for(lk, 20s, [&] { return valueCountEdit == 4u; }));
+    lk.unlock();
+    node2.cancelListen(key2, listenToken.get());
 }
 
 void

@@ -55,13 +55,6 @@ DhtProxyTester::tearDown()
     nodePeer.join();
     nodeClient.join();
 
-    // Destroy the proxy server while nodeProxy is still running so that
-    // DhtProxyServer::~DhtProxyServer() can successfully cancelListen()
-    // on the DHT.  If we shut down nodeProxy first, cancelListen() is a
-    // no-op (State::Idle) and the dangling listen callbacks cause
-    // use-after-free during DHT cleanup.
-    serverProxy.reset();
-
     bool done = false;
     std::condition_variable cv;
     std::mutex cv_m;
@@ -72,6 +65,11 @@ DhtProxyTester::tearDown()
     });
     std::unique_lock lk(cv_m);
     CPPUNIT_ASSERT(cv.wait_for(lk, 15s, [&] { return done; }));
+    // Join nodeProxy to ensure all DHT threads are done before
+    // destroying the proxy server (whose callbacks may still be
+    // pending on the DHT thread).
+    nodeProxy->join();
+    serverProxy.reset();
     nodeProxy.reset();
 }
 
@@ -438,8 +436,12 @@ DhtProxyTester::testResubscribeGetValues()
 
     // Send a first subscribe, the value is sent via a push notification
     // So ignore values here.
-    nodeClient.listen(key, [&](const std::vector<std::shared_ptr<dht::Value>>&, bool) { return true; });
+    auto firstToken = nodeClient.listen(key,
+                                        [&](const std::vector<std::shared_ptr<dht::Value>>&, bool) { return true; });
     cv.wait_for(lk, std::chrono::seconds(1));
+
+    // Cancel the push listen before rebooting the node
+    nodeClient.cancelListen(key, firstToken.get());
 
     // Reboot node (to avoid cache)
     nodeClient.join();
