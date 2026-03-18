@@ -13,6 +13,9 @@ class ValueTester : public CppUnit::TestFixture
     CPPUNIT_TEST_SUITE(ValueTester);
     CPPUNIT_TEST(testConstructors);
     CPPUNIT_TEST(testFilter);
+    CPPUNIT_TEST(testPushTypeMsgpackRoundTrip);
+    CPPUNIT_TEST(testPushTypeAbsentAfterUnpack);
+    CPPUNIT_TEST(testPushTypePreservedAfterEncrypt);
     CPPUNIT_TEST_SUITE_END();
 
 public:
@@ -32,6 +35,9 @@ public:
      * Test compare operators
      */
     void testFilter();
+    void testPushTypeMsgpackRoundTrip();
+    void testPushTypeAbsentAfterUnpack();
+    void testPushTypePreservedAfterEncrypt();
 };
 
 } // namespace test

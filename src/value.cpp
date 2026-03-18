@@ -85,7 +85,7 @@ ValueType::DEFAULT_STORE_POLICY(InfoHash, const std::shared_ptr<Value>& v, const
 size_t
 Value::size() const
 {
-    return cypher.size() + data.size() + signature.size() + user_type.size();
+    return cypher.size() + data.size() + signature.size() + user_type.size() + pushType.size();
 }
 
 void
@@ -104,8 +104,13 @@ Value::msgpack_unpack(const msgpack::object& o)
     } else
         throw msgpack::type_error();
 
+    priority = 0;
+    pushType.clear();
     if (auto rprio = findMapValue(o, VALUE_KEY_PRIO)) {
         priority = rprio->as<unsigned>();
+    }
+    if (auto rpt = findMapValue(o, VALUE_KEY_PUSHTYPE)) {
+        pushType = rpt->as<std::string>();
     }
 }
 
@@ -261,6 +266,7 @@ Value::encrypt(const crypto::PrivateKey& from, const crypto::PublicKey& to)
     sign(from);
     Value nv {id};
     nv.priority = priority;
+    nv.pushType = pushType;
     nv.setCypher(to.encrypt(getToEncrypt()));
     return nv;
 }

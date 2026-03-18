@@ -31,6 +31,7 @@ using namespace std::literals;
 static constexpr auto VALUE_KEY_ID("id");
 static const std::string VALUE_KEY_DAT("dat");
 static const std::string VALUE_KEY_PRIO("p");
+static const std::string VALUE_KEY_PUSHTYPE("pt");
 static const std::string VALUE_KEY_SIGNATURE("sig");
 
 static const std::string VALUE_KEY_SEQ("seq");
@@ -451,6 +452,7 @@ struct OPENDHT_PUBLIC Value
         , signature(std::move(o.signature))
         , cypher(std::move(o.cypher))
         , priority(o.priority)
+        , pushType(std::move(o.pushType))
     {}
 
     template<typename Type>
@@ -574,7 +576,7 @@ struct OPENDHT_PUBLIC Value
     template<typename Packer>
     void msgpack_pack(Packer& pk) const
     {
-        pk.pack_map(2 + (priority ? 1 : 0));
+        pk.pack_map(2 + (priority ? 1 : 0) + (!pushType.empty() ? 1 : 0));
         pk.pack(VALUE_KEY_ID);
         pk.pack(id);
         pk.pack(VALUE_KEY_DAT);
@@ -582,6 +584,10 @@ struct OPENDHT_PUBLIC Value
         if (priority) {
             pk.pack(VALUE_KEY_PRIO);
             pk.pack(priority);
+        }
+        if (!pushType.empty()) {
+            pk.pack(VALUE_KEY_PUSHTYPE);
+            pk.pack(pushType);
         }
     }
 
@@ -671,6 +677,13 @@ struct OPENDHT_PUBLIC Value
      * 1 = normal priority
      */
     unsigned priority {0};
+
+    /**
+     * Push notification type — set by the sender so that the proxy server
+     * can include it in the FCM/APNs payload without decrypting the value.
+     * Example: "audioCall", "videoCall"
+     */
+    std::string pushType {};
 
     inline bool isSignatureChecked() const { return signatureChecked; }
     inline bool isDecrypted() const { return decrypted; }

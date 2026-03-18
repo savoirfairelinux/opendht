@@ -8,6 +8,8 @@
 
 // opendht
 #include "opendht/value.h"
+#include "opendht/crypto.h"
+#include <msgpack.hpp>
 
 namespace test {
 CPPUNIT_TEST_SUITE_REGISTRATION(ValueTester);
@@ -59,4 +61,80 @@ ValueTester::testFilter()
 void
 ValueTester::tearDown()
 {}
+
+void
+ValueTester::testPushTypeMsgpackRoundTrip()
+{
+    dht::Value original {(const uint8_t*) "hello", 5};
+    original.id = 42;
+    original.priority = 3;
+    original.pushType = "audioCall";
+
+    msgpack::sbuffer buffer;
+    msgpack::packer<msgpack::sbuffer> pk(&buffer);
+    original.msgpack_pack(pk);
+
+    msgpack::unpacked msg;
+    msgpack::unpack(msg, buffer.data(), buffer.size());
+    dht::Value restored(msg.get());
+
+    CPPUNIT_ASSERT_EQUAL(original.id, restored.id);
+    CPPUNIT_ASSERT_EQUAL(original.priority, restored.priority);
+    CPPUNIT_ASSERT_EQUAL(original.pushType, restored.pushType);
+}
+
+void
+ValueTester::testPushTypeAbsentAfterUnpack()
+{
+    dht::Value withPt {(const uint8_t*) "data", 4};
+    withPt.id = 1;
+    withPt.pushType = "videoCall";
+    withPt.priority = 2;
+
+    msgpack::sbuffer buf1;
+    msgpack::packer<msgpack::sbuffer> pk1(&buf1);
+    withPt.msgpack_pack(pk1);
+
+    msgpack::unpacked msg1;
+    msgpack::unpack(msg1, buf1.data(), buf1.size());
+
+    dht::Value reused;
+    reused.msgpack_unpack(msg1.get());
+    CPPUNIT_ASSERT_EQUAL(std::string("videoCall"), reused.pushType);
+    CPPUNIT_ASSERT_EQUAL(2u, reused.priority);
+
+    dht::Value plain {(const uint8_t*) "data", 4};
+    plain.id = 2;
+
+    msgpack::sbuffer buf2;
+    msgpack::packer<msgpack::sbuffer> pk2(&buf2);
+    plain.msgpack_pack(pk2);
+
+    msgpack::unpacked msg2;
+    msgpack::unpack(msg2, buf2.data(), buf2.size());
+
+    reused.msgpack_unpack(msg2.get());
+    CPPUNIT_ASSERT_EQUAL(std::string(), reused.pushType);
+    CPPUNIT_ASSERT_EQUAL(0u, reused.priority);
+}
+
+void
+ValueTester::testPushTypePreservedAfterEncrypt()
+{
+    auto key = dht::crypto::PrivateKey::generate();
+    const auto& pubkey = key.getPublicKey();
+
+    dht::Value original {(const uint8_t*) "secret", 6};
+    original.id = 99;
+    original.priority = 1;
+    original.pushType = "audioCall";
+
+    auto encrypted = original.encrypt(key, pubkey);
+
+    CPPUNIT_ASSERT_EQUAL(original.pushType, encrypted.pushType);
+    CPPUNIT_ASSERT_EQUAL(original.priority, encrypted.priority);
+    CPPUNIT_ASSERT_EQUAL(original.id, encrypted.id);
+    CPPUNIT_ASSERT(encrypted.isEncrypted());
+}
+
 } // namespace test

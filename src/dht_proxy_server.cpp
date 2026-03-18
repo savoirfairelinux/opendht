@@ -1158,12 +1158,17 @@ DhtProxyServer::handlePushListen(const InfoHash& infoHash,
     // Build a comma-separated list of ids from the values. This is intended to be used when
     // streaming from the iOS notification extension in order to filter out unwanted values.
     std::string ids;
+    std::string pushTypes;
     for (const auto& value : values) {
-        if (!ids.empty())
+        if (!ids.empty()) {
             ids += ",";
+            pushTypes += ",";
+        }
+        pushTypes += value->pushType;
         ids += std::to_string(value->id);
     }
     json["ids"] = ids;
+    json["pt"] = pushTypes;
 
     // If message is expired copy the value ID to the `exp` field.
     // This is presumably used by the Android notification system.
