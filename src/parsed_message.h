@@ -59,8 +59,12 @@ unpackTid(const msgpack::object& o)
     switch (o.type) {
     case msgpack::type::POSITIVE_INTEGER:
         return o.as<Tid>();
-    default:
-        return ntohl(*reinterpret_cast<const uint32_t*>(o.as<std::array<char, 4>>().data()));
+    default: {
+        auto arr = o.as<std::array<char, 4>>();
+        uint32_t val;
+        std::memcpy(&val, arr.data(), sizeof(val));
+        return ntohl(val);
+    }
     }
 }
 

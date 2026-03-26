@@ -269,7 +269,7 @@ public:
     }
 
 private:
-    T data_;
+    alignas(alignof(uint32_t)) T data_;
     static constexpr T fromBytes(const uint8_t*, size_t);
     static constexpr T fromString(std::string_view);
 };
