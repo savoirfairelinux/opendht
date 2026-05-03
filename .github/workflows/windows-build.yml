@@ -12,9 +12,41 @@ env:
   VCPKG_DISABLE_METRICS: "1"
 
 jobs:
+  # Pre-warm the vcpkg binary cache for x64-windows triplet.
+  # Subsequent matrix jobs will find packages already in cache.
+  vcpkg-shared:
+    name: Install vcpkg deps (x64-windows)
+    runs-on: windows-latest
+    env:
+      VCPKG_DEFAULT_TRIPLET: x64-windows
+    steps:
+      - uses: actions/checkout@v4
+      - uses: microsoft/setup-msbuild@v2
+      - name: Setup vcpkg and install packages
+        uses: lukka/run-vcpkg@v11
+        with:
+          runVcpkgInstall: true
+          runVcpkgFormatString: '[`install`, `--recurse`, `--clean-after-build`, `--x-install-root`, `$[env.VCPKG_INSTALLED_DIR]`, `--triplet`, `x64-windows`, `--x-feature=test`]'
+
+  # Pre-warm the vcpkg binary cache for x64-windows-static-release triplet.
+  vcpkg-static:
+    name: Install vcpkg deps (x64-windows-static-release)
+    runs-on: windows-latest
+    env:
+      VCPKG_DEFAULT_TRIPLET: x64-windows-static-release
+    steps:
+      - uses: actions/checkout@v4
+      - uses: microsoft/setup-msbuild@v2
+      - name: Setup vcpkg and install packages
+        uses: lukka/run-vcpkg@v11
+        with:
+          runVcpkgInstall: true
+          runVcpkgFormatString: '[`install`, `--recurse`, `--clean-after-build`, `--x-install-root`, `$[env.VCPKG_INSTALLED_DIR]`, `--triplet`, `x64-windows-static-release`, `--x-feature=test`]'
+
   build-windows:
     name: Windows MSVC (${{ matrix.arch }}-windows, ${{ matrix.build_type }}, C++${{ matrix.cxx_standard }})
     runs-on: windows-latest
+    needs: vcpkg-shared
     strategy:
       fail-fast: false
       matrix:
@@ -31,9 +63,8 @@ jobs:
       - name: Set up MSVC
         uses: microsoft/setup-msbuild@v2
 
-      # run-vcpkg downloads & bootstraps vcpkg (commit from vcpkg-configuration.json
-      # baseline), then sets VCPKG_ROOT and VCPKG_BINARY_SOURCES to use GitHub
-      # Actions cache for Binary Caching. No manual cache step needed.
+      # run-vcpkg sets VCPKG_ROOT and VCPKG_BINARY_SOURCES.
+      # Packages are already in the binary cache from the vcpkg-shared job.
       - name: Setup vcpkg
         uses: lukka/run-vcpkg@v11
 
@@ -80,6 +111,7 @@ jobs:
   build-windows-static:
     name: Windows Static MSVC (${{ matrix.arch }}-windows-static-release, ${{ matrix.build_type }}, C++${{ matrix.cxx_standard }})
     runs-on: windows-latest
+    needs: vcpkg-static
     strategy:
       fail-fast: false
       matrix:
