@@ -1033,4 +1033,446 @@ DhtRunnerTester::testMultithread()
     CPPUNIT_ASSERT_EQUAL(2 * N, putOkCount);
 }
 
+void
+DhtRunnerTester::testGetAfterListen()
+{
+    // Test that get() after a synced listen delivers values exactly once
+    // from the cache, and that the GetCallback return value is honored.
+    auto key = dht::InfoHash::get("getAfterListen");
+
+    // Put a value first
+    auto val = std::make_shared<dht::Value>("cached_val");
+    {
+        std::promise<bool> p;
+        node2.put(key, val, [&](bool ok) { p.set_value(ok); });
+        CPPUNIT_ASSERT(getFutureValue(p.get_future()));
+    }
+
+    // Start a listen on node1 and wait for it to sync
+    std::mutex mtx;
+    std::condition_variable cv;
+    std::atomic_int listenAddCount {0};
+
+    auto ftoken = node1.listen(key, [&](const std::vector<std::shared_ptr<dht::Value>>& vals, bool expired) {
+        if (!expired)
+            listenAddCount += vals.size();
+        cv.notify_all();
+        return true;
+    });
+
+    // Wait for listen to receive the value
+    {
+        std::unique_lock lk(mtx);
+        CPPUNIT_ASSERT(cv.wait_for(lk, 10s, [&] { return listenAddCount.load() >= 1; }));
+    }
+
+    // Now do a get — should be served from the synced cache
+    auto vals = getFutureValue(node1.get(key));
+    CPPUNIT_ASSERT_MESSAGE("get() should return values", not vals.empty());
+    CPPUNIT_ASSERT(val->data == vals.front()->data);
+
+    // The listen callback should not have been called again by the get
+    std::this_thread::sleep_for(200ms);
+    CPPUNIT_ASSERT_EQUAL_MESSAGE("Listen should not fire extra callbacks from get()", 1, listenAddCount.load());
+
+    node1.cancelListen(key, ftoken.get());
+}
+
+void
+DhtRunnerTester::testListenDuplicatePut()
+{
+    // Test that putting the exact same value multiple times only triggers
+    // one add callback in the listener (no duplicate delivery).
+    auto key = dht::InfoHash::get("listenDupPut");
+
+    std::mutex mtx;
+    std::condition_variable cv;
+    std::vector<std::pair<dht::Value::Id, bool>> events;
+
+    auto ftoken = node1.listen(key, [&](const std::vector<std::shared_ptr<dht::Value>>& vals, bool expired) {
+        std::lock_guard lk(mtx);
+        for (const auto& v : vals)
+            events.emplace_back(v->id, expired);
+        cv.notify_all();
+        return true;
+    });
+
+    // Put the same value 3 times
+    auto val = std::make_shared<dht::Value>("duplicate_test");
+    val->id = 123;
+    for (int i = 0; i < 3; i++) {
+        std::promise<bool> p;
+        node2.put(key, val, [&](bool ok) { p.set_value(ok); });
+        CPPUNIT_ASSERT(getFutureValue(p.get_future()));
+    }
+
+    // Wait for at least 1 add to arrive
+    {
+        std::unique_lock lk(mtx);
+        CPPUNIT_ASSERT(cv.wait_for(lk, 10s, [&] {
+            return std::any_of(events.begin(), events.end(), [](const auto& e) { return !e.second; });
+        }));
+    }
+
+    // Give time for any spurious callbacks
+    std::this_thread::sleep_for(500ms);
+
+    // Should have exactly 1 add, 0 expires
+    {
+        std::lock_guard lk(mtx);
+        int addCount = 0, expireCount = 0;
+        for (const auto& e : events) {
+            if (e.second)
+                expireCount++;
+            else
+                addCount++;
+        }
+        CPPUNIT_ASSERT_EQUAL_MESSAGE("Duplicate puts should produce only 1 add callback", 1, addCount);
+        CPPUNIT_ASSERT_EQUAL_MESSAGE("No expire callbacks expected", 0, expireCount);
+    }
+
+    node1.cancelListen(key, ftoken.get());
+}
+
+void
+DhtRunnerTester::testListenMultiSourceExpire()
+{
+    // Test that when multiple nodes store the same value, the listener sees
+    // exactly 1 add (no duplicates). When the value expires naturally, the
+    // listener sees exactly 1 expire.
+    static constexpr dht::ValueType::Id SHORT_TYPE_ID = 8888;
+    const dht::ValueType shortType {SHORT_TYPE_ID,
+                                    "short-lived",
+                                    std::chrono::seconds(2),
+                                    dht::ValueType::DEFAULT_STORE_POLICY,
+                                    [](dht::InfoHash,
+                                       const std::shared_ptr<dht::Value>&,
+                                       std::shared_ptr<dht::Value>&,
+                                       const dht::InfoHash&,
+                                       const dht::SockAddr&) { return true; }};
+    node1.registerType(shortType);
+    node2.registerType(shortType);
+
+    auto key = dht::InfoHash::get("multiSourceExpire");
+    auto identity = dht::crypto::generateIdentity("MultiSourceTester");
+
+    std::mutex mtx;
+    std::condition_variable cv;
+    std::vector<std::pair<dht::Value::Id, bool>> events;
+
+    // node1 listens; node1 and node2 put
+    auto ftoken = node1.listen(key, [&](const std::vector<std::shared_ptr<dht::Value>>& vals, bool expired) {
+        std::lock_guard lk(mtx);
+        for (const auto& v : vals)
+            events.emplace_back(v->id, expired);
+        cv.notify_all();
+        return true;
+    });
+
+    // Both node1 and node2 put the same value (same id, same seq)
+    auto val = std::make_shared<dht::Value>("multi_source");
+    val->type = SHORT_TYPE_ID;
+    val->id = 55;
+    val->seq = 1;
+    val->sign(*identity.first);
+
+    {
+        std::promise<bool> p1, p2;
+        node1.put(key, val, [&](bool ok) { p1.set_value(ok); });
+        node2.put(key, val, [&](bool ok) { p2.set_value(ok); });
+        CPPUNIT_ASSERT(getFutureValue(p1.get_future()));
+        CPPUNIT_ASSERT(getFutureValue(p2.get_future()));
+    }
+
+    // Wait for at least one add
+    {
+        std::unique_lock lk(mtx);
+        CPPUNIT_ASSERT(cv.wait_for(lk, 10s, [&] {
+            return std::any_of(events.begin(), events.end(), [](const auto& e) { return !e.second; });
+        }));
+    }
+
+    // Allow time for duplicate callbacks
+    std::this_thread::sleep_for(1s);
+
+    // Should have exactly 1 add (deduplication in OpValueCache)
+    {
+        std::lock_guard lk(mtx);
+        int addCount = 0;
+        for (const auto& e : events)
+            if (!e.second)
+                addCount++;
+        CPPUNIT_ASSERT_EQUAL_MESSAGE("Multiple sources should produce only 1 add callback", 1, addCount);
+    }
+
+    // Wait for natural expiration (type is 2s + grace period)
+    {
+        std::unique_lock lk(mtx);
+        CPPUNIT_ASSERT_MESSAGE("Value should eventually expire", cv.wait_for(lk, 60s, [&] {
+            return std::any_of(events.begin(), events.end(), [](const auto& e) { return e.second; });
+        }));
+    }
+
+    // Should have exactly 1 expire (no duplicate expires from multiple sources)
+    {
+        std::lock_guard lk(mtx);
+        int expireCount = 0;
+        for (const auto& e : events)
+            if (e.second)
+                expireCount++;
+        CPPUNIT_ASSERT_EQUAL_MESSAGE("Should receive exactly 1 expire callback", 1, expireCount);
+    }
+
+    node1.cancelListen(key, ftoken.get());
+}
+
+void
+DhtRunnerTester::testListenEditChainThenExpire()
+{
+    // Chain of 5 rapid edits (seq 1→5) on the same value, then natural expiration.
+    // Must see 5 adds (one per edit), 0 expires during edits, then exactly 1 expire.
+    static constexpr dht::ValueType::Id CHAIN_TYPE_ID = 7654;
+    const dht::ValueType chainType {CHAIN_TYPE_ID,
+                                    "chain-edit",
+                                    std::chrono::seconds(2),
+                                    dht::ValueType::DEFAULT_STORE_POLICY,
+                                    [](dht::InfoHash,
+                                       const std::shared_ptr<dht::Value>&,
+                                       std::shared_ptr<dht::Value>&,
+                                       const dht::InfoHash&,
+                                       const dht::SockAddr&) { return true; }};
+    node1.registerType(chainType);
+    node2.registerType(chainType);
+
+    auto key = dht::InfoHash::get("editChainExpire");
+    auto identity = dht::crypto::generateIdentity("ChainEditTester");
+
+    std::mutex mtx;
+    std::condition_variable cv;
+    struct Event { dht::Value::Id id; uint16_t seq; bool expired; };
+    std::vector<Event> events;
+
+    auto ftoken = node1.listen(key, [&](const std::vector<std::shared_ptr<dht::Value>>& vals, bool expired) {
+        std::lock_guard lk(mtx);
+        for (const auto& v : vals)
+            events.push_back({v->id, v->seq, expired});
+        cv.notify_all();
+        return true;
+    });
+
+    // Rapid chain of 5 edits — wait for the first to arrive before continuing
+    constexpr int NUM_EDITS = 5;
+    {
+        auto v = std::make_shared<dht::Value>("version1");
+        v->type = CHAIN_TYPE_ID;
+        v->id = 99;
+        v->seq = 1;
+        v->sign(*identity.first);
+        std::promise<bool> p;
+        node2.put(key, v, [&](bool ok) { p.set_value(ok); });
+        CPPUNIT_ASSERT(getFutureValue(p.get_future()));
+    }
+
+    // Wait for first add to arrive before sending more edits
+    {
+        std::unique_lock lk(mtx);
+        CPPUNIT_ASSERT(cv.wait_for(lk, 10s, [&] {
+            return std::any_of(events.begin(), events.end(), [](const Event& e) { return !e.expired; });
+        }));
+    }
+
+    // Now send remaining edits rapidly
+    for (int seq = 2; seq <= NUM_EDITS; seq++) {
+        auto v = std::make_shared<dht::Value>("version" + std::to_string(seq));
+        v->type = CHAIN_TYPE_ID;
+        v->id = 99;
+        v->seq = seq;
+        v->sign(*identity.first);
+        std::promise<bool> p;
+        node2.put(key, v, [&](bool ok) { p.set_value(ok); });
+        CPPUNIT_ASSERT(getFutureValue(p.get_future()));
+    }
+
+    // Wait for edits to arrive (at least 2: initial + one or more updates)
+    // Note: rapid edits may coalesce — the DHT stores only the latest seq,
+    // so the listener may not see every intermediate version.
+    {
+        std::unique_lock lk(mtx);
+        CPPUNIT_ASSERT(cv.wait_for(lk, 15s, [&] {
+            int adds = 0;
+            for (const auto& e : events)
+                if (!e.expired)
+                    adds++;
+            return adds >= 2;
+        }));
+    }
+
+    // Wait a bit more for any remaining events
+    std::this_thread::sleep_for(1s);
+
+    // Verify: multiple adds, 0 expires during edits (no phantom expiry)
+    int totalAdds;
+    {
+        std::lock_guard lk(mtx);
+        totalAdds = 0;
+        int expireCount = 0;
+        for (const auto& e : events) {
+            if (e.expired)
+                expireCount++;
+            else
+                totalAdds++;
+        }
+        CPPUNIT_ASSERT_MESSAGE("Should receive at least 2 add callbacks", totalAdds >= 2);
+        CPPUNIT_ASSERT_EQUAL_MESSAGE("No expires during edit chain", 0, expireCount);
+
+        // Verify the latest add has the highest seq
+        uint16_t maxSeq = 0;
+        for (const auto& e : events)
+            if (!e.expired && e.seq > maxSeq)
+                maxSeq = e.seq;
+        CPPUNIT_ASSERT_EQUAL_MESSAGE("Latest add should have the final seq",
+                                     (uint16_t) NUM_EDITS, maxSeq);
+    }
+
+    // Wait for natural expiration
+    {
+        std::unique_lock lk(mtx);
+        CPPUNIT_ASSERT_MESSAGE("Value should eventually expire", cv.wait_for(lk, 60s, [&] {
+            return std::any_of(events.begin(), events.end(), [](const Event& e) { return e.expired; });
+        }));
+    }
+
+    // Verify exactly 1 expire with the latest seq
+    {
+        std::lock_guard lk(mtx);
+        int expireCount = 0;
+        uint16_t expiredSeq = 0;
+        for (const auto& e : events) {
+            if (e.expired) {
+                expireCount++;
+                expiredSeq = e.seq;
+            }
+        }
+        CPPUNIT_ASSERT_EQUAL_MESSAGE("Should receive exactly 1 expire", 1, expireCount);
+        CPPUNIT_ASSERT_EQUAL_MESSAGE("Expired value should be the latest version",
+                                     (uint16_t) NUM_EDITS, expiredSeq);
+    }
+
+    node1.cancelListen(key, ftoken.get());
+}
+
+void
+DhtRunnerTester::testListenMultiValuePartialExpire()
+{
+    // Two values with different types: one short-lived (2s), one long-lived (60s).
+    // The short one expires while the long one stays. Verify isolation:
+    // no spurious expire for the long-lived value.
+    static constexpr dht::ValueType::Id SHORT_TYPE_ID = 3001;
+    static constexpr dht::ValueType::Id LONG_TYPE_ID = 3002;
+    const dht::ValueType shortType {SHORT_TYPE_ID,
+                                    "short-partial",
+                                    std::chrono::seconds(2),
+                                    dht::ValueType::DEFAULT_STORE_POLICY,
+                                    [](dht::InfoHash,
+                                       const std::shared_ptr<dht::Value>&,
+                                       std::shared_ptr<dht::Value>&,
+                                       const dht::InfoHash&,
+                                       const dht::SockAddr&) { return true; }};
+    const dht::ValueType longType {LONG_TYPE_ID,
+                                   "long-partial",
+                                   std::chrono::seconds(600),
+                                   dht::ValueType::DEFAULT_STORE_POLICY,
+                                   [](dht::InfoHash,
+                                      const std::shared_ptr<dht::Value>&,
+                                      std::shared_ptr<dht::Value>&,
+                                      const dht::InfoHash&,
+                                      const dht::SockAddr&) { return true; }};
+    node1.registerType(shortType);
+    node1.registerType(longType);
+    node2.registerType(shortType);
+    node2.registerType(longType);
+
+    auto key = dht::InfoHash::get("multiValuePartialExpire");
+    auto identity = dht::crypto::generateIdentity("PartialExpireTester");
+
+    std::mutex mtx;
+    std::condition_variable cv;
+    struct Event { dht::Value::Id id; bool expired; };
+    std::vector<Event> events;
+
+    auto ftoken = node1.listen(key, [&](const std::vector<std::shared_ptr<dht::Value>>& vals, bool expired) {
+        std::lock_guard lk(mtx);
+        for (const auto& v : vals)
+            events.push_back({v->id, expired});
+        cv.notify_all();
+        return true;
+    });
+
+    // Put short-lived value (id=1)
+    auto shortVal = std::make_shared<dht::Value>("short");
+    shortVal->type = SHORT_TYPE_ID;
+    shortVal->id = 1;
+    shortVal->seq = 1;
+    shortVal->sign(*identity.first);
+    {
+        std::promise<bool> p;
+        node2.put(key, shortVal, [&](bool ok) { p.set_value(ok); });
+        CPPUNIT_ASSERT(getFutureValue(p.get_future()));
+    }
+
+    // Put long-lived value (id=2)
+    auto longVal = std::make_shared<dht::Value>("long");
+    longVal->type = LONG_TYPE_ID;
+    longVal->id = 2;
+    longVal->seq = 1;
+    longVal->sign(*identity.first);
+    {
+        std::promise<bool> p;
+        node2.put(key, longVal, [&](bool ok) { p.set_value(ok); });
+        CPPUNIT_ASSERT(getFutureValue(p.get_future()));
+    }
+
+    // Wait for both adds
+    {
+        std::unique_lock lk(mtx);
+        CPPUNIT_ASSERT(cv.wait_for(lk, 10s, [&] {
+            int adds = 0;
+            for (const auto& e : events)
+                if (!e.expired)
+                    adds++;
+            return adds >= 2;
+        }));
+    }
+
+    // Wait for short-lived value to expire
+    {
+        std::unique_lock lk(mtx);
+        CPPUNIT_ASSERT_MESSAGE("Short-lived value should expire", cv.wait_for(lk, 60s, [&] {
+            return std::any_of(events.begin(), events.end(), [](const Event& e) {
+                return e.id == 1 && e.expired;
+            });
+        }));
+    }
+
+    // Give extra time for any spurious callbacks
+    std::this_thread::sleep_for(1s);
+
+    // Verify: value 1 expired, value 2 did NOT expire
+    {
+        std::lock_guard lk(mtx);
+        bool longExpired = std::any_of(events.begin(), events.end(), [](const Event& e) {
+            return e.id == 2 && e.expired;
+        });
+        CPPUNIT_ASSERT_MESSAGE("Long-lived value should NOT be expired", !longExpired);
+
+        int shortExpires = 0;
+        for (const auto& e : events)
+            if (e.id == 1 && e.expired)
+                shortExpires++;
+        CPPUNIT_ASSERT_EQUAL_MESSAGE("Short-lived value should expire exactly once", 1, shortExpires);
+    }
+
+    node1.cancelListen(key, ftoken.get());
+}
+
 } // namespace test

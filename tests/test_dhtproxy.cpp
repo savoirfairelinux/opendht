@@ -965,4 +965,848 @@ DhtProxyTester::testShutdownStop()
     CPPUNIT_ASSERT_EQUAL(2 * C, callback_count.load());
 }
 
+void
+DhtProxyTester::testGetAfterListen()
+{
+    // Test that get() through proxy returns cached values after listen is synced,
+    // without double delivery.
+    nodeClient.run(0, clientConfig);
+
+    std::condition_variable cv;
+    std::mutex cv_m;
+    auto key = dht::InfoHash::get("proxyGetAfterListen");
+
+    // Peer puts a value
+    dht::Value val {"proxy_cached_val"};
+    auto val_data = val.data;
+    {
+        bool putDone = false;
+        nodePeer.put(key, std::move(val), [&](bool ok) {
+            std::lock_guard lk(cv_m);
+            CPPUNIT_ASSERT(ok);
+            putDone = true;
+            cv.notify_all();
+        });
+        std::unique_lock lk(cv_m);
+        CPPUNIT_ASSERT(cv.wait_for(lk, 10s, [&] { return putDone; }));
+    }
+
+    // Start listen on the proxy client
+    std::atomic_int listenAddCount {0};
+    auto ftoken = nodeClient.listen(key, [&](const std::vector<std::shared_ptr<dht::Value>>& vals, bool expired) {
+        if (!expired)
+            listenAddCount += vals.size();
+        cv.notify_all();
+        return true;
+    });
+
+    // Wait for listen to receive the value
+    {
+        std::unique_lock lk(cv_m);
+        CPPUNIT_ASSERT(cv.wait_for(lk, 10s, [&] { return listenAddCount.load() >= 1; }));
+    }
+
+    // Now do a get — should be served from the synced proxy cache
+    auto vals = nodeClient.get(key).get();
+    CPPUNIT_ASSERT_MESSAGE("get() through proxy should return values", not vals.empty());
+    CPPUNIT_ASSERT(val_data == vals.front()->data);
+
+    // Listen should not fire extra callbacks
+    std::this_thread::sleep_for(200ms);
+    CPPUNIT_ASSERT_EQUAL_MESSAGE("Listen should not fire extra callbacks from proxy get()", 1, listenAddCount.load());
+
+    nodeClient.cancelListen(key, ftoken.get());
+}
+
+void
+DhtProxyTester::testListenDuplicatePut()
+{
+    // Test that putting the same value multiple times through proxy only
+    // triggers a single add callback in the listener.
+    nodeClient.run(0, clientConfig);
+
+    std::condition_variable cv;
+    std::mutex cv_m;
+    auto key = dht::InfoHash::get("proxyListenDupPut");
+
+    std::vector<std::pair<dht::Value::Id, bool>> events;
+    auto ftoken = nodeClient.listen(key, [&](const std::vector<std::shared_ptr<dht::Value>>& vals, bool expired) {
+        std::lock_guard lk(cv_m);
+        for (const auto& v : vals)
+            events.emplace_back(v->id, expired);
+        cv.notify_all();
+        return true;
+    });
+
+    // Wait for listen to be established
+    std::this_thread::sleep_for(500ms);
+
+    // Peer puts same value 3 times
+    auto val = std::make_shared<dht::Value>("proxy_dup_test");
+    val->id = 456;
+    for (int i = 0; i < 3; i++) {
+        bool putDone = false;
+        nodePeer.put(key, val, [&](bool ok) {
+            std::lock_guard lk(cv_m);
+            CPPUNIT_ASSERT(ok);
+            putDone = true;
+            cv.notify_all();
+        });
+        std::unique_lock lk(cv_m);
+        CPPUNIT_ASSERT(cv.wait_for(lk, 10s, [&] { return putDone; }));
+    }
+
+    // Wait for at least 1 add to arrive
+    {
+        std::unique_lock lk(cv_m);
+        CPPUNIT_ASSERT(cv.wait_for(lk, 10s, [&] {
+            return std::any_of(events.begin(), events.end(), [](const auto& e) { return !e.second; });
+        }));
+    }
+
+    // Allow stray callbacks
+    std::this_thread::sleep_for(500ms);
+
+    // Should have exactly 1 add, 0 expires
+    {
+        std::lock_guard lk(cv_m);
+        int addCount = 0, expireCount = 0;
+        for (const auto& e : events) {
+            if (e.second)
+                expireCount++;
+            else
+                addCount++;
+        }
+        CPPUNIT_ASSERT_EQUAL_MESSAGE("Duplicate puts through proxy should produce only 1 add callback", 1, addCount);
+        CPPUNIT_ASSERT_EQUAL_MESSAGE("No expire callbacks expected", 0, expireCount);
+    }
+
+    nodeClient.cancelListen(key, ftoken.get());
+}
+
+void
+DhtProxyTester::testPushMultiValueEditExpire()
+{
+#ifndef OPENDHT_PUSH_NOTIFICATIONS
+    fmt::print(stderr, "Push notifications are not supported in this build, skipping test\n");
+    return;
+#else
+    // Test with multiple values: edit one via push, expire another via push.
+    // Verify that editing value A does not affect value B, and that expiring
+    // value B does not affect value A.
+    static constexpr dht::ValueType::Id MULTI_TYPE_ID = 7777;
+    const dht::ValueType multiType {MULTI_TYPE_ID,
+                                    "multi-push",
+                                    std::chrono::seconds(30),
+                                    dht::ValueType::DEFAULT_STORE_POLICY,
+                                    [](dht::InfoHash,
+                                       const std::shared_ptr<dht::Value>&,
+                                       std::shared_ptr<dht::Value>&,
+                                       const dht::InfoHash&,
+                                       const dht::SockAddr&) { return true; }};
+    nodePeer.registerType(multiType);
+    nodeProxy->registerType(multiType);
+
+    clientConfig.push_token = "multi-push-token";
+    nodeClient.run(0, clientConfig);
+    nodeClient.registerType(multiType);
+
+    std::condition_variable cv;
+    std::mutex cv_m;
+    std::unique_lock<std::mutex> lk(cv_m);
+
+    auto key = dht::InfoHash::get("pushMultiEditExpire");
+    auto identity = dht::crypto::generateIdentity("MultiEditAuthor");
+
+    struct Event {
+        dht::Value::Id id;
+        uint16_t seq;
+        bool expired;
+    };
+    std::vector<Event> events;
+
+    auto ftoken = nodeClient.listen(key, [&](const std::vector<std::shared_ptr<dht::Value>>& vals, bool expired) {
+        std::lock_guard<std::mutex> lk(cv_m);
+        for (const auto& v : vals)
+            events.push_back({v->id, v->seq, expired});
+        cv.notify_all();
+        return true;
+    });
+
+    // Wait for listen to be established
+    cv.wait_for(lk, 1s);
+
+    // Put value A (id=100)
+    dht::Value valA {"value-A"};
+    valA.type = MULTI_TYPE_ID;
+    valA.id = 100;
+    valA.seq = 1;
+    valA.sign(*identity.first);
+    {
+        bool done = false;
+        nodePeer.put(key, std::make_shared<dht::Value>(std::move(valA)), [&](bool ok) {
+            std::lock_guard<std::mutex> lk(cv_m);
+            CPPUNIT_ASSERT(ok);
+            done = true;
+            cv.notify_all();
+        });
+        CPPUNIT_ASSERT(cv.wait_for(lk, 10s, [&] { return done; }));
+    }
+
+    // Put value B (id=200)
+    dht::Value valB {"value-B"};
+    valB.type = MULTI_TYPE_ID;
+    valB.id = 200;
+    valB.seq = 1;
+    valB.sign(*identity.first);
+    {
+        bool done = false;
+        nodePeer.put(key, std::make_shared<dht::Value>(std::move(valB)), [&](bool ok) {
+            std::lock_guard<std::mutex> lk(cv_m);
+            CPPUNIT_ASSERT(ok);
+            done = true;
+            cv.notify_all();
+        });
+        CPPUNIT_ASSERT(cv.wait_for(lk, 10s, [&] { return done; }));
+    }
+
+    // Simulate push notification to fetch both values
+    std::map<std::string, std::string> push_data;
+    push_data["key"] = key.toString();
+    push_data["t"] = std::to_string(
+        std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch())
+            .count());
+    nodeClient.pushNotificationReceived(push_data).get();
+
+    // Wait for both values to arrive
+    CPPUNIT_ASSERT(cv.wait_for(lk, 10s, [&] {
+        int adds = 0;
+        for (const auto& e : events)
+            if (!e.expired)
+                adds++;
+        return adds >= 2;
+    }));
+
+    // Edit value A (higher seq)
+    dht::Value valA2 {"value-A-v2"};
+    valA2.type = MULTI_TYPE_ID;
+    valA2.id = 100;
+    valA2.seq = 2;
+    valA2.sign(*identity.first);
+    {
+        bool done = false;
+        nodePeer.put(key, std::make_shared<dht::Value>(std::move(valA2)), [&](bool ok) {
+            std::lock_guard<std::mutex> lk(cv_m);
+            CPPUNIT_ASSERT(ok);
+            done = true;
+            cv.notify_all();
+        });
+        CPPUNIT_ASSERT(cv.wait_for(lk, 10s, [&] { return done; }));
+    }
+
+    // Simulate push notification for the edit
+    push_data["t"] = std::to_string(
+        std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch())
+            .count());
+    push_data.erase("exp");
+    nodeClient.pushNotificationReceived(push_data).get();
+
+    // Wait for the edited value (id=100, seq=2) to arrive
+    CPPUNIT_ASSERT(cv.wait_for(lk, 10s, [&] {
+        return std::any_of(events.begin(), events.end(), [](const Event& e) {
+            return e.id == 100 && e.seq == 2 && !e.expired;
+        });
+    }));
+
+    // No phantom expire should have been generated for value A or B
+    {
+        int expireCount = 0;
+        for (const auto& e : events)
+            if (e.expired)
+                expireCount++;
+        CPPUNIT_ASSERT_EQUAL_MESSAGE("No expire should happen during edit", 0, expireCount);
+    }
+
+    // Expire value B via push notification
+    push_data["exp"] = std::to_string((dht::Value::Id) 200);
+    push_data["t"] = std::to_string(
+        std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch())
+            .count());
+    CPPUNIT_ASSERT(nodeClient.pushNotificationReceived(push_data).get() == dht::PushNotificationResult::ValuesExpired);
+
+    // Wait for expire callback for value B
+    CPPUNIT_ASSERT(cv.wait_for(lk, 10s, [&] {
+        return std::any_of(events.begin(), events.end(), [](const Event& e) {
+            return e.id == 200 && e.expired;
+        });
+    }));
+
+    // Verify: value A (edited) should NOT have been expired
+    {
+        bool aExpired = std::any_of(events.begin(), events.end(), [](const Event& e) {
+            return e.id == 100 && e.expired;
+        });
+        CPPUNIT_ASSERT_MESSAGE("Value A should not be expired when only B is expired", !aExpired);
+    }
+
+    nodeClient.cancelListen(key, ftoken.get());
+#endif
+}
+
+void
+DhtProxyTester::testPushRefreshNoSpuriousExpire()
+{
+#ifndef OPENDHT_PUSH_NOTIFICATIONS
+    fmt::print(stderr, "Push notifications are not supported in this build, skipping test\n");
+    return;
+#else
+    // Test that a push refresh (ListenRefresh) that re-fetches values does not
+    // produce phantom expires for values that are still present on the DHT.
+    // This verifies the fix in dht_proxy_client.cpp where the completion callback
+    // only expires values when ok==true and they are genuinely missing.
+    static constexpr dht::ValueType::Id REFRESH_TYPE_ID = 8787;
+    const dht::ValueType refreshType {REFRESH_TYPE_ID,
+                                      "refresh-test",
+                                      std::chrono::seconds(30),
+                                      dht::ValueType::DEFAULT_STORE_POLICY,
+                                      [](dht::InfoHash,
+                                         const std::shared_ptr<dht::Value>&,
+                                         std::shared_ptr<dht::Value>&,
+                                         const dht::InfoHash&,
+                                         const dht::SockAddr&) { return true; }};
+    nodePeer.registerType(refreshType);
+    nodeProxy->registerType(refreshType);
+
+    clientConfig.push_token = "refresh-push-token";
+    nodeClient.run(0, clientConfig);
+    nodeClient.registerType(refreshType);
+
+    std::condition_variable cv;
+    std::mutex cv_m;
+    std::unique_lock<std::mutex> lk(cv_m);
+
+    auto key = dht::InfoHash::get("pushRefreshNoExpire");
+    auto identity = dht::crypto::generateIdentity("RefreshAuthor");
+
+    struct Event {
+        dht::Value::Id id;
+        bool expired;
+    };
+    std::vector<Event> events;
+
+    auto ftoken = nodeClient.listen(key, [&](const std::vector<std::shared_ptr<dht::Value>>& vals, bool expired) {
+        std::lock_guard<std::mutex> lk(cv_m);
+        for (const auto& v : vals)
+            events.push_back({v->id, expired});
+        cv.notify_all();
+        return true;
+    });
+
+    // Wait for listen to be established
+    cv.wait_for(lk, 1s);
+
+    // Put 3 values
+    for (dht::Value::Id id : {10, 20, 30}) {
+        auto v = std::make_shared<dht::Value>("val-" + std::to_string(id));
+        v->type = REFRESH_TYPE_ID;
+        v->id = id;
+        v->seq = 1;
+        v->sign(*identity.first);
+        bool done = false;
+        nodePeer.put(key, v, [&](bool ok) {
+            std::lock_guard<std::mutex> lk(cv_m);
+            CPPUNIT_ASSERT(ok);
+            done = true;
+            cv.notify_all();
+        });
+        CPPUNIT_ASSERT(cv.wait_for(lk, 10s, [&] { return done; }));
+    }
+
+    // Simulate initial push notification to fetch all values
+    std::map<std::string, std::string> push_data;
+    push_data["key"] = key.toString();
+    push_data["t"] = std::to_string(
+        std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch())
+            .count());
+    nodeClient.pushNotificationReceived(push_data).get();
+
+    // Wait for all 3 values to arrive
+    CPPUNIT_ASSERT(cv.wait_for(lk, 10s, [&] {
+        int adds = 0;
+        for (const auto& e : events)
+            if (!e.expired)
+                adds++;
+        return adds >= 3;
+    }));
+
+    // Verify no expires yet
+    {
+        int expireCount = 0;
+        for (const auto& e : events)
+            if (e.expired)
+                expireCount++;
+        CPPUNIT_ASSERT_EQUAL_MESSAGE("No expires after initial fetch", 0, expireCount);
+    }
+
+    // Simulate a refresh push notification (same values still present)
+    // This should re-fetch the same 3 values, with none expiring.
+    push_data["t"] = std::to_string(
+        std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch())
+            .count());
+    push_data.erase("exp");
+    nodeClient.pushNotificationReceived(push_data).get();
+
+    // Wait a bit for any callbacks
+    cv.wait_for(lk, 1s);
+
+    // Still no expires — all values are still present on DHT
+    {
+        int expireCount = 0;
+        for (const auto& e : events)
+            if (e.expired)
+                expireCount++;
+        CPPUNIT_ASSERT_EQUAL_MESSAGE("Refresh with same values should not produce expires", 0, expireCount);
+    }
+
+    // Now remove value 20 from the DHT (simulate by not re-publishing),
+    // then trigger another refresh. The removed value should be expired.
+    // We'll use the "exp" field to explicitly expire value 20.
+    push_data["exp"] = "20";
+    push_data["t"] = std::to_string(
+        std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch())
+            .count());
+    nodeClient.pushNotificationReceived(push_data).get();
+
+    // Wait for expire callback
+    CPPUNIT_ASSERT(cv.wait_for(lk, 10s, [&] {
+        return std::any_of(events.begin(), events.end(), [](const Event& e) {
+            return e.id == 20 && e.expired;
+        });
+    }));
+
+    // Verify only value 20 expired, not 10 or 30
+    {
+        bool id10Expired = std::any_of(events.begin(), events.end(), [](const Event& e) {
+            return e.id == 10 && e.expired;
+        });
+        bool id30Expired = std::any_of(events.begin(), events.end(), [](const Event& e) {
+            return e.id == 30 && e.expired;
+        });
+        CPPUNIT_ASSERT_MESSAGE("Value 10 should not be expired", !id10Expired);
+        CPPUNIT_ASSERT_MESSAGE("Value 30 should not be expired", !id30Expired);
+    }
+
+    nodeClient.cancelListen(key, ftoken.get());
+#endif
+}
+
+void
+DhtProxyTester::testProxyListenEditChain()
+{
+    // Chain of rapid edits through proxy (no push). Each edit should appear as
+    // an add, no phantom expires during the chain, then natural expiration.
+    static constexpr dht::ValueType::Id CHAIN_TYPE_ID = 8181;
+    const dht::ValueType chainType {CHAIN_TYPE_ID,
+                                    "proxy-chain-edit",
+                                    std::chrono::seconds(2),
+                                    dht::ValueType::DEFAULT_STORE_POLICY,
+                                    [](dht::InfoHash,
+                                       const std::shared_ptr<dht::Value>&,
+                                       std::shared_ptr<dht::Value>&,
+                                       const dht::InfoHash&,
+                                       const dht::SockAddr&) { return true; }};
+    nodePeer.registerType(chainType);
+    nodeProxy->registerType(chainType);
+
+    nodeClient.run(0, clientConfig);
+    nodeClient.registerType(chainType);
+
+    std::condition_variable cv;
+    std::mutex cv_m;
+    auto key = dht::InfoHash::get("proxyEditChain");
+    auto identity = dht::crypto::generateIdentity("ProxyChainEditTester");
+
+    struct Event { dht::Value::Id id; uint16_t seq; bool expired; };
+    std::vector<Event> events;
+
+    auto ftoken = nodeClient.listen(key, [&](const std::vector<std::shared_ptr<dht::Value>>& vals, bool expired) {
+        std::lock_guard<std::mutex> lk(cv_m);
+        for (const auto& v : vals)
+            events.push_back({v->id, v->seq, expired});
+        cv.notify_all();
+        return true;
+    });
+
+    // Wait for listen to be established
+    std::this_thread::sleep_for(500ms);
+
+    // Rapid chain of 4 edits
+    constexpr int NUM_EDITS = 4;
+    for (int seq = 1; seq <= NUM_EDITS; seq++) {
+        auto v = std::make_shared<dht::Value>("proxy-v" + std::to_string(seq));
+        v->type = CHAIN_TYPE_ID;
+        v->id = 77;
+        v->seq = seq;
+        v->sign(*identity.first);
+        bool done = false;
+        nodePeer.put(key, v, [&](bool ok) {
+            std::lock_guard<std::mutex> lk(cv_m);
+            CPPUNIT_ASSERT(ok);
+            done = true;
+            cv.notify_all();
+        });
+        std::unique_lock lk(cv_m);
+        CPPUNIT_ASSERT(cv.wait_for(lk, 10s, [&] { return done; }));
+    }
+
+    // Wait for edits to arrive (at least 2: initial + one or more updates)
+    // Note: rapid edits may coalesce in the DHT — only the latest is stored.
+    {
+        std::unique_lock lk(cv_m);
+        CPPUNIT_ASSERT(cv.wait_for(lk, 15s, [&] {
+            int adds = 0;
+            for (const auto& e : events)
+                if (!e.expired)
+                    adds++;
+            return adds >= 2;
+        }));
+    }
+
+    // Allow stray callbacks
+    std::this_thread::sleep_for(500ms);
+
+    // Verify: at least 2 adds, 0 expires during edits
+    {
+        std::lock_guard<std::mutex> lk(cv_m);
+        int addCount = 0, expireCount = 0;
+        for (const auto& e : events) {
+            if (e.expired)
+                expireCount++;
+            else
+                addCount++;
+        }
+        CPPUNIT_ASSERT_MESSAGE("Should receive at least 2 add callbacks via proxy", addCount >= 2);
+        CPPUNIT_ASSERT_EQUAL_MESSAGE("No expires during edit chain via proxy", 0, expireCount);
+
+        // Verify final seq is NUM_EDITS
+        uint16_t maxSeq = 0;
+        for (const auto& e : events)
+            if (!e.expired && e.seq > maxSeq)
+                maxSeq = e.seq;
+        CPPUNIT_ASSERT_EQUAL_MESSAGE("Latest add should be the final version",
+                                     (uint16_t) NUM_EDITS, maxSeq);
+    }
+
+    // Wait for natural expiration
+    {
+        std::unique_lock lk(cv_m);
+        CPPUNIT_ASSERT_MESSAGE("Value should eventually expire via proxy", cv.wait_for(lk, 60s, [&] {
+            return std::any_of(events.begin(), events.end(), [](const Event& e) { return e.expired; });
+        }));
+    }
+
+    // Only 1 expire, with the latest seq
+    {
+        std::lock_guard<std::mutex> lk(cv_m);
+        int expireCount = 0;
+        uint16_t expiredSeq = 0;
+        for (const auto& e : events) {
+            if (e.expired) {
+                expireCount++;
+                if (e.seq > expiredSeq)
+                    expiredSeq = e.seq;
+            }
+        }
+        CPPUNIT_ASSERT_EQUAL_MESSAGE("Should have exactly 1 expire via proxy", 1, expireCount);
+        CPPUNIT_ASSERT_EQUAL_MESSAGE("Expired value should be the latest",
+                                     (uint16_t) NUM_EDITS, expiredSeq);
+    }
+
+    nodeClient.cancelListen(key, ftoken.get());
+}
+
+void
+DhtProxyTester::testPushRapidEditsNoPhantom()
+{
+#ifndef OPENDHT_PUSH_NOTIFICATIONS
+    fmt::print(stderr, "Push notifications are not supported in this build, skipping test\n");
+    return;
+#else
+    // Rapid fire edits with push notifications between each.
+    // No phantom expires should appear at any point.
+    static constexpr dht::ValueType::Id RAPID_TYPE_ID = 9191;
+    const dht::ValueType rapidType {RAPID_TYPE_ID,
+                                    "rapid-push-edit",
+                                    std::chrono::seconds(30),
+                                    dht::ValueType::DEFAULT_STORE_POLICY,
+                                    [](dht::InfoHash,
+                                       const std::shared_ptr<dht::Value>&,
+                                       std::shared_ptr<dht::Value>&,
+                                       const dht::InfoHash&,
+                                       const dht::SockAddr&) { return true; }};
+    nodePeer.registerType(rapidType);
+    nodeProxy->registerType(rapidType);
+
+    clientConfig.push_token = "rapid-edit-token";
+    nodeClient.run(0, clientConfig);
+    nodeClient.registerType(rapidType);
+
+    std::condition_variable cv;
+    std::mutex cv_m;
+    std::unique_lock<std::mutex> lk(cv_m);
+    auto key = dht::InfoHash::get("pushRapidEdits");
+    auto identity = dht::crypto::generateIdentity("RapidEditAuthor");
+
+    struct Event { dht::Value::Id id; uint16_t seq; bool expired; };
+    std::vector<Event> events;
+
+    auto ftoken = nodeClient.listen(key, [&](const std::vector<std::shared_ptr<dht::Value>>& vals, bool expired) {
+        std::lock_guard<std::mutex> lk(cv_m);
+        for (const auto& v : vals)
+            events.push_back({v->id, v->seq, expired});
+        cv.notify_all();
+        return true;
+    });
+
+    // Wait for listen to be established
+    cv.wait_for(lk, 1s);
+
+    // Perform 6 rapid edits, each followed by a push notification
+    constexpr int NUM_EDITS = 6;
+    for (int seq = 1; seq <= NUM_EDITS; seq++) {
+        auto v = std::make_shared<dht::Value>("rapid-v" + std::to_string(seq));
+        v->type = RAPID_TYPE_ID;
+        v->id = 500;
+        v->seq = seq;
+        v->sign(*identity.first);
+
+        bool done = false;
+        nodePeer.put(key, v, [&](bool ok) {
+            std::lock_guard<std::mutex> lk(cv_m);
+            CPPUNIT_ASSERT(ok);
+            done = true;
+            cv.notify_all();
+        });
+        CPPUNIT_ASSERT(cv.wait_for(lk, 10s, [&] { return done; }));
+
+        // Simulate push notification
+        std::map<std::string, std::string> push_data;
+        push_data["key"] = key.toString();
+        push_data["t"] = std::to_string(
+            std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::system_clock::now().time_since_epoch())
+                .count());
+        lk.unlock();
+        nodeClient.pushNotificationReceived(push_data).get();
+        lk.lock();
+    }
+
+    // Wait for edits to arrive (at least 2: initial + latest)
+    CPPUNIT_ASSERT(cv.wait_for(lk, 15s, [&] {
+        int adds = 0;
+        for (const auto& e : events)
+            if (!e.expired)
+                adds++;
+        return adds >= 2;
+    }));
+
+    // Allow stray callbacks
+    cv.wait_for(lk, 1s);
+
+    // Verify: at least 2 adds, ZERO expires
+    {
+        int addCount = 0, expireCount = 0;
+        for (const auto& e : events) {
+            if (e.expired)
+                expireCount++;
+            else
+                addCount++;
+        }
+        CPPUNIT_ASSERT_MESSAGE("Should receive at least 2 add callbacks via push edits", addCount >= 2);
+        CPPUNIT_ASSERT_EQUAL_MESSAGE("No phantom expires during rapid push edits", 0, expireCount);
+
+        // Verify final seq is NUM_EDITS
+        uint16_t maxSeq = 0;
+        for (const auto& e : events)
+            if (!e.expired && e.seq > maxSeq)
+                maxSeq = e.seq;
+        CPPUNIT_ASSERT_EQUAL((uint16_t) NUM_EDITS, maxSeq);
+    }
+
+    nodeClient.cancelListen(key, ftoken.get());
+#endif
+}
+
+void
+DhtProxyTester::testPushRefreshAfterEditKeepsLatest()
+{
+#ifndef OPENDHT_PUSH_NOTIFICATIONS
+    fmt::print(stderr, "Push notifications are not supported in this build, skipping test\n");
+    return;
+#else
+    // After editing a value, a refresh push re-fetches all values.
+    // The latest version should stay current, no expire/re-add cycle.
+    static constexpr dht::ValueType::Id REFRESH_EDIT_TYPE_ID = 9292;
+    const dht::ValueType refreshEditType {REFRESH_EDIT_TYPE_ID,
+                                          "refresh-after-edit",
+                                          std::chrono::seconds(30),
+                                          dht::ValueType::DEFAULT_STORE_POLICY,
+                                          [](dht::InfoHash,
+                                             const std::shared_ptr<dht::Value>&,
+                                             std::shared_ptr<dht::Value>&,
+                                             const dht::InfoHash&,
+                                             const dht::SockAddr&) { return true; }};
+    nodePeer.registerType(refreshEditType);
+    nodeProxy->registerType(refreshEditType);
+
+    clientConfig.push_token = "refresh-edit-token";
+    nodeClient.run(0, clientConfig);
+    nodeClient.registerType(refreshEditType);
+
+    std::condition_variable cv;
+    std::mutex cv_m;
+    std::unique_lock<std::mutex> lk(cv_m);
+    auto key = dht::InfoHash::get("pushRefreshAfterEdit");
+    auto identity = dht::crypto::generateIdentity("RefreshEditAuthor");
+
+    struct Event { dht::Value::Id id; uint16_t seq; bool expired; };
+    std::vector<Event> events;
+
+    auto ftoken = nodeClient.listen(key, [&](const std::vector<std::shared_ptr<dht::Value>>& vals, bool expired) {
+        std::lock_guard<std::mutex> lk(cv_m);
+        for (const auto& v : vals)
+            events.push_back({v->id, v->seq, expired});
+        cv.notify_all();
+        return true;
+    });
+
+    // Wait for listen to be established
+    cv.wait_for(lk, 1s);
+
+    // Put initial value
+    auto v1 = std::make_shared<dht::Value>("original");
+    v1->type = REFRESH_EDIT_TYPE_ID;
+    v1->id = 600;
+    v1->seq = 1;
+    v1->sign(*identity.first);
+    {
+        bool done = false;
+        nodePeer.put(key, v1, [&](bool ok) {
+            std::lock_guard<std::mutex> lk(cv_m);
+            CPPUNIT_ASSERT(ok);
+            done = true;
+            cv.notify_all();
+        });
+        CPPUNIT_ASSERT(cv.wait_for(lk, 10s, [&] { return done; }));
+    }
+
+    // First push notification to receive it
+    {
+        std::map<std::string, std::string> push_data;
+        push_data["key"] = key.toString();
+        push_data["t"] = std::to_string(
+            std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::system_clock::now().time_since_epoch())
+                .count());
+        lk.unlock();
+        nodeClient.pushNotificationReceived(push_data).get();
+        lk.lock();
+    }
+
+    // Wait for initial add
+    CPPUNIT_ASSERT(cv.wait_for(lk, 10s, [&] {
+        return std::any_of(events.begin(), events.end(), [](const Event& e) {
+            return e.id == 600 && e.seq == 1 && !e.expired;
+        });
+    }));
+
+    // Edit to seq 3
+    auto v2 = std::make_shared<dht::Value>("edited");
+    v2->type = REFRESH_EDIT_TYPE_ID;
+    v2->id = 600;
+    v2->seq = 3;
+    v2->sign(*identity.first);
+    {
+        bool done = false;
+        nodePeer.put(key, v2, [&](bool ok) {
+            std::lock_guard<std::mutex> lk(cv_m);
+            CPPUNIT_ASSERT(ok);
+            done = true;
+            cv.notify_all();
+        });
+        CPPUNIT_ASSERT(cv.wait_for(lk, 10s, [&] { return done; }));
+    }
+
+    // Push notification for the edit
+    {
+        std::map<std::string, std::string> push_data;
+        push_data["key"] = key.toString();
+        push_data["t"] = std::to_string(
+            std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::system_clock::now().time_since_epoch())
+                .count());
+        lk.unlock();
+        nodeClient.pushNotificationReceived(push_data).get();
+        lk.lock();
+    }
+
+    // Wait for the edit add (seq=3)
+    CPPUNIT_ASSERT(cv.wait_for(lk, 10s, [&] {
+        return std::any_of(events.begin(), events.end(), [](const Event& e) {
+            return e.id == 600 && e.seq == 3 && !e.expired;
+        });
+    }));
+
+    // Record event count before refresh
+    size_t eventsBeforeRefresh = events.size();
+
+    // Simulate another refresh push (same value still present on DHT with seq=3)
+    {
+        std::map<std::string, std::string> push_data;
+        push_data["key"] = key.toString();
+        push_data["t"] = std::to_string(
+            std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::system_clock::now().time_since_epoch())
+                .count());
+        lk.unlock();
+        nodeClient.pushNotificationReceived(push_data).get();
+        lk.lock();
+    }
+
+    // Wait a bit for any callbacks
+    cv.wait_for(lk, 1s);
+
+    // After refresh: no new adds, no expires. The value is already at seq=3
+    // and the refresh should not produce any events (duplicate is filtered).
+    {
+        int expiresAfterRefresh = 0;
+        int addsAfterRefresh = 0;
+        for (size_t i = eventsBeforeRefresh; i < events.size(); i++) {
+            if (events[i].expired)
+                expiresAfterRefresh++;
+            else
+                addsAfterRefresh++;
+        }
+        CPPUNIT_ASSERT_EQUAL_MESSAGE("Refresh should not produce phantom expires", 0, expiresAfterRefresh);
+        // No new adds either (same value, same seq)
+        CPPUNIT_ASSERT_EQUAL_MESSAGE("Refresh should not re-add same value", 0, addsAfterRefresh);
+    }
+
+    // Global verification: exactly 2 adds (initial + edit), 0 expires
+    {
+        int totalAdds = 0, totalExpires = 0;
+        for (const auto& e : events) {
+            if (e.expired)
+                totalExpires++;
+            else
+                totalAdds++;
+        }
+        CPPUNIT_ASSERT_EQUAL_MESSAGE("Total adds should be 2 (initial + edit)", 2, totalAdds);
+        CPPUNIT_ASSERT_EQUAL_MESSAGE("Total expires should be 0", 0, totalExpires);
+    }
+
+    nodeClient.cancelListen(key, ftoken.get());
+#endif
+}
+
 } // namespace test

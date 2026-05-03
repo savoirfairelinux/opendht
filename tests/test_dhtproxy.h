@@ -24,6 +24,13 @@ class DhtProxyTester : public CppUnit::TestFixture
     CPPUNIT_TEST(testPutGet40KChars);
     CPPUNIT_TEST(testFuzzy);
     CPPUNIT_TEST(testShutdownStop);
+    CPPUNIT_TEST(testGetAfterListen);
+    CPPUNIT_TEST(testListenDuplicatePut);
+    CPPUNIT_TEST(testPushMultiValueEditExpire);
+    CPPUNIT_TEST(testPushRefreshNoSpuriousExpire);
+    CPPUNIT_TEST(testProxyListenEditChain);
+    CPPUNIT_TEST(testPushRapidEditsNoPhantom);
+    CPPUNIT_TEST(testPushRefreshAfterEditKeepsLatest);
     CPPUNIT_TEST_SUITE_END();
 
 public:
@@ -74,6 +81,13 @@ public:
     void testFuzzy();
 
     void testShutdownStop();
+    void testGetAfterListen();
+    void testListenDuplicatePut();
+    void testPushMultiValueEditExpire();
+    void testPushRefreshNoSpuriousExpire();
+    void testProxyListenEditChain();
+    void testPushRapidEditsNoPhantom();
+    void testPushRefreshAfterEditKeepsLatest();
 
 private:
     dht::DhtRunner::Config clientConfig {};

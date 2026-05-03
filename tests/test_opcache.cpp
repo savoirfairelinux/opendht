@@ -645,4 +645,162 @@ OpCacheTester::testValueUpdateSingleSourcePhantom()
     CPPUNIT_ASSERT_EQUAL(v2->seq, stored->seq);
 }
 
+void
+OpCacheTester::testGetCallbackReturnsFalse()
+{
+    // Test that when the GetCallback (gcb) returns false during SearchCache::get,
+    // the DoneCallback is called with success=false.
+    dht::SearchCache searchCache;
+
+    auto v1 = std::make_shared<dht::Value>();
+    v1->id = 1000;
+    v1->data = {'X'};
+
+    auto query = std::make_shared<dht::Query>();
+
+    // Start a listen, inject value, mark as synced
+    size_t listenToken = searchCache.listen(
+        [](const std::vector<std::shared_ptr<dht::Value>>&, bool) { return true; },
+        query,
+        {},
+        [&](const std::shared_ptr<dht::Query>&, dht::ValueCallback vcb, dht::SyncCallback scb) -> size_t {
+            scb(dht::ListenSyncStatus::ADDED);
+            vcb({v1}, false);
+            scb(dht::ListenSyncStatus::SYNCED);
+            return 1;
+        });
+    CPPUNIT_ASSERT(listenToken != 0);
+
+    // get() with a callback that returns false (consumer rejects values)
+    bool doneCalled = false;
+    bool doneSuccess = true; // Should become false
+    int gcbCallCount = 0;
+
+    bool result = searchCache.get(
+        {},
+        query,
+        [&](const std::vector<std::shared_ptr<dht::Value>>& vals) {
+            gcbCallCount++;
+            return false; // Reject!
+        },
+        [&](bool success, const std::vector<std::shared_ptr<dht::Node>>&) {
+            doneCalled = true;
+            doneSuccess = success;
+        });
+
+    CPPUNIT_ASSERT_MESSAGE("get() should still return true (handled from cache)", result);
+    CPPUNIT_ASSERT_EQUAL_MESSAGE("gcb should be called once", 1, gcbCallCount);
+    CPPUNIT_ASSERT_MESSAGE("done callback should be called", doneCalled);
+    CPPUNIT_ASSERT_MESSAGE("done callback should indicate failure when gcb returns false", !doneSuccess);
+
+    // Now test: get() with a callback that returns true should report success
+    doneCalled = false;
+    doneSuccess = false;
+    gcbCallCount = 0;
+
+    result = searchCache.get(
+        {},
+        query,
+        [&](const std::vector<std::shared_ptr<dht::Value>>& vals) {
+            gcbCallCount++;
+            return true; // Accept
+        },
+        [&](bool success, const std::vector<std::shared_ptr<dht::Node>>&) {
+            doneCalled = true;
+            doneSuccess = success;
+        });
+
+    CPPUNIT_ASSERT_MESSAGE("get() should return true", result);
+    CPPUNIT_ASSERT_EQUAL_MESSAGE("gcb should be called once", 1, gcbCallCount);
+    CPPUNIT_ASSERT_MESSAGE("done callback should be called", doneCalled);
+    CPPUNIT_ASSERT_MESSAGE("done callback should indicate success when gcb returns true", doneSuccess);
+}
+
+void
+OpCacheTester::testDuplicateAddNoRefCountBump()
+{
+    // Verify that adding the exact same value multiple times does NOT
+    // increment refCount. A single expiration must remove the value.
+    // This is the intentional design: timestamp-based protection replaces
+    // multi-source refCount accounting.
+
+    int addCallCount = 0;
+    int expireCallCount = 0;
+    dht::OpValueCache cache([&](const std::vector<std::shared_ptr<dht::Value>>& vals, bool expired) {
+        if (expired)
+            expireCallCount += vals.size();
+        else
+            addCallCount += vals.size();
+        return true;
+    });
+
+    auto v = std::make_shared<dht::Value>();
+    v->id = 1100;
+    v->data = {'D', 'U', 'P'};
+
+    // Add same value 10 times (simulating 10 sources reporting it)
+    for (int i = 0; i < 10; i++)
+        cache.onValuesAdded({v});
+
+    // Only the first add should trigger the callback
+    CPPUNIT_ASSERT_EQUAL_MESSAGE("Only first add triggers callback", 1, addCallCount);
+    CPPUNIT_ASSERT_EQUAL((size_t) 1, cache.size());
+
+    // A single expire removes the value (refCount stays at 1)
+    cache.onValuesExpired({v});
+    CPPUNIT_ASSERT_EQUAL_MESSAGE("Single expire removes value", 1, expireCallCount);
+    CPPUNIT_ASSERT_EQUAL((size_t) 0, cache.size());
+
+    // Subsequent expires are no-ops (value already gone)
+    cache.onValuesExpired({v});
+    cache.onValuesExpired({v});
+    CPPUNIT_ASSERT_EQUAL_MESSAGE("No spurious expire callbacks", 1, expireCallCount);
+}
+
+void
+OpCacheTester::testExpireAfterUpdate()
+{
+    // After a value is updated (same id, higher seq), verify that:
+    // 1. The updated value can be expired with a single expiration
+    // 2. The expire callback reports the updated value, not the old one
+
+    std::vector<std::shared_ptr<dht::Value>> expiredValues;
+    dht::OpValueCache cache([&](const std::vector<std::shared_ptr<dht::Value>>& vals, bool expired) {
+        if (expired)
+            for (const auto& v : vals)
+                expiredValues.push_back(v);
+        return true;
+    });
+
+    auto v1 = std::make_shared<dht::Value>();
+    v1->id = 1200;
+    v1->seq = 1;
+    v1->data = {'V', '1'};
+
+    auto v2 = std::make_shared<dht::Value>();
+    v2->id = 1200;
+    v2->seq = 5;
+    v2->data = {'V', '2'};
+
+    // Add original
+    cache.onValuesAdded({v1});
+    CPPUNIT_ASSERT_EQUAL((size_t) 1, cache.size());
+
+    // Update to v2 (higher seq)
+    cache.onValuesAdded({v2});
+    CPPUNIT_ASSERT_EQUAL((size_t) 1, cache.size());
+    CPPUNIT_ASSERT_EQUAL(v2->seq, cache.get(1200)->seq);
+
+    // Now expire — should remove the updated value
+    cache.onValuesExpired({v2});
+    CPPUNIT_ASSERT_EQUAL((size_t) 0, cache.size());
+    CPPUNIT_ASSERT_EQUAL_MESSAGE("Expire callback should fire once", (size_t) 1, expiredValues.size());
+    CPPUNIT_ASSERT_EQUAL_MESSAGE("Expired value should be the updated one", v2->seq, expiredValues[0]->seq);
+
+    // Adding v1 again after expiration — old seq is accepted since value is gone
+    cache.onValuesAdded({v1});
+    CPPUNIT_ASSERT_EQUAL((size_t) 1, cache.size());
+    CPPUNIT_ASSERT_EQUAL(v1->seq, cache.get(1200)->seq);
+}
+
 } // namespace test

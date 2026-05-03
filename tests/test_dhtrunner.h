@@ -29,6 +29,11 @@ class DhtRunnerTester : public CppUnit::TestFixture
     CPPUNIT_TEST(testBootstrapThenPutNoRace);
     CPPUNIT_TEST(testBootstrapMissingNodeThenPutFails);
     CPPUNIT_TEST(testShutdownCompletesWithPendingPut);
+    CPPUNIT_TEST(testGetAfterListen);
+    CPPUNIT_TEST(testListenDuplicatePut);
+    CPPUNIT_TEST(testListenMultiSourceExpire);
+    CPPUNIT_TEST(testListenEditChainThenExpire);
+    CPPUNIT_TEST(testListenMultiValuePartialExpire);
     CPPUNIT_TEST_SUITE_END();
 
     dht::DhtRunner node1 {};
@@ -74,6 +79,11 @@ public:
     void testBootstrapThenPutNoRace();
     void testBootstrapMissingNodeThenPutFails();
     void testShutdownCompletesWithPendingPut();
+    void testGetAfterListen();
+    void testListenDuplicatePut();
+    void testListenMultiSourceExpire();
+    void testListenEditChainThenExpire();
+    void testListenMultiValuePartialExpire();
     /**
      * Test that editing a value only triggers an add callback, no expire
      */
