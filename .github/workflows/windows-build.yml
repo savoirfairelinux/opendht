@@ -22,31 +22,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: microsoft/setup-msbuild@v2
-      - name: Setup vcpkg
+      - name: Setup vcpkg and install packages
         uses: lukka/run-vcpkg@v11
-      - name: Install packages (with retry on download failure)
-        shell: pwsh
-        run: |
-          $maxAttempts = 3
-          for ($i = 1; $i -le $maxAttempts; $i++) {
-            Write-Host "vcpkg install attempt $i/$maxAttempts..."
-            & "$env:VCPKG_ROOT/vcpkg" install `
-              --recurse `
-              --clean-after-build `
-              --x-install-root="$env:VCPKG_INSTALLED_DIR" `
-              --triplet=x64-windows `
-              --x-feature=test
-            if ($LASTEXITCODE -eq 0) {
-              Write-Host "vcpkg install succeeded on attempt $i"
-              exit 0
-            }
-            if ($i -lt $maxAttempts) {
-              Write-Host "vcpkg install failed (exit $LASTEXITCODE), retrying in 30s..."
-              Start-Sleep -Seconds 30
-            }
-          }
-          Write-Host "vcpkg install failed after $maxAttempts attempts"
-          exit 1
+        with:
+          runVcpkgInstall: true
+          vcpkgJsonGlob: 'vcpkg.json'
+          runVcpkgFormatString: '[`install`, `--recurse`, `--clean-after-build`, `--x-install-root`, `$[env.VCPKG_INSTALLED_DIR]`, `--triplet`, `x64-windows`, `--x-feature=test`]'
 
   # Pre-warm the vcpkg binary cache for x64-windows-static-release triplet.
   vcpkg-static:
@@ -57,31 +38,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: microsoft/setup-msbuild@v2
-      - name: Setup vcpkg
+      - name: Setup vcpkg and install packages
         uses: lukka/run-vcpkg@v11
-      - name: Install packages (with retry on download failure)
-        shell: pwsh
-        run: |
-          $maxAttempts = 3
-          for ($i = 1; $i -le $maxAttempts; $i++) {
-            Write-Host "vcpkg install attempt $i/$maxAttempts..."
-            & "$env:VCPKG_ROOT/vcpkg" install `
-              --recurse `
-              --clean-after-build `
-              --x-install-root="$env:VCPKG_INSTALLED_DIR" `
-              --triplet=x64-windows-static-release `
-              --x-feature=test
-            if ($LASTEXITCODE -eq 0) {
-              Write-Host "vcpkg install succeeded on attempt $i"
-              exit 0
-            }
-            if ($i -lt $maxAttempts) {
-              Write-Host "vcpkg install failed (exit $LASTEXITCODE), retrying in 30s..."
-              Start-Sleep -Seconds 30
-            }
-          }
-          Write-Host "vcpkg install failed after $maxAttempts attempts"
-          exit 1
+        with:
+          runVcpkgInstall: true
+          vcpkgJsonGlob: 'vcpkg.json'
+          runVcpkgFormatString: '[`install`, `--recurse`, `--clean-after-build`, `--x-install-root`, `$[env.VCPKG_INSTALLED_DIR]`, `--triplet`, `x64-windows-static-release`, `--x-feature=test`]'
 
   build-windows:
     name: Windows MSVC (${{ matrix.arch }}-windows, ${{ matrix.build_type }}, C++${{ matrix.cxx_standard }})
