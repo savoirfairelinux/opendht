@@ -22,12 +22,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: microsoft/setup-msbuild@v2
-      - name: Setup vcpkg and install packages
+      - name: Setup vcpkg
         uses: lukka/run-vcpkg@v11
+      - name: Install vcpkg packages (with retry)
+        uses: nick-fields/retry@v3
         with:
-          runVcpkgInstall: true
-          vcpkgJsonGlob: 'vcpkg.json'
-          runVcpkgFormatString: '[`install`, `--recurse`, `--clean-after-build`, `--x-install-root`, `$[env.VCPKG_INSTALLED_DIR]`, `--triplet`, `x64-windows`, `--x-feature=test`]'
+          timeout_minutes: 60
+          max_attempts: 3
+          shell: pwsh
+          command: >-
+            & "$env:VCPKG_ROOT/vcpkg.exe" install
+            --recurse
+            --clean-after-build
+            --triplet=x64-windows
+            --x-feature=test
+            --x-manifest-root=.
 
   # Pre-warm the vcpkg binary cache for x64-windows-static-release triplet.
   vcpkg-static:
