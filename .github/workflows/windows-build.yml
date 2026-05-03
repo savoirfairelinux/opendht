@@ -38,12 +38,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: microsoft/setup-msbuild@v2
-      - name: Setup vcpkg and install packages
+      - name: Setup vcpkg
         uses: lukka/run-vcpkg@v11
+      - name: Install vcpkg packages (with retry)
+        uses: nick-fields/retry@v3
         with:
-          runVcpkgInstall: true
-          vcpkgJsonGlob: 'vcpkg.json'
-          runVcpkgFormatString: '[`install`, `--recurse`, `--clean-after-build`, `--x-install-root`, `$[env.VCPKG_INSTALLED_DIR]`, `--triplet`, `x64-windows-static-release`, `--x-feature=test`]'
+          timeout_minutes: 60
+          max_attempts: 3
+          shell: pwsh
+          command: >-
+            & "$env:VCPKG_ROOT/vcpkg.exe" install
+            --recurse
+            --clean-after-build
+            --triplet=x64-windows-static-release
+            --x-feature=test
+            --x-manifest-root=.
 
   build-windows:
     name: Windows MSVC (${{ matrix.arch }}-windows, ${{ matrix.build_type }}, C++${{ matrix.cxx_standard }})
@@ -67,8 +76,12 @@ jobs:
 
       # run-vcpkg sets VCPKG_ROOT and VCPKG_BINARY_SOURCES.
       # Packages are already in the binary cache from the vcpkg-shared job.
-      - name: Setup vcpkg
+      - name: Setup vcpkg and restore packages from cache
         uses: lukka/run-vcpkg@v11
+        with:
+          runVcpkgInstall: true
+          vcpkgJsonGlob: 'vcpkg.json'
+          runVcpkgFormatString: '[`install`, `--recurse`, `--clean-after-build`, `--x-install-root`, `$[env.VCPKG_INSTALLED_DIR]`, `--triplet`, `${{ matrix.arch }}-windows`, `--x-feature=test`]'
 
       - name: Configure CMake
         shell: pwsh
@@ -130,8 +143,12 @@ jobs:
       - name: Set up MSVC
         uses: microsoft/setup-msbuild@v2
 
-      - name: Setup vcpkg
+      - name: Setup vcpkg and restore packages from cache
         uses: lukka/run-vcpkg@v11
+        with:
+          runVcpkgInstall: true
+          vcpkgJsonGlob: 'vcpkg.json'
+          runVcpkgFormatString: '[`install`, `--recurse`, `--clean-after-build`, `--x-install-root`, `$[env.VCPKG_INSTALLED_DIR]`, `--triplet`, `${{ matrix.arch }}-windows-static-release`, `--x-feature=test`]'
 
       - name: Configure CMake for Static Build
         shell: pwsh
