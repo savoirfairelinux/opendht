@@ -12,61 +12,9 @@ env:
   VCPKG_DISABLE_METRICS: "1"
 
 jobs:
-  # Pre-warm the vcpkg binary cache for x64-windows triplet.
-  # Subsequent matrix jobs will find packages already in cache.
-  vcpkg-shared:
-    name: Install vcpkg deps (x64-windows)
-    runs-on: windows-latest
-    env:
-      VCPKG_DEFAULT_TRIPLET: x64-windows
-    steps:
-      - uses: actions/checkout@v4
-      - uses: microsoft/setup-msbuild@v2
-      - name: Setup vcpkg
-        uses: lukka/run-vcpkg@v11
-      - name: Install vcpkg packages (with retry)
-        uses: nick-fields/retry@v3
-        with:
-          timeout_minutes: 60
-          max_attempts: 3
-          shell: pwsh
-          command: >-
-            & "$env:VCPKG_ROOT/vcpkg.exe" install
-            --recurse
-            --clean-after-build
-            --triplet=x64-windows
-            --x-feature=test
-            --x-manifest-root=.
-
-  # Pre-warm the vcpkg binary cache for x64-windows-static-release triplet.
-  vcpkg-static:
-    name: Install vcpkg deps (x64-windows-static-release)
-    runs-on: windows-latest
-    env:
-      VCPKG_DEFAULT_TRIPLET: x64-windows-static-release
-    steps:
-      - uses: actions/checkout@v4
-      - uses: microsoft/setup-msbuild@v2
-      - name: Setup vcpkg
-        uses: lukka/run-vcpkg@v11
-      - name: Install vcpkg packages (with retry)
-        uses: nick-fields/retry@v3
-        with:
-          timeout_minutes: 60
-          max_attempts: 3
-          shell: pwsh
-          command: >-
-            & "$env:VCPKG_ROOT/vcpkg.exe" install
-            --recurse
-            --clean-after-build
-            --triplet=x64-windows-static-release
-            --x-feature=test
-            --x-manifest-root=.
-
   build-windows:
     name: Windows MSVC (${{ matrix.arch }}-windows, ${{ matrix.build_type }}, C++${{ matrix.cxx_standard }})
     runs-on: windows-latest
-    needs: vcpkg-shared
     strategy:
       fail-fast: false
       matrix:
@@ -83,14 +31,22 @@ jobs:
       - name: Set up MSVC
         uses: microsoft/setup-msbuild@v2
 
-      # run-vcpkg sets VCPKG_ROOT and VCPKG_BINARY_SOURCES.
-      # Packages are already in the binary cache from the vcpkg-shared job.
-      - name: Setup vcpkg and restore packages from cache
+      - name: Setup vcpkg
         uses: lukka/run-vcpkg@v11
+
+      - name: Install vcpkg packages (with retry)
+        uses: nick-fields/retry@v3
         with:
-          runVcpkgInstall: true
-          vcpkgJsonGlob: 'vcpkg.json'
-          runVcpkgFormatString: '[`install`, `--recurse`, `--clean-after-build`, `--x-install-root`, `$[env.VCPKG_INSTALLED_DIR]`, `--triplet`, `${{ matrix.arch }}-windows`, `--x-feature=test`]'
+          timeout_minutes: 60
+          max_attempts: 3
+          shell: pwsh
+          command: >-
+            & "$env:VCPKG_ROOT/vcpkg.exe" install
+            --recurse
+            --clean-after-build
+            --triplet=${{ matrix.arch }}-windows
+            --x-feature=test
+            --x-manifest-root=.
 
       - name: Configure CMake
         shell: pwsh
@@ -99,6 +55,7 @@ jobs:
             -S . `
             -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" `
             -DVCPKG_TARGET_TRIPLET=${{ matrix.arch }}-windows `
+            -DVCPKG_MANIFEST_INSTALL=OFF `
             -DVCPKG_MANIFEST_FEATURES=test `
             -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} `
             -DCMAKE_CXX_STANDARD=${{ matrix.cxx_standard }} `
@@ -135,7 +92,6 @@ jobs:
   build-windows-static:
     name: Windows Static MSVC (${{ matrix.arch }}-windows-static-release, ${{ matrix.build_type }}, C++${{ matrix.cxx_standard }})
     runs-on: windows-latest
-    needs: vcpkg-static
     strategy:
       fail-fast: false
       matrix:
@@ -152,12 +108,22 @@ jobs:
       - name: Set up MSVC
         uses: microsoft/setup-msbuild@v2
 
-      - name: Setup vcpkg and restore packages from cache
+      - name: Setup vcpkg
         uses: lukka/run-vcpkg@v11
+
+      - name: Install vcpkg packages (with retry)
+        uses: nick-fields/retry@v3
         with:
-          runVcpkgInstall: true
-          vcpkgJsonGlob: 'vcpkg.json'
-          runVcpkgFormatString: '[`install`, `--recurse`, `--clean-after-build`, `--x-install-root`, `$[env.VCPKG_INSTALLED_DIR]`, `--triplet`, `${{ matrix.arch }}-windows-static-release`, `--x-feature=test`]'
+          timeout_minutes: 60
+          max_attempts: 3
+          shell: pwsh
+          command: >-
+            & "$env:VCPKG_ROOT/vcpkg.exe" install
+            --recurse
+            --clean-after-build
+            --triplet=${{ matrix.arch }}-windows-static-release
+            --x-feature=test
+            --x-manifest-root=.
 
       - name: Configure CMake for Static Build
         shell: pwsh
@@ -166,6 +132,7 @@ jobs:
             -S . `
             -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" `
             -DVCPKG_TARGET_TRIPLET=${{ matrix.arch }}-windows-static-release `
+            -DVCPKG_MANIFEST_INSTALL=OFF `
             -DVCPKG_MANIFEST_FEATURES=test `
             -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} `
             -DCMAKE_CXX_STANDARD=${{ matrix.cxx_standard }} `
