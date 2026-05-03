@@ -242,8 +242,10 @@ SearchCache::get(const Value::Filter& f, const Sp<Query>& q, const GetCallback& 
     auto op = getOp(q);
     if (op != ops.end() and op->second->isSynced()) {
         auto vals = op->second->get(f);
-        if (not vals.empty())
-            gcb(vals);
+        if (not vals.empty() and not gcb(vals)) {
+            dcb(false, {});
+            return true;
+        }
         dcb(true, {});
         return true;
     }

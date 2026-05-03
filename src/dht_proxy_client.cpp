@@ -1316,7 +1316,9 @@ DhtProxyClient::pushNotificationReceived([[maybe_unused]] const std::map<std::st
                                 receivedIds->insert(v->id);
                             return cb(vals, false, sendTime);
                         },
-                        [cb, oldValues, sendTime, receivedIds](bool /*ok*/) {
+                        [cb, oldValues, sendTime, receivedIds](bool ok) {
+                            if (!ok)
+                                return;
                             // Decrement old values refcount to expire values not
                             // present in the new list
                             std::vector<Sp<Value>> toExpire;
