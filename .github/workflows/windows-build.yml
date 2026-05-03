@@ -1,6 +1,7 @@
 name: Windows Build
 permissions:
   contents: read
+  actions: write  # required for vcpkg GHA asset caching (X_VCPKG_ASSET_SOURCES)
 
 on: 
   push:
@@ -10,6 +11,9 @@ on:
 
 env:
   VCPKG_DISABLE_METRICS: "1"
+  # Cache vcpkg downloaded source archives in GitHub Actions cache to avoid
+  # flaky downloads from GNU FTP and Savannah mirrors.
+  X_VCPKG_ASSET_SOURCES: "x-gha,readwrite"
 
 jobs:
   # Pre-warm the vcpkg binary cache for x64-windows triplet.
