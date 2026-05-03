@@ -48,13 +48,14 @@ jobs:
           timeout_minutes: 60
           max_attempts: 3
           shell: pwsh
-          command: >-
-            & "$env:VCPKG_ROOT/vcpkg.exe" install
-            --recurse
-            --clean-after-build
-            --triplet=x64-windows
-            --x-feature=test
-            --x-manifest-root=.
+          command: |
+            & "$env:VCPKG_ROOT/vcpkg.exe" install `
+              --recurse `
+              --clean-after-build `
+              --triplet=x64-windows `
+              --x-feature=test `
+              --x-manifest-root=.
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Save vcpkg_installed to cache
         if: steps.cache-restore.outputs.cache-hit != 'true'
@@ -97,13 +98,14 @@ jobs:
           timeout_minutes: 60
           max_attempts: 3
           shell: pwsh
-          command: >-
-            & "$env:VCPKG_ROOT/vcpkg.exe" install
-            --recurse
-            --clean-after-build
-            --triplet=x64-windows-static-release
-            --x-feature=test
-            --x-manifest-root=.
+          command: |
+            & "$env:VCPKG_ROOT/vcpkg.exe" install `
+              --recurse `
+              --clean-after-build `
+              --triplet=x64-windows-static-release `
+              --x-feature=test `
+              --x-manifest-root=.
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Save vcpkg_installed to cache
         if: steps.cache-restore.outputs.cache-hit != 'true'
