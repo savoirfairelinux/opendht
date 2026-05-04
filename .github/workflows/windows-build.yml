@@ -31,7 +31,9 @@ jobs:
         id: vcpkg-key
         shell: pwsh
         run: |
-          $hash = (Get-FileHash vcpkg.json -Algorithm SHA256).Hash.Substring(0, 16)
+          $combined = (Get-FileHash vcpkg.json -Algorithm SHA256).Hash + (Get-FileHash vcpkg-configuration.json -Algorithm SHA256).Hash
+          $bytes = [System.Text.Encoding]::UTF8.GetBytes($combined)
+          $hash = (([System.Security.Cryptography.SHA256]::Create().ComputeHash($bytes) | ForEach-Object { $_.ToString('x2') }) -join '').Substring(0, 16)
           echo "key=vcpkg-x64-windows-$hash-${{ runner.os }}" >> $env:GITHUB_OUTPUT
 
       - name: Restore vcpkg_installed from cache
@@ -81,7 +83,9 @@ jobs:
         id: vcpkg-key
         shell: pwsh
         run: |
-          $hash = (Get-FileHash vcpkg.json -Algorithm SHA256).Hash.Substring(0, 16)
+          $combined = (Get-FileHash vcpkg.json -Algorithm SHA256).Hash + (Get-FileHash vcpkg-configuration.json -Algorithm SHA256).Hash
+          $bytes = [System.Text.Encoding]::UTF8.GetBytes($combined)
+          $hash = (([System.Security.Cryptography.SHA256]::Create().ComputeHash($bytes) | ForEach-Object { $_.ToString('x2') }) -join '').Substring(0, 16)
           echo "key=vcpkg-x64-windows-static-release-$hash-${{ runner.os }}" >> $env:GITHUB_OUTPUT
 
       - name: Restore vcpkg_installed from cache
@@ -141,7 +145,9 @@ jobs:
         id: vcpkg-key
         shell: pwsh
         run: |
-          $hash = (Get-FileHash vcpkg.json -Algorithm SHA256).Hash.Substring(0, 16)
+          $combined = (Get-FileHash vcpkg.json -Algorithm SHA256).Hash + (Get-FileHash vcpkg-configuration.json -Algorithm SHA256).Hash
+          $bytes = [System.Text.Encoding]::UTF8.GetBytes($combined)
+          $hash = (([System.Security.Cryptography.SHA256]::Create().ComputeHash($bytes) | ForEach-Object { $_.ToString('x2') }) -join '').Substring(0, 16)
           echo "key=vcpkg-x64-windows-$hash-${{ runner.os }}" >> $env:GITHUB_OUTPUT
 
       - name: Restore vcpkg_installed from cache
@@ -234,7 +240,9 @@ jobs:
         id: vcpkg-key
         shell: pwsh
         run: |
-          $hash = (Get-FileHash vcpkg.json -Algorithm SHA256).Hash.Substring(0, 16)
+          $combined = (Get-FileHash vcpkg.json -Algorithm SHA256).Hash + (Get-FileHash vcpkg-configuration.json -Algorithm SHA256).Hash
+          $bytes = [System.Text.Encoding]::UTF8.GetBytes($combined)
+          $hash = (([System.Security.Cryptography.SHA256]::Create().ComputeHash($bytes) | ForEach-Object { $_.ToString('x2') }) -join '').Substring(0, 16)
           echo "key=vcpkg-x64-windows-static-release-$hash-${{ runner.os }}" >> $env:GITHUB_OUTPUT
 
       - name: Restore vcpkg_installed from cache
