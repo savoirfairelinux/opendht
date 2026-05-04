@@ -172,6 +172,17 @@ jobs:
             --x-feature=test
             --x-manifest-root=.
 
+      - name: Debug - list vcpkg_installed
+        shell: pwsh
+        run: |
+          echo "cache-hit: ${{ steps.cache-restore.outputs.cache-hit }}"
+          echo "vcpkg_installed contents:"
+          if (Test-Path vcpkg_installed) {
+            Get-ChildItem vcpkg_installed -Recurse -Depth 3 | Select-Object FullName | head -50
+          } else {
+            echo "vcpkg_installed directory does not exist!"
+          }
+
       - name: Configure CMake
         shell: pwsh
         run: |
