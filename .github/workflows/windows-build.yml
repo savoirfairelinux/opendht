@@ -176,11 +176,18 @@ jobs:
         shell: pwsh
         run: |
           echo "cache-hit: ${{ steps.cache-restore.outputs.cache-hit }}"
+          echo "GITHUB_WORKSPACE: $env:GITHUB_WORKSPACE"
           echo "vcpkg_installed contents:"
           if (Test-Path vcpkg_installed) {
-            Get-ChildItem vcpkg_installed -Recurse -Depth 3 | Select-Object FullName | head -50
+            Get-ChildItem vcpkg_installed -Recurse -Depth 3 | Select-Object -ExpandProperty FullName | Select-Object -First 50
           } else {
             echo "vcpkg_installed directory does not exist!"
+          }
+          echo "argon2 check:"
+          if (Test-Path "vcpkg_installed/x64-windows/share/unofficial-argon2") {
+            echo "argon2 FOUND"
+          } else {
+            echo "argon2 NOT FOUND"
           }
 
       - name: Configure CMake
@@ -190,6 +197,7 @@ jobs:
             -S . `
             -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" `
             -DVCPKG_TARGET_TRIPLET=${{ matrix.arch }}-windows `
+            -DVCPKG_INSTALLED_DIR="${{ github.workspace }}/vcpkg_installed" `
             -DVCPKG_MANIFEST_INSTALL=OFF `
             -DVCPKG_MANIFEST_FEATURES=test `
             -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} `
@@ -285,6 +293,7 @@ jobs:
             -S . `
             -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" `
             -DVCPKG_TARGET_TRIPLET=${{ matrix.arch }}-windows-static-release `
+            -DVCPKG_INSTALLED_DIR="${{ github.workspace }}/vcpkg_installed" `
             -DVCPKG_MANIFEST_INSTALL=OFF `
             -DVCPKG_MANIFEST_FEATURES=test `
             -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} `
