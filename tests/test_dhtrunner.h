@@ -22,6 +22,7 @@ class DhtRunnerTester : public CppUnit::TestFixture
     CPPUNIT_TEST(testIdOps);
     CPPUNIT_TEST(testImportValuesPreservesRemoteQuota);
     CPPUNIT_TEST(testImportValuesPreservesStoredExpiration);
+    CPPUNIT_TEST(testImportPermanentValueExpires);
     CPPUNIT_TEST(testBootstrapSetsConnectingState);
     CPPUNIT_TEST(testBootstrapThenPutNoRace);
     CPPUNIT_TEST(testBootstrapMissingNodeThenPutFails);
@@ -66,6 +67,7 @@ public:
     void testIdOps();
     void testImportValuesPreservesRemoteQuota();
     void testImportValuesPreservesStoredExpiration();
+    void testImportPermanentValueExpires();
     void testBootstrapSetsConnectingState();
     void testBootstrapThenPutNoRace();
     void testBootstrapMissingNodeThenPutFails();
