@@ -1432,6 +1432,8 @@ Dht::storageStore(const InfoHash& id,
     created = std::min(created, now);
     if (expiration == time_point::min())
         expiration = permanent ? time_point::max() : created + getType(value->type).expiration;
+    else if (not permanent)
+        expiration = std::min(expiration, created + getType(value->type).expiration);
     if (expiration < now)
         return false;
 
