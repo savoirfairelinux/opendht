@@ -113,14 +113,6 @@ public:
      * and put it in the DHT.
      * The operation will be immediate if the recipient' public key is known (otherwise it will be retrived first).
      */
-    void putEncrypted(
-        const InfoHash& hash, const InfoHash& to, Sp<Value> val, DoneCallback callback, bool permanent = false);
-
-    [[deprecated("Use the shared_ptr version instead")]]
-    void putEncrypted(const InfoHash& hash, const InfoHash& to, Value&& v, DoneCallback callback, bool permanent = false)
-    {
-        putEncrypted(hash, to, std::make_shared<Value>(std::move(v)), callback, permanent);
-    }
     void putEncrypted(const InfoHash& hash,
                       const crypto::PublicKey& to,
                       Sp<Value> val,
@@ -145,18 +137,10 @@ public:
 
     Value decrypt(const Value& v);
 
-    [[deprecated("Use PkId version")]] void findCertificate(
-        const InfoHash& node, const std::function<void(const Sp<crypto::Certificate>)>& cb);
-    [[deprecated("Use PkId version")]] void findPublicKey(const InfoHash& node,
-                                                          const std::function<void(const Sp<crypto::PublicKey>)>& cb);
-
     void findCertificate(const PkId& id, const std::function<void(const Sp<crypto::Certificate>)>& cb);
     void findPublicKey(const PkId& id, const std::function<void(const Sp<crypto::PublicKey>)>& cb);
 
     void registerCertificate(const Sp<crypto::Certificate>& cert);
-
-    [[deprecated("Use PkId version")]] Sp<crypto::Certificate> getCertificate(const InfoHash& node) const;
-    [[deprecated("Use PkId version")]] Sp<crypto::PublicKey> getPublicKey(const InfoHash& node) const;
 
     Sp<crypto::Certificate> getCertificate(const PkId& node) const;
     Sp<crypto::PublicKey> getPublicKey(const PkId& node) const;
@@ -166,10 +150,6 @@ public:
      * The search key used is the public key ID, so there may be multiple certificates retured, signed with
      * the same private key.
      */
-    void setLocalCertificateStore(CertificateStoreQueryLegacy&& query_method)
-    {
-        localQueryMethodLegacy_ = std::move(query_method);
-    }
     void setLocalCertificateStore(CertificateStoreQuery&& query_method) { localQueryMethod_ = std::move(query_method); }
     void setOnPublicAddressChanged(PublicAddressChangedCb cb) override { dht_->setOnPublicAddressChanged(cb); }
 
@@ -347,13 +327,10 @@ private:
 
     // method to query the local certificate store
     CertificateStoreQuery localQueryMethod_ {};
-    CertificateStoreQueryLegacy localQueryMethodLegacy_ {};
 
     // our certificate cache
-    std::map<InfoHash, Sp<crypto::Certificate>> nodesCertificates_ {};
-    std::map<InfoHash, Sp<crypto::PublicKey>> nodesPubKeys_ {};
-    std::map<PkId, Sp<crypto::Certificate>> nodesCertificatesLong_ {};
-    std::map<PkId, Sp<crypto::PublicKey>> nodesPubKeysLong_ {};
+    std::map<PkId, Sp<crypto::Certificate>> nodesCertificates_ {};
+    std::map<PkId, Sp<crypto::PublicKey>> nodesPubKeys_ {};
 
     std::atomic_bool forward_all_ {false};
     bool enableCache_ {false};

@@ -97,36 +97,12 @@ SecureDht::secureType(ValueType&& type)
 }
 
 Sp<crypto::Certificate>
-SecureDht::getCertificate(const InfoHash& node) const
-{
-    if (node == getId())
-        return certificate_;
-    auto it = nodesCertificates_.find(node);
-    if (it == nodesCertificates_.end())
-        return nullptr;
-    else
-        return it->second;
-}
-
-Sp<crypto::PublicKey>
-SecureDht::getPublicKey(const InfoHash& node) const
-{
-    if (node == getId())
-        return certificate_->getSharedPublicKey();
-    auto it = nodesPubKeys_.find(node);
-    if (it == nodesPubKeys_.end())
-        return nullptr;
-    else
-        return it->second;
-}
-
-Sp<crypto::Certificate>
 SecureDht::getCertificate(const PkId& node) const
 {
     if (node == getLongId())
         return certificate_;
-    auto it = nodesCertificatesLong_.find(node);
-    if (it == nodesCertificatesLong_.end())
+    auto it = nodesCertificates_.find(node);
+    if (it == nodesCertificates_.end())
         return nullptr;
     else
         return it->second;
@@ -137,8 +113,8 @@ SecureDht::getPublicKey(const PkId& node) const
 {
     if (node == getLongId())
         return certificate_->getSharedPublicKey();
-    auto it = nodesPubKeysLong_.find(node);
-    if (it == nodesPubKeysLong_.end())
+    auto it = nodesPubKeys_.find(node);
+    if (it == nodesPubKeys_.end())
         return nullptr;
     else
         return it->second;
@@ -191,83 +167,8 @@ void
 SecureDht::registerCertificate(const Sp<crypto::Certificate>& cert)
 {
     if (cert) {
-        nodesCertificates_[cert->getId()] = cert;
-        nodesCertificatesLong_[cert->getLongId()] = cert;
+        nodesCertificates_[cert->getLongId()] = cert;
     }
-}
-
-void
-SecureDht::findCertificate(const InfoHash& node, const std::function<void(const Sp<crypto::Certificate>)>& cb)
-{
-    Sp<crypto::Certificate> b = getCertificate(node);
-    if (b && *b) {
-        if (logger_)
-            logger_->debug("Using certificate from cache for {}", node.toString());
-        if (cb)
-            cb(b);
-        return;
-    }
-    if (localQueryMethodLegacy_) {
-        auto res = localQueryMethodLegacy_(node);
-        if (not res.empty()) {
-            if (logger_)
-                logger_->debug("Registering certificate from local store for {}", node.toString());
-            nodesCertificates_.emplace(node, res.front());
-            nodesCertificatesLong_.emplace(res.front()->getLongId(), res.front());
-            if (cb)
-                cb(res.front());
-            return;
-        }
-    }
-
-    auto found = std::make_shared<bool>(false);
-    dht_->get(
-        node,
-        [cb, node, found, this](const std::vector<Sp<Value>>& vals) {
-            for (const auto& v : vals) {
-                if (auto cert = registerCertificate(node, v->data)) {
-                    *found = true;
-                    if (logger_)
-                        logger_->debug("Found certificate for {}", node.toString());
-                    if (cb)
-                        cb(cert);
-                    return false;
-                }
-            }
-            return !*found;
-        },
-        [cb, found](bool) {
-            if (!*found and cb)
-                cb(nullptr);
-        },
-        Value::TypeFilter(CERTIFICATE_TYPE));
-}
-
-void
-SecureDht::findPublicKey(const InfoHash& node, const std::function<void(const Sp<crypto::PublicKey>)>& cb)
-{
-    auto pk = getPublicKey(node);
-    if (pk && *pk) {
-        if (logger_)
-            logger_->debug("Found public key from cache for {}", node.toString());
-        if (cb)
-            cb(pk);
-        return;
-    }
-    findCertificate(node, [=](const Sp<crypto::Certificate>& crt) {
-        if (crt && *crt) {
-            auto pk = crt->getSharedPublicKey();
-            if (*pk) {
-                nodesPubKeys_[pk->getId()] = pk;
-                nodesPubKeysLong_[pk->getLongId()] = pk;
-                if (cb)
-                    cb(pk);
-                return;
-            }
-        }
-        if (cb)
-            cb(nullptr);
-    });
 }
 
 void
@@ -287,8 +188,7 @@ SecureDht::findCertificate(const PkId& node, const std::function<void(const Sp<c
         if (not res.empty()) {
             if (logger_)
                 logger_->debug("Registering certificate from local store for {}", node.to_c_str());
-            nodesCertificates_.emplace(res.front()->getId(), res.front());
-            nodesCertificatesLong_.emplace(node, res.front());
+            nodesCertificates_.emplace(node, res.front());
             if (cb)
                 cb(res.front());
             return;
@@ -333,8 +233,7 @@ SecureDht::findPublicKey(const PkId& node, const std::function<void(const Sp<cry
         if (crt && *crt) {
             auto pk = crt->getSharedPublicKey();
             if (*pk) {
-                nodesPubKeys_[pk->getId()] = pk;
-                nodesPubKeysLong_[pk->getLongId()] = pk;
+                nodesPubKeys_[pk->getLongId()] = pk;
                 if (cb)
                     cb(pk);
                 return;
@@ -362,8 +261,7 @@ SecureDht::checkValue(const Sp<Value>& v)
             if (auto decrypted_val = v->decrypt(*key_)) {
                 auto cacheValue = not isDecrypted and decrypted_val->owner;
                 if (cacheValue) {
-                    nodesPubKeys_[decrypted_val->owner->getId()] = decrypted_val->owner;
-                    nodesPubKeysLong_[decrypted_val->owner->getLongId()] = decrypted_val->owner;
+                    nodesPubKeys_[decrypted_val->owner->getLongId()] = decrypted_val->owner;
                 }
                 return decrypted_val;
             }
@@ -377,8 +275,7 @@ SecureDht::checkValue(const Sp<Value>& v)
         auto cacheValue = not v->isSignatureChecked() and enableCache_ and v->owner;
         if (v->checkSignature()) {
             if (cacheValue) {
-                nodesPubKeys_[v->owner->getId()] = v->owner;
-                nodesPubKeysLong_[v->owner->getLongId()] = v->owner;
+                nodesPubKeys_[v->owner->getLongId()] = v->owner;
             }
             return v;
         } else if (logger_)
@@ -490,35 +387,6 @@ SecureDht::putSigned(const InfoHash& hash, Sp<Value> val, DoneCallback callback,
         },
         Value::IdFilter(val->id),
         Where().id(val->id));
-}
-
-void
-SecureDht::putEncrypted(const InfoHash& hash, const InfoHash& to, Sp<Value> val, DoneCallback callback, bool permanent)
-{
-    if (not key_) {
-        if (callback)
-            callback(false, {});
-        return;
-    }
-    findPublicKey(to,
-                  [this, hash, val = std::move(val), callback = std::move(callback), permanent](
-                      const Sp<crypto::PublicKey>& pk) {
-                      if (!pk || !*pk) {
-                          if (callback)
-                              callback(false, {});
-                          return;
-                      }
-                      if (logger_)
-                          logger_->warn("Encrypting data for PK: {}", pk->getId().toString());
-                      try {
-                          dht_->put(hash, encrypt(*val, *pk), callback, time_point::max(), permanent);
-                      } catch (const std::exception& e) {
-                          if (logger_)
-                              logger_->error("Error putting encrypted data: {}", e.what());
-                          if (callback)
-                              callback(false, {});
-                      }
-                  });
 }
 
 void

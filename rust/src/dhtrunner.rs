@@ -226,7 +226,7 @@ impl DhtRunner {
     pub fn put_encrypted<'a>(
         &mut self,
         h: &InfoHash,
-        to: &InfoHash,
+        to: &PkId,
         v: Box<Value>,
         done_cb: &'a mut (dyn FnMut(bool)),
         permanent: bool,

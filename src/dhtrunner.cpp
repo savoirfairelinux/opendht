@@ -186,9 +186,6 @@ DhtRunner::run(const Config& config, Context&& context)
     if (context.certificateStore) {
         dht_->setLocalCertificateStore(std::move(context.certificateStore));
     }
-    if (context.certificateStorePkId) {
-        dht_->setLocalCertificateStore(std::move(context.certificateStorePkId));
-    }
     if (context.publicAddressChangedCb) {
         dht_->setOnPublicAddressChanged(std::move(context.publicAddressChangedCb));
     }
@@ -668,14 +665,6 @@ DhtRunner::registerCertificate(const std::shared_ptr<crypto::Certificate>& cert)
 }
 
 void
-DhtRunner::setLocalCertificateStore(CertificateStoreQueryLegacy&& query_method)
-{
-    std::lock_guard lck(dht_mtx);
-    if (dht_)
-        dht_->setLocalCertificateStore(std::forward<CertificateStoreQueryLegacy>(query_method));
-}
-
-void
 DhtRunner::setLocalCertificateStore(CertificateStoreQuery&& query_method)
 {
     std::lock_guard lck(dht_mtx);
@@ -956,35 +945,6 @@ DhtRunner::putEncrypted(InfoHash hash, const PkId& to, std::shared_ptr<Value> va
 }
 
 void
-DhtRunner::putEncrypted(InfoHash hash, InfoHash to, std::shared_ptr<Value> value, DoneCallback cb, bool permanent)
-{
-    std::unique_lock lck(storage_mtx);
-    if (running != State::Running) {
-        lck.unlock();
-        if (cb)
-            cb(false, {});
-        return;
-    }
-    ongoing_ops++;
-    pending_ops.emplace([=, cb = std::move(cb), value = std::move(value)](SecureDht& dht) mutable {
-        dht.putEncrypted(hash, to, value, bindOpDoneCallback(std::move(cb)), permanent);
-    });
-    cv.notify_all();
-}
-
-void
-DhtRunner::putEncrypted(InfoHash hash, InfoHash to, Value&& value, DoneCallback cb, bool permanent)
-{
-    putEncrypted(hash, to, std::make_shared<Value>(std::move(value)), std::move(cb), permanent);
-}
-
-void
-DhtRunner::putEncrypted(const std::string& key, InfoHash to, Value&& value, DoneCallback cb, bool permanent)
-{
-    putEncrypted(InfoHash::get(key), to, std::forward<Value>(value), std::move(cb), permanent);
-}
-
-void
 DhtRunner::putEncrypted(InfoHash hash,
                         const std::shared_ptr<crypto::PublicKey>& to,
                         std::shared_ptr<Value> value,
@@ -1115,25 +1075,6 @@ DhtRunner::connectivityChanged()
         if (peerDiscovery_)
             peerDiscovery_->connectivityChanged();
 #endif
-    });
-    cv.notify_all();
-}
-
-void
-DhtRunner::findCertificate(InfoHash hash, std::function<void(const Sp<crypto::Certificate>&)> cb)
-{
-    std::unique_lock lck(storage_mtx);
-    if (running != State::Running) {
-        lck.unlock();
-        cb({});
-        return;
-    }
-    ongoing_ops++;
-    pending_ops.emplace([this, hash, cb = std::move(cb)](SecureDht& dht) {
-        dht.findCertificate(hash, [this, cb = std::move(cb)](const Sp<crypto::Certificate>& crt) {
-            cb(crt);
-            opEnded();
-        });
     });
     cv.notify_all();
 }

@@ -195,7 +195,7 @@ OPENDHT_C_PUBLIC void dht_runner_put_signed(dht_runner* runner,
                                             bool permanent);
 OPENDHT_C_PUBLIC void dht_runner_put_encrypted(dht_runner* runner,
                                                const dht_infohash* hash,
-                                               const dht_infohash* to,
+                                               const dht_pkid* to,
                                                const dht_value* value,
                                                dht_done_cb done_cb,
                                                void* cb_user_data,

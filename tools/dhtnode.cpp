@@ -481,7 +481,7 @@ cmd_loop(std::shared_ptr<DhtRunner>& node,
             auto value = std::make_shared<dht::Value>(dht::ValueType::USER_DATA.id,
                                                       std::vector<uint8_t> {v.begin(), v.end()});
             value->user_type = "text/plain";
-            node->putEncrypted(id, InfoHash(tostr), std::move(value), [start](bool ok) {
+            node->putEncrypted(id, PkId(tostr), std::move(value), [start](bool ok) {
                 auto end = std::chrono::high_resolution_clock::now();
                 std::cout << "Put encrypted: " << (ok ? "success" : "failure") << " (took "
                           << print_duration(end - start) << ')' << std::endl;

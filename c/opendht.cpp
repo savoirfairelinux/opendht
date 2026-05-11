@@ -600,7 +600,7 @@ dht_runner_put_signed(
 void
 dht_runner_put_encrypted(dht_runner* r,
                          const dht_infohash* h,
-                         const dht_infohash* to,
+                         const dht_pkid* to,
                          const dht_value* v,
                          dht_done_cb done_cb,
                          void* cb_user_data,
@@ -608,7 +608,7 @@ dht_runner_put_encrypted(dht_runner* r,
 {
     auto runner = reinterpret_cast<dht::DhtRunner*>(r);
     auto hash = reinterpret_cast<const dht::InfoHash*>(h);
-    auto toHash = reinterpret_cast<const dht::InfoHash*>(to);
+    auto toHash = reinterpret_cast<const dht::PkId*>(to);
     auto value = reinterpret_cast<const ValueSp*>(v);
     runner->putEncrypted(
         *hash,

@@ -190,7 +190,7 @@ extern {
                                  cb_user_data: *mut c_void,
                                  permanent: bool);
     pub fn dht_runner_put_encrypted(dht: *mut DhtRunner, h: *const InfoHash,
-                                    to: *const InfoHash, v: *const Value,
+                                    to: *const PkId, v: *const Value,
                                     done_cb: extern fn(bool, *mut c_void),
                                     cb_user_data: *mut c_void,
                                     permanent: bool);

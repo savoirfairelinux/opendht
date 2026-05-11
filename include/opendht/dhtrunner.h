@@ -61,8 +61,7 @@ public:
         std::unique_ptr<net::DatagramSocket> sock;
         std::shared_ptr<PeerDiscovery> peerDiscovery {};
         StatusCallback statusChangedCallback {};
-        CertificateStoreQueryLegacy certificateStore {};
-        CertificateStoreQuery certificateStorePkId {};
+        CertificateStoreQuery certificateStore {};
         IdentityAnnouncedCb identityAnnouncedCb {};
         PublicAddressChangedCb publicAddressChangedCb {};
         std::unique_ptr<std::mt19937_64> rng {};
@@ -286,21 +285,6 @@ public:
     }
     void putSigned(const std::string& key, Value&& value, DoneCallbackSimple cb = {}, bool permanent = false);
 
-    void putEncrypted(
-        InfoHash hash, InfoHash to, std::shared_ptr<Value> value, DoneCallback cb = {}, bool permanent = false);
-    void putEncrypted(
-        InfoHash hash, InfoHash to, std::shared_ptr<Value> value, DoneCallbackSimple cb, bool permanent = false)
-    {
-        putEncrypted(hash, to, value, bindDoneCb(cb), permanent);
-    }
-
-    void putEncrypted(InfoHash hash, InfoHash to, Value&& value, DoneCallback cb = {}, bool permanent = false);
-    void putEncrypted(InfoHash hash, InfoHash to, Value&& value, DoneCallbackSimple cb, bool permanent = false)
-    {
-        putEncrypted(hash, to, std::forward<Value>(value), bindDoneCb(cb), permanent);
-    }
-    void putEncrypted(const std::string& key, InfoHash to, Value&& value, DoneCallback cb = {}, bool permanent = false);
-
     void putEncrypted(InfoHash hash,
                       const std::shared_ptr<crypto::PublicKey>& to,
                       std::shared_ptr<Value> value,
@@ -450,13 +434,9 @@ public:
     void getPublicAddress(std::function<void(std::vector<SockAddr>&&)>, sa_family_t af = AF_UNSPEC);
 
     // securedht methods
-
-    [[deprecated("Use PkId version")]] void findCertificate(
-        InfoHash hash, std::function<void(const std::shared_ptr<crypto::Certificate>&)>);
     void findCertificate(PkId hash, std::function<void(const std::shared_ptr<crypto::Certificate>&)>);
 
     void registerCertificate(const std::shared_ptr<crypto::Certificate>& cert);
-    void setLocalCertificateStore(CertificateStoreQueryLegacy&& query_method);
     void setLocalCertificateStore(CertificateStoreQuery&& query_method);
 
     /**
