@@ -820,13 +820,8 @@ cdef class DhtRunner(_WithID):
                         key._infohash, (<PkId>to)._pkid, val._value,
                         cpp.bindDoneCb(done_callback, <void*>cb_obj), permanent
                     )
-                elif isinstance(to, InfoHash):
-                    self.thisptr.get().putEncrypted(
-                        key._infohash, (<InfoHash>to)._infohash, val._value,
-                        cpp.bindDoneCb(done_callback, <void*>cb_obj), permanent
-                    )
                 else:
-                    raise TypeError("'to' must be PublicKey, PkId, or InfoHash")
+                    raise TypeError("'to' must be PublicKey or PkId")
             except:
                 ref.Py_DECREF(cb_obj)
                 raise
