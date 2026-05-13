@@ -11,6 +11,7 @@ extern "C" {
 #include <nettle/gcm.h>
 #include <nettle/aes.h>
 #include <nettle/hmac.h>
+#include <nettle/version.h>
 #include <gnutls/crypto.h>
 
 #include <argon2.h>
@@ -98,6 +99,46 @@ private:
 #define GCM_DIGEST_SIZE GCM_BLOCK_SIZE
 #endif
 
+static void
+gcmAes128Digest(gcm_aes128_ctx* ctx, uint8_t* digest)
+{
+#if NETTLE_VERSION_MAJOR >= 4
+    gcm_aes128_digest(ctx, digest);
+#else
+    gcm_aes128_digest(ctx, GCM_DIGEST_SIZE, digest);
+#endif
+}
+
+static void
+gcmAes192Digest(gcm_aes192_ctx* ctx, uint8_t* digest)
+{
+#if NETTLE_VERSION_MAJOR >= 4
+    gcm_aes192_digest(ctx, digest);
+#else
+    gcm_aes192_digest(ctx, GCM_DIGEST_SIZE, digest);
+#endif
+}
+
+static void
+gcmAes256Digest(gcm_aes256_ctx* ctx, uint8_t* digest)
+{
+#if NETTLE_VERSION_MAJOR >= 4
+    gcm_aes256_digest(ctx, digest);
+#else
+    gcm_aes256_digest(ctx, GCM_DIGEST_SIZE, digest);
+#endif
+}
+
+static void
+hmacSha256Digest(hmac_sha256_ctx* ctx, uint8_t* digest)
+{
+#if NETTLE_VERSION_MAJOR >= 4
+    hmac_sha256_digest(ctx, digest);
+#else
+    hmac_sha256_digest(ctx, SHA256_DIGEST_SIZE, digest);
+#endif
+}
+
 Blob
 aesEncrypt(const uint8_t* data, size_t data_length, const Blob& key)
 {
@@ -115,19 +156,19 @@ aesEncrypt(const uint8_t* data, size_t data_length, const Blob& key)
         gcm_aes128_set_key(&aes, key.data());
         gcm_aes128_set_iv(&aes, GCM_IV_SIZE, ret.data());
         gcm_aes128_encrypt(&aes, data_length, ret.data() + GCM_IV_SIZE, data);
-        gcm_aes128_digest(&aes, GCM_DIGEST_SIZE, ret.data() + GCM_IV_SIZE + data_length);
+        gcmAes128Digest(&aes, ret.data() + GCM_IV_SIZE + data_length);
     } else if (key.size() == AES_LENGTHS[1]) {
         struct gcm_aes192_ctx aes;
         gcm_aes192_set_key(&aes, key.data());
         gcm_aes192_set_iv(&aes, GCM_IV_SIZE, ret.data());
         gcm_aes192_encrypt(&aes, data_length, ret.data() + GCM_IV_SIZE, data);
-        gcm_aes192_digest(&aes, GCM_DIGEST_SIZE, ret.data() + GCM_IV_SIZE + data_length);
+        gcmAes192Digest(&aes, ret.data() + GCM_IV_SIZE + data_length);
     } else if (key.size() == AES_LENGTHS[2]) {
         struct gcm_aes256_ctx aes;
         gcm_aes256_set_key(&aes, key.data());
         gcm_aes256_set_iv(&aes, GCM_IV_SIZE, ret.data());
         gcm_aes256_encrypt(&aes, data_length, ret.data() + GCM_IV_SIZE, data);
-        gcm_aes256_digest(&aes, GCM_DIGEST_SIZE, ret.data() + GCM_IV_SIZE + data_length);
+        gcmAes256Digest(&aes, ret.data() + GCM_IV_SIZE + data_length);
     }
 
     return ret;
@@ -160,19 +201,19 @@ aesDecrypt(const uint8_t* data, size_t data_length, const Blob& key)
         gcm_aes128_set_key(&aes, key.data());
         gcm_aes128_set_iv(&aes, GCM_IV_SIZE, data);
         gcm_aes128_decrypt(&aes, data_sz, ret.data(), data + GCM_IV_SIZE);
-        gcm_aes128_digest(&aes, GCM_DIGEST_SIZE, digest.data());
+        gcmAes128Digest(&aes, digest.data());
     } else if (key.size() == AES_LENGTHS[1]) {
         struct gcm_aes192_ctx aes;
         gcm_aes192_set_key(&aes, key.data());
         gcm_aes192_set_iv(&aes, GCM_IV_SIZE, data);
         gcm_aes192_decrypt(&aes, data_sz, ret.data(), data + GCM_IV_SIZE);
-        gcm_aes192_digest(&aes, GCM_DIGEST_SIZE, digest.data());
+        gcmAes192Digest(&aes, digest.data());
     } else if (key.size() == AES_LENGTHS[2]) {
         struct gcm_aes256_ctx aes;
         gcm_aes256_set_key(&aes, key.data());
         gcm_aes256_set_iv(&aes, GCM_IV_SIZE, data);
         gcm_aes256_decrypt(&aes, data_sz, ret.data(), data + GCM_IV_SIZE);
-        gcm_aes256_digest(&aes, GCM_DIGEST_SIZE, digest.data());
+        gcmAes256Digest(&aes, digest.data());
     }
 
     if (not std::equal(digest.begin(), digest.end(), data + data_length - GCM_DIGEST_SIZE)) {
@@ -2045,7 +2086,7 @@ hkdf_extract(const Blob& salt, const Blob& ikm)
     hmac_sha256_set_key(&ctx, salt.size(), salt.data());
     hmac_sha256_update(&ctx, ikm.size(), ikm.data());
     Blob prk(SHA256_DIGEST_SIZE);
-    hmac_sha256_digest(&ctx, SHA256_DIGEST_SIZE, prk.data());
+    hmacSha256Digest(&ctx, prk.data());
     return prk;
 }
 
@@ -2063,7 +2104,7 @@ hkdf_expand(const Blob& prk, const uint8_t* info, size_t info_len, size_t len)
         hmac_sha256_update(&ctx, info_len, info);
         hmac_sha256_update(&ctx, 1, &i);
         T.resize(SHA256_DIGEST_SIZE);
-        hmac_sha256_digest(&ctx, SHA256_DIGEST_SIZE, T.data());
+        hmacSha256Digest(&ctx, T.data());
         okm.insert(okm.end(), T.begin(), T.end());
         i++;
     }
@@ -2223,7 +2264,7 @@ webPushEncrypt(const Blob& p256dh,
 
     Blob ciphertext(plaintext.size() + GCM_DIGEST_SIZE);
     gcm_aes128_encrypt(&aes, plaintext.size(), ciphertext.data(), plaintext.data());
-    gcm_aes128_digest(&aes, GCM_DIGEST_SIZE, ciphertext.data() + plaintext.size());
+    gcmAes128Digest(&aes, ciphertext.data() + plaintext.size());
 
     // 6. Construct Output
     Blob output;
