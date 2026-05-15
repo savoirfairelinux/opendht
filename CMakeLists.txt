@@ -582,7 +582,7 @@ if (MSVC)
             hogweed_lib
             tasn1_lib
         PUBLIC
-            ${GNUTLS_LIBRARIES}
+            GnuTLS::GnuTLS
             msgpack-cxx 
             JsonCpp::JsonCpp 
             fmt::fmt
@@ -639,8 +639,8 @@ else()
                 nettle
             PUBLIC
                 ${CMAKE_THREAD_LIBS_INIT}
-                ${GNUTLS_LIBRARIES}
-                jsoncpp
+                GnuTLS::GnuTLS
+                JsonCpp::JsonCpp
         )
         if(BUILD_SHARED_LIBS)
             target_link_libraries(opendht PUBLIC fmt::fmt)
@@ -827,6 +827,21 @@ write_basic_package_version_file("${CMAKE_CURRENT_BINARY_DIR}/opendhtConfigVersi
   COMPATIBILITY AnyNewerVersion
 )
 
+# Generate opendhtConfig.cmake from template
+set(_OPENDHT_MSVC ${MSVC})
+set(_OPENDHT_USE_PKGCONFIG ${OPENDHT_USE_PKGCONFIG})
+set(_OPENDHT_SHARED ${BUILD_SHARED_LIBS})
+set(_OPENDHT_TOOLS ${OPENDHT_TOOLS})
+set(_OPENDHT_HTTP ${OPENDHT_HTTP})
+set(_OPENDHT_PROXY_OPENSSL ${OPENDHT_PROXY_OPENSSL})
+set(_OPENDHT_PEER_DISCOVERY ${OPENDHT_PEER_DISCOVERY})
+set(_OPENDHT_IO_URING ${OPENDHT_IO_URING})
+configure_package_config_file(
+    "${CMAKE_CURRENT_SOURCE_DIR}/opendhtConfig.cmake.in"
+    "${CMAKE_CURRENT_BINARY_DIR}/opendhtConfig.cmake"
+    INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/opendht
+)
+
 # PkgConfig module
 configure_file (
     opendht.pc.in
@@ -837,8 +852,12 @@ configure_file (
 # Install targets
 install (DIRECTORY include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 install (FILES ${CMAKE_CURRENT_BINARY_DIR}/opendht.pc DESTINATION ${CMAKE_INSTALL_LIBDIR}/pkgconfig)
-install (EXPORT opendht DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/opendht FILE opendhtConfig.cmake)
-install (FILES ${CMAKE_CURRENT_BINARY_DIR}/opendhtConfigVersion.cmake DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/opendht)
+install (EXPORT opendht DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/opendht FILE opendhtTargets.cmake)
+install (FILES
+    ${CMAKE_CURRENT_BINARY_DIR}/opendhtConfig.cmake
+    ${CMAKE_CURRENT_BINARY_DIR}/opendhtConfigVersion.cmake
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/opendht
+)
 if(MSVC AND BUILD_SHARED_LIBS)
     install(FILES $<TARGET_PDB_FILE:opendht> CONFIGURATIONS "RelWithDebInfo" "Debug" DESTINATION ${CMAKE_INSTALL_LIBDIR})
 endif()
