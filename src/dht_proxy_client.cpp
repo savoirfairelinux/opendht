@@ -782,7 +782,10 @@ DhtProxyClient::onProxyInfos(const Json::Value& proxyInfos, const sa_family_t fa
     if (newStatus == NodeStatus::Connected) {
         if (oldStatus == NodeStatus::Disconnected || oldStatus == NodeStatus::Connecting || launchConnectedCbs_) {
             launchConnectedCbs_ = false;
-            listenerRestartTimer_->expires_at(std::chrono::steady_clock::now());
+            // Small random delay (0-2s) to avoid resubscription burst
+            auto jitter = std::chrono::milliseconds(
+                std::rand() % 2000);
+            listenerRestartTimer_->expires_at(std::chrono::steady_clock::now() + jitter);
             listenerRestartTimer_->async_wait(std::bind(&DhtProxyClient::restartListeners, this, std::placeholders::_1));
             if (not onConnectCallbacks_.empty()) {
                 std::lock_guard lock(lockCallbacks_);
@@ -794,11 +797,18 @@ DhtProxyClient::onProxyInfos(const Json::Value& proxyInfos, const sa_family_t fa
                 });
             }
         }
+        // Reset backoff on successful connection
+        proxyRetryDelay_ = std::chrono::minutes(1);
         nextProxyConfirmationTimer_->expires_at(std::chrono::steady_clock::now() + std::chrono::minutes(15));
         nextProxyConfirmationTimer_->async_wait(
             std::bind(&DhtProxyClient::handleProxyConfirm, this, std::placeholders::_1));
     } else if (newStatus == NodeStatus::Disconnected) {
-        nextProxyConfirmationTimer_->expires_at(std::chrono::steady_clock::now() + std::chrono::minutes(1));
+        // Exponential backoff: 1 → 2 → 4 → 8 → 16 → 30 min (capped)
+        auto delay = proxyRetryDelay_;
+        proxyRetryDelay_ = std::min(proxyRetryDelay_ * 2, MAX_PROXY_RETRY_DELAY);
+        if (logger_)
+            logger_->warn("[proxy:client] disconnected, retrying in {} min", delay.count());
+        nextProxyConfirmationTimer_->expires_at(std::chrono::steady_clock::now() + delay);
         nextProxyConfirmationTimer_->async_wait(
             std::bind(&DhtProxyClient::handleProxyConfirm, this, std::placeholders::_1));
     }
@@ -1166,6 +1176,8 @@ DhtProxyClient::getConnectivityStatus()
 {
     if (logger_)
         logger_->d("[proxy:client] [connectivity] get status");
+    // Reset backoff on explicit connectivity change (e.g., WiFi/cellular switch)
+    proxyRetryDelay_ = std::chrono::minutes(1);
     if (!isDestroying_)
         getProxyInfos();
 }
