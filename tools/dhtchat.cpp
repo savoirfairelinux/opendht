@@ -123,7 +123,7 @@ main(int argc, char** argv)
                     iss >> idstr;
                     std::getline(iss, line);
                     dht.putEncrypted(room,
-                                     InfoHash(idstr),
+                                     PkId(idstr),
                                      dht::ImMessage(IdDist()(tools::rd), std::move(line), now),
                                      [](bool ok) {
                                          // dht.cancelPut(room, id);
