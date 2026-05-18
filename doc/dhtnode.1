@@ -1,102 +1,193 @@
-.TH DHTNODE 1 2019-06-08
+.TH DHTNODE 1 2026-04-18
 .SH NAME
 .B dhtnode
 - a simple OpenDHT command line node runner.
 .SH SYNOPSIS
 .B dhtnode
 [\fB\-h\fR]
+[\fB\-V\fR]
 [\fB\-v\fR [\fB\-l\fR \fIlogfile\fR] [\fB\-L\fR]]
-[\fB\-i\fR [\fB\-\-save\-identity\fR \fIfile\fR]]
+[\fB\-i\fR [\fB\-I\fR \fIfile\fR]]
+[\fB\-c\fR \fIfile\fR]
+[\fB\-k\fR \fIfile\fR]
+[\fB\-m\fR \fIpassword\fR]
 [\fB\-d\fR] [\fB\-s\fR]
+[\fB\-D\fR] [\fB\-U\fR] [\fB\-P\fR]
 [\fB\-n\fR \fInetwork_id\fR]
 [\fB\-p\fR \fIlocal_port\fR]
 [\fB\-b\fR \fIbootstrap_host\fR[:\fIport\fR]]
-[\fB\-\-certificate\fR \fIfile\fR]
-[\fB\-\-privkey\fR \fIfile\fR]
-[\fB\-\-privkey\-password\fR \fIpassword\fR]
-[\fB\-\-proxyserver\fR \fIport\fR]
-[\fB\-\-proxyclient\fR \fIserver\fR]
+[\fB\-f\fR \fIpath\fR]
+[\fB\-S\fR \fIport\fR]
+[\fB\-e\fR \fIport\fR]
+[\fB\-a\fR \fIaddress\fR]
+[\fB\-w\fR \fIfile\fR]
+[\fB\-K\fR \fIfile\fR]
+[\fB\-M\fR \fIpassword\fR]
+[\fB\-C\fR \fIserver\fR]
+[\fB\-y\fR \fIendpoint\fR]
+[\fB\-z\fR \fIkey\fR]
+[\fB\-u\fR \fIbundleid\fR]
 .SH DESCRIPTION
-Runs an OpenDHT node, with a CLI (default) or as a daemon (with \fB'-d'\fP or \fB'-s'\fP).
+Runs an OpenDHT node, with an interactive CLI (default) or as a daemon (with \fB'-d'\fP or \fB'-s'\fP).
 Commands available in the interactive shell are:
 .EX
     h, help    Print this help message.
-    q, quit    Quit the program.
+    x, quit    Quit the program.
     log        Start/stop printing DHT logs.
 
     Node information:
     ll         Print basic information and stats about the current node.
-    ls         Print basic information about current searches.
-    ld         Print basic information about currenty stored values on this node.
-    lr         Print the full current routing table of this node
+    ls [key]   Print basic information about current search(es).
+    ld [key]   Print basic information about currenty stored values on this
+               node (or for a specific key).
+    lr         Print the full current routing table of this node.
 
     Operations on the DHT:
-    b ip:port             Ping potential node at given IP address/port.
-    g [key]               Get values at [key].
-    l [key]               Listen for value changes at [key].
-    p [key] [str]         Put string value at [key].
-    s [key] [str]         Put string value at [key], signed with our generated
-                          private key.
-    e [key] [dest] [str]  Put string value at [key], encrypted for [dest] with
-                          its public key (if found).
+    b <ip:port>            Ping potential node at given IP address/port.
+    g <key>                Get values at <key>.
+    l <key>                Listen for value changes at <key>.
+    cl <key> <token>       Cancel listen for <token> and <key>.
+    p <key> <str>          Put string value at <key>.
+    pp <key> <str>         Put string value at <key> (persistent version).
+    cpp <key> <id>         Cancel persistent put operation for <key> and
+                           value <id>.
+    s <key> <str>          Put string value at <key>, signed with our
+                           generated private key.
+    e <key> <dest> <str>   Put string value at <key>, encrypted for <dest>
+                           with its public key (if found).
+    cc                     Trigger connectivity changed signal.
+
+    Operations with the proxy (if compiled with proxy server support):
+    pst [port] <pushServer>  Start the proxy interface on port.
+    psx [port]               Start the proxy SSL interface on port.
+    psp [port]               Stop the proxy interface on port.
+
+    Operations with the proxy (if compiled with proxy client support):
+    stt [server_address] <device_key>  Start the proxy client.
+    stp                                Stop the proxy client.
+    rs  [token]                        Resubscribe to opendht.
+    rp  [token]                        Inject a push notification.
 .EE
 .SH OPTIONS
 .TP
-\fB\-h\fP
-Prints some help.
+\fB\-h\fP, \fB\-\-help\fP
+Prints help and exits.
 .TP
-\fB\-v\fP
-Enable the verbose mode (log to stdout/stderr by default)
+\fB\-V\fP, \fB\-\-version\fP
+Prints version information and exits.
 .TP
-\fB\-l\fP \fIlog_file\fP
-Write log to file instead of stdout/stderr
+\fB\-v\fP, \fB\-\-verbose\fP
+Enable verbose mode (log to stdout/stderr by default).
 .TP
-\fB\-L\fP
-Write log to syslog instead of stdout/stderr
+\fB\-l\fP \fIlogfile\fP, \fB\-\-logfile\fP \fIlogfile\fP
+Write log to file instead of stdout/stderr.
 .TP
-\fB\-i\fP
-Generate cryptographic identity for the node.
+\fB\-L\fP, \fB\-\-syslog\fP
+Write log to syslog instead of stdout/stderr (enables verbose mode).
 .TP
-\fB\-\-save\-identity\fP \fIfile\fP
+\fB\-i\fP, \fB\-\-identity\fP
+Generate a cryptographic identity (RSA key pair and self-signed certificate)
+for the node. Required to perform cryptographic operations (encrypt/sign values)
+if no private key file is provided.
+.TP
+\fB\-I\fP \fIfile\fP, \fB\-\-save\-identity\fP \fIfile\fP
 Save generated identity (certificate and private key) to given file prefix.
+Files are saved as \fIfile\fP and \fIfile\fP_ca.
 .TP
-\fB\-\-certificate\fP \fIfile\fP
-Load identity certificate from given file.
+\fB\-c\fP \fIfile\fP, \fB\-\-certificate\fP \fIfile\fP
+Load identity certificate from given file. If specified, the certificate is
+published on the DHT.
 .TP
-\fB\-\-privkey\fP \fIfile\fP
-Load identity private key from given file.
+\fB\-k\fP \fIfile\fP, \fB\-\-privkey\fP \fIfile\fP
+Load identity private key from given file. Required to perform cryptographic
+operations if no identity is generated.
 .TP
-\fB\-\-privkey\-password\fP \fIpassword\fP
+\fB\-m\fP \fIpassword\fP, \fB\-\-privkey\-password\fP \fIpassword\fP
 Password to use for private key encryption or decryption (optional).
 .TP
-\fB\-d\fP
-Run the program in daemon mode (will fork in the background).
+\fB\-d\fP, \fB\-\-daemonize\fP
+Run the program in daemon mode (will fork in the background). When verbose mode
+is enabled, logs to syslog by default.
 .TP
-\fB\-s\fP
+\fB\-s\fP, \fB\-\-service\fP
 Run the program in service mode (non\-forking daemon).
 .TP
-\fB\-D\fP
+\fB\-D\fP, \fB\-\-peer\-discovery\fP
 Enables multicast automatic local peer discovery.
 .TP
-\fB\-f\fP \fIfile\fP
-Specify a file path to persist/load the node state.
+\fB\-U\fP, \fB\-\-no\-rate\-limit\fP
+Disable rate limiting (allows unlimited requests and storage).
 .TP
-\fB\-n\fP \fInetwork_id\fP
-Specify the network id. This let you connect to distinct networks and prevents
-the merge of two different networks (available since OpenDHT v0.6.1).
+\fB\-P\fP, \fB\-\-public\-stable\fP
+Enable public stable mode.
 .TP
-\fB\-p\fP \fIlocal_port\fP
-Use UDP port \fIlocal_port\fP for the program to bind to.
+\fB\-f\fP \fIpath\fP, \fB\-\-persist\fP \fIpath\fP
+Specify a file path to persist/load the node state (routing table and values).
 .TP
-\fB\-b\fP \fIbootstrap_host\fP[:\fIport\fP]
-The program needs to be given a node to connect to the network. You use this
-option to provide the ip address of that node.
+\fB\-n\fP \fInetwork_id\fP, \fB\-\-net\fP \fInetwork_id\fP
+Specify the network id. This lets you connect to distinct networks and prevents
+the merge of two different networks. Defaults to 0 (the main public network).
 .TP
-\fB\-\-proxyserver\fP \fIlocal_port\fP
-Run a proxy server bound to this DHT node on HTTP port \fIlocal_port\fP
+\fB\-p\fP \fIlocal_port\fP, \fB\-\-port\fP \fIlocal_port\fP
+Use UDP port \fIlocal_port\fP for the program to bind to. If not set, will use
+any available port. The default OpenDHT port for public nodes is 4222.
 .TP
-\fB\-\-proxyclient\fP \fIserver\fP
-Run this DHT node in proxy client mode, and connect to \fIserver\fP
+\fB\-b\fP \fIbootstrap_host\fP[:\fIport\fP], \fB\-\-bootstrap\fP \fIbootstrap_host\fP[:\fIport\fP]
+Specify a bootstrap node address to connect to the network.
+.TP
+\fB\-S\fP \fIlocal_port\fP, \fB\-\-proxyserver\fP \fIlocal_port\fP
+Run a REST API proxy server bound to this DHT node on HTTP port \fIlocal_port\fP.
+.TP
+\fB\-e\fP \fIlocal_port\fP, \fB\-\-proxyserverssl\fP \fIlocal_port\fP
+Run a REST API proxy server with SSL bound to this DHT node on HTTPS port \fIlocal_port\fP.
+.TP
+\fB\-a\fP \fIaddress\fP, \fB\-\-proxy\-addr\fP \fIaddress\fP
+Proxy server bind address.
+.TP
+\fB\-w\fP \fIfile\fP, \fB\-\-proxy\-certificate\fP \fIfile\fP
+Load proxy SSL certificate from given file.
+.TP
+\fB\-K\fP \fIfile\fP, \fB\-\-proxy\-privkey\fP \fIfile\fP
+Load proxy SSL private key from given file.
+.TP
+\fB\-M\fP \fIpassword\fP, \fB\-\-proxy\-privkey\-password\fP \fIpassword\fP
+Password for the proxy private key encryption or decryption (optional).
+.TP
+\fB\-C\fP \fIserver\fP, \fB\-\-proxyclient\fP \fIserver\fP
+Run this DHT node in proxy client mode, and connect to \fIserver\fP.
+.TP
+\fB\-y\fP \fIendpoint\fP, \fB\-\-pushserver\fP \fIendpoint\fP
+Push notification server endpoint.
+.TP
+\fB\-z\fP \fIkey\fP, \fB\-\-devicekey\fP \fIkey\fP
+Device key for push notifications.
+.TP
+\fB\-u\fP \fIbundleid\fP, \fB\-\-bundleid\fP \fIbundleid\fP
+Bundle ID for push notifications.
+.SH EXAMPLES
+Run a node using bootstrap.jami.net as a bootstrap:
+.PP
+.EX
+dhtnode -b bootstrap.jami.net:4222
+.EE
+.PP
+Run a node as a non-forking daemon on port 4222:
+.PP
+.EX
+dhtnode -b bootstrap.jami.net -p 4222 -s
+.EE
+.PP
+Run a proxy server on port 8000:
+.PP
+.EX
+dhtnode -b bootstrap.jami.net:4222 --proxyserver 8000
+.EE
+.PP
+Use a proxy client to connect to a proxy server:
+.PP
+.EX
+dhtnode --proxyclient dhtproxy.jami.net:80
+.EE
 .SH AUTHORS
 .TP
 Program written by
