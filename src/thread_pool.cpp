@@ -78,6 +78,8 @@ ThreadPool::run(std::function<void()>&& cb)
                             break;
                         task = std::move(tasks_.front());
                         tasks_.pop();
+                        if (tasks_.empty() && stopping_)
+                            stopCv_.notify_one();
                     }
 
                     // run task
@@ -135,7 +137,9 @@ ThreadPool::stop(bool wait)
 {
     std::unique_lock l(lock_);
     if (wait) {
-        cv_.wait(l, [&]() { return tasks_.empty(); });
+        stopping_ = true;
+        stopCv_.wait(l, [&]() { return tasks_.empty(); });
+        stopping_ = false;
     }
     running_ = false;
     tasks_ = {};
