@@ -55,10 +55,12 @@ public:
 private:
     std::mutex lock_;
     std::condition_variable cv_ {};
+    std::condition_variable stopCv_ {};
     std::queue<std::function<void()>> tasks_ {};
     std::vector<std::unique_ptr<std::thread>> threads_;
     unsigned readyThreads_ {0};
     bool running_ {true};
+    bool stopping_ {false};
 
     unsigned minThreads_;
     const unsigned maxThreads_;
