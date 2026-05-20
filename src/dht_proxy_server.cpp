@@ -1191,7 +1191,13 @@ DhtProxyServer::handlePushListen(const InfoHash& infoHash,
                        minPriority,
                        values.size());
 
-    sendPushNotification(pushToken, std::move(json), type, !expired and minPriority == 0, topic);
+    // Include priority in the JSON payload so that UnifiedPush clients
+    // (which don't have access to the HTTP Urgency header) can determine
+    // whether a push requires immediate processing or can be deferred.
+    bool highPriority = !expired and minPriority == 0;
+    json["priority"] = highPriority ? "high" : "normal";
+
+    sendPushNotification(pushToken, std::move(json), type, highPriority, topic);
 
     return true;
 }
