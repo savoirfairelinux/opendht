@@ -81,6 +81,46 @@ ThreadPoolTester::testContext()
 }
 
 void
+ThreadPoolTester::testJoinNonEmptyTaskQueue()
+{
+    dht::ThreadPool pool(2);
+
+    constexpr unsigned N = 128;
+    std::atomic_uint count {0};
+
+    // Schedule enough work so that the task queue is non-empty when calling
+    // pool.join() below.
+    for (unsigned i = 0; i < N; i++)
+        pool.run([&] {
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            count++;
+        });
+
+    std::atomic_bool joined {false};
+    std::condition_variable cv;
+    std::thread joinThread([&] {
+        CPPUNIT_ASSERT(count.load() < N);
+        pool.join();
+        joined = true;
+        cv.notify_one();
+    });
+
+    // After calling join(), all pending tasks should complete, and then all
+    // threads in the pool should join.
+    std::mutex mtx;
+    std::unique_lock lock(mtx);
+    bool poolJoined = cv.wait_for(lock, std::chrono::seconds(10), [&] { return joined.load(); });
+    if (!poolJoined) {
+        // Detach joinThread if we timed out, otherwise the test can crash.
+        joinThread.detach();
+    } else {
+        joinThread.join();
+    }
+    CPPUNIT_ASSERT_EQUAL_MESSAGE("Some tasks were not completed", N, count.load());
+    CPPUNIT_ASSERT_MESSAGE("Thread pool failed to join before timeout", poolJoined);
+}
+
+void
 ThreadPoolTester::tearDown()
 {}
 

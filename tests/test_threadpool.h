@@ -14,6 +14,7 @@ class ThreadPoolTester : public CppUnit::TestFixture
     CPPUNIT_TEST(testThreadPool);
     CPPUNIT_TEST(testExecutor);
     CPPUNIT_TEST(testContext);
+    CPPUNIT_TEST(testJoinNonEmptyTaskQueue);
     CPPUNIT_TEST_SUITE_END();
 
 public:
@@ -29,6 +30,7 @@ public:
     void testThreadPool();
     void testExecutor();
     void testContext();
+    void testJoinNonEmptyTaskQueue();
 };
 
 } // namespace test
