@@ -344,8 +344,8 @@ private:
 
     dht::crypto::Identity client_identity_;
     std::shared_ptr<dht::crypto::Certificate> server_ca_;
-    std::string service_;
     std::string host_;
+    std::string service_;
 
     unsigned int id_;
     static std::atomic_uint ids_;

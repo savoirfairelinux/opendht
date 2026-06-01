@@ -848,9 +848,22 @@ Resolver::Resolver(asio::io_context& ctx,
     , destroyed_(std::make_shared<bool>(false))
     , logger_(logger)
 {
-    url_.host = host;
-    url_.service = service;
-    url_.protocol = (ssl ? "https" : "http");
+    // Reconstruct the valid URL as a safeguard for the future.
+    url_.url = (ssl ? "https" : "http") + std::string {"://"} + std::string {host};
+    if (not service.empty())
+        url_.url += ':' + std::string {service};
+    const std::string_view view {url_.url};
+    std::string_view::size_type p = 0;
+    std::string_view::size_type protocol_size = ssl ? 5 : 4;
+    url_.protocol = view.substr(p, protocol_size);
+    p += protocol_size;
+    p += 3;
+    url_.host = view.substr(p, host.size());
+    p += host.size();
+    if (not service.empty()) {
+        p += 1;
+        url_.service = view.substr(p, service.size());
+    }
     resolve(url_.host, url_.service.empty() ? url_.protocol : url_.service);
 }
 
@@ -1047,9 +1060,11 @@ Request::Request(asio::io_context& ctx,
                  const bool ssl,
                  std::shared_ptr<dht::Logger> logger)
     : logger_(logger)
+    , host_(host)
+    , service_(service)
     , id_(Request::ids_++)
     , ctx_(ctx)
-    , resolver_(std::make_shared<Resolver>(ctx, host, service, ssl, logger))
+    , resolver_(std::make_shared<Resolver>(ctx, host_, service_, ssl, logger))
 {
     init_default_headers();
 }

@@ -1206,8 +1206,9 @@ DhtProxyServer::sendPushNotification(
         std::shared_ptr<http::Request> request;
         if (type == PushType::UnifiedPush) {
             http::Url tokenUrl(token);
+
             request = std::make_shared<http::Request>(io_context(),
-                                                      concat(tokenUrl.protocol, "://"sv, tokenUrl.host),
+                                                      tokenUrl.host,
                                                       tokenUrl.service,
                                                       tokenUrl.protocol.find("https") == 0,
                                                       logger_);
@@ -1231,8 +1232,8 @@ DhtProxyServer::sendPushNotification(
             Blob auth;   ///< Auth secret
             auto delim = topicView.find('|');
             if (delim != std::string_view::npos) {
-                pubKey = base64_decode(topicView.substr(0, delim));
-                auth = base64_decode(topicView.substr(delim + 1));
+                pubKey = base64_default_or_url_decode(topicView.substr(0, delim));
+                auth = base64_default_or_url_decode(topicView.substr(delim + 1));
             }
 
             request->set_header_field(restinio::http_field_t::ttl, "86400");
