@@ -36,4 +36,19 @@ base64_decode(std::string_view str)
     return buffer;
 }
 
+std::vector<unsigned char>
+base64_default_or_url_decode(std::string_view str)
+{
+    std::vector<unsigned char> buffer(simdutf::maximal_binary_length_from_base64(str.data(), str.size()));
+    simdutf::result r = simdutf::base64_to_binary(str.data(),
+                                                  str.size(),
+                                                  (char*) buffer.data(),
+                                                  simdutf::base64_options::base64_default_or_url);
+    if (r.error) {
+        throw std::invalid_argument(concat("Invalid base64 input: "sv, simdutf::error_to_string(r.error)));
+    } else {
+        buffer.resize(r.count);
+    }
+    return buffer;
+}
 } // namespace dht
