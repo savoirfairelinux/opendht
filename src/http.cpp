@@ -42,8 +42,8 @@ constexpr std::string_view ORIGIN_PROTOCOL {"//"sv};
 constexpr const char HTTP_HEADER_DELIM[] = "\r\n\r\n";
 constexpr unsigned MAX_REDIRECTS {5};
 
-Url::Url(std::string_view url_str)
-    : url(url_str)
+Url::Url(std::string url_str)
+    : url(std::move(url_str))
 {
     std::string_view u = url;
     if (u.empty())

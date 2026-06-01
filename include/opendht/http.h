@@ -55,7 +55,7 @@ class OPENDHT_PUBLIC Url
 {
 public:
     Url() = default;
-    Url(std::string_view url);
+    Url(std::string url);
     std::string url;
     std::string protocol {"http"};
     std::string_view user;
@@ -160,10 +160,6 @@ public:
     Resolver(asio::io_context& ctx,
              std::vector<asio::ip::tcp::endpoint> endpoints,
              const bool ssl = false,
-             std::shared_ptr<log::Logger> logger = {});
-    Resolver(asio::io_context& ctx,
-             const std::string& url,
-             std::vector<asio::ip::tcp::endpoint> endpoints,
              std::shared_ptr<log::Logger> logger = {});
 
     ~Resolver();
@@ -344,8 +340,6 @@ private:
 
     dht::crypto::Identity client_identity_;
     std::shared_ptr<dht::crypto::Certificate> server_ca_;
-    std::string service_;
-    std::string host_;
 
     unsigned int id_;
     static std::atomic_uint ids_;
