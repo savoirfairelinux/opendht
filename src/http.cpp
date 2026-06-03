@@ -830,8 +830,8 @@ Connection::timeout(const std::chrono::seconds& timeout, HandlerCb cb)
 
 // Resolver
 
-Resolver::Resolver(asio::io_context& ctx, const std::string& url, std::shared_ptr<dht::Logger> logger)
-    : url_(url)
+Resolver::Resolver(asio::io_context& ctx, std::string url, std::shared_ptr<dht::Logger> logger)
+    : url_(std::move(url))
     , resolver_(ctx)
     , destroyed_(std::make_shared<bool>(false))
     , logger_(logger)
@@ -967,14 +967,14 @@ Resolver::resolve(std::string_view host, std::string_view service)
 std::atomic_uint Request::ids_ {1};
 
 Request::Request(asio::io_context& ctx,
-                 const std::string& url,
+                 std::string url,
                  const Json::Value& json,
                  OnJsonCb jsoncb,
                  std::shared_ptr<dht::Logger> logger)
     : logger_(std::move(logger))
     , id_(Request::ids_++)
     , ctx_(ctx)
-    , resolver_(std::make_shared<Resolver>(ctx, url, logger))
+    , resolver_(std::make_shared<Resolver>(ctx, std::move(url), logger))
 {
     init_default_headers();
     set_header_field(restinio::http_field_t::content_type, std::string(HTTP_HEADER_CONTENT_TYPE_JSON));
@@ -997,11 +997,11 @@ Request::Request(asio::io_context& ctx,
     });
 }
 
-Request::Request(asio::io_context& ctx, const std::string& url, OnJsonCb jsoncb, std::shared_ptr<dht::Logger> logger)
+Request::Request(asio::io_context& ctx, std::string url, OnJsonCb jsoncb, std::shared_ptr<dht::Logger> logger)
     : logger_(std::move(logger))
     , id_(Request::ids_++)
     , ctx_(ctx)
-    , resolver_(std::make_shared<Resolver>(ctx, url, logger))
+    , resolver_(std::make_shared<Resolver>(ctx, std::move(url), logger))
 {
     init_default_headers();
     set_header_field(restinio::http_field_t::accept, std::string(HTTP_HEADER_CONTENT_TYPE_JSON));
@@ -1022,20 +1022,20 @@ Request::Request(asio::io_context& ctx, const std::string& url, OnJsonCb jsoncb,
     });
 }
 
-Request::Request(asio::io_context& ctx, const std::string& url, std::shared_ptr<dht::Logger> logger)
+Request::Request(asio::io_context& ctx, std::string url, std::shared_ptr<dht::Logger> logger)
     : logger_(logger)
     , id_(Request::ids_++)
     , ctx_(ctx)
-    , resolver_(std::make_shared<Resolver>(ctx, url, logger))
+    , resolver_(std::make_shared<Resolver>(ctx, std::move(url), logger))
 {
     init_default_headers();
 }
 
-Request::Request(asio::io_context& ctx, const std::string& url, OnDoneCb onDone, std::shared_ptr<dht::Logger> logger)
+Request::Request(asio::io_context& ctx, std::string url, OnDoneCb onDone, std::shared_ptr<dht::Logger> logger)
     : logger_(logger)
     , id_(Request::ids_++)
     , ctx_(ctx)
-    , resolver_(std::make_shared<Resolver>(ctx, url, logger))
+    , resolver_(std::make_shared<Resolver>(ctx, std::move(url), logger))
 {
     init_default_headers();
     add_on_done_callback(std::move(onDone));
@@ -1086,7 +1086,6 @@ Request::Request(asio::io_context& ctx,
     , family_(family)
     , resolver_(resolver)
 {
-    set_header_field(restinio::http_field_t::host, concat(get_url().host, ":", get_url().service));
     set_target(Url(target).target);
 }
 

@@ -51,11 +51,11 @@ using ConnectHandlerCb = std::function<void(const asio::error_code& ec, const as
 using ssl_socket_t = restinio::impl::tls_socket_t;
 using socket_t = asio::ip::tcp::socket;
 
-class OPENDHT_PUBLIC Url
+struct OPENDHT_PUBLIC Url
 {
-public:
     Url() = default;
     Url(std::string url);
+
     std::string url;
     std::string protocol {"http"};
     std::string_view user;
@@ -149,7 +149,7 @@ public:
     using ResolverCb
         = std::function<void(const asio::error_code& ec, const std::vector<asio::ip::tcp::endpoint>& endpoints)>;
 
-    Resolver(asio::io_context& ctx, const std::string& url, std::shared_ptr<log::Logger> logger = {});
+    Resolver(asio::io_context& ctx, std::string url, std::shared_ptr<log::Logger> logger = {});
     Resolver(asio::io_context& ctx,
              std::string_view host,
              std::string_view service,
@@ -212,19 +212,19 @@ public:
 
     // resolves implicitly
     Request(asio::io_context& ctx,
-            const std::string& url,
+            std::string url,
             const Json::Value& json,
             OnJsonCb jsoncb,
             std::shared_ptr<log::Logger> logger = {});
-    Request(asio::io_context& ctx, const std::string& url, OnJsonCb jsoncb, std::shared_ptr<log::Logger> logger = {});
+    Request(asio::io_context& ctx, std::string url, OnJsonCb jsoncb, std::shared_ptr<log::Logger> logger = {});
 
-    Request(asio::io_context& ctx, const std::string& url, std::shared_ptr<log::Logger> logger = {});
+    Request(asio::io_context& ctx, std::string url, std::shared_ptr<log::Logger> logger = {});
     Request(asio::io_context& ctx,
             std::string_view host,
             std::string_view service,
             const bool ssl = false,
             std::shared_ptr<log::Logger> logger = {});
-    Request(asio::io_context& ctx, const std::string& url, OnDoneCb onDone, std::shared_ptr<log::Logger> logger = {});
+    Request(asio::io_context& ctx, std::string url, OnDoneCb onDone, std::shared_ptr<log::Logger> logger = {});
 
     // user defined resolver
     Request(asio::io_context& ctx, std::shared_ptr<Resolver> resolver, sa_family_t family = AF_UNSPEC);
