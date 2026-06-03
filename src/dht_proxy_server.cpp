@@ -1205,14 +1205,7 @@ DhtProxyServer::sendPushNotification(
     try {
         std::shared_ptr<http::Request> request;
         if (type == PushType::UnifiedPush) {
-            http::Url tokenUrl(token);
-            request = std::make_shared<http::Request>(io_context(),
-                                                      concat(tokenUrl.protocol, "://"sv, tokenUrl.host),
-                                                      tokenUrl.service,
-                                                      tokenUrl.protocol.find("https") == 0,
-                                                      logger_);
-            request->set_target(tokenUrl.target);
-            request->set_header_field(restinio::http_field_t::host, std::string(tokenUrl.host));
+            request = std::make_shared<http::Request>(io_context(), token, logger_);
         } else {
             request = std::make_shared<http::Request>(io_context(),
                                                       pushHostPort_.first,
