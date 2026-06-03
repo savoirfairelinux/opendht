@@ -1231,8 +1231,8 @@ DhtProxyServer::sendPushNotification(
             Blob auth;   ///< Auth secret
             auto delim = topicView.find('|');
             if (delim != std::string_view::npos) {
-                pubKey = base64_decode(topicView.substr(0, delim));
-                auth = base64_decode(topicView.substr(delim + 1));
+                pubKey = base64_default_or_url_decode(topicView.substr(0, delim));
+                auth = base64_default_or_url_decode(topicView.substr(delim + 1));
             }
 
             request->set_header_field(restinio::http_field_t::ttl, "86400");
