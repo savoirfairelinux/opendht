@@ -291,9 +291,14 @@ public:
     virtual size_t getStorageLimit() const override { return 0; }
     void setLocalStorageLimit(size_t) override {}
     virtual size_t getLocalStorageLimit() const override { return STORAGE_LIMIT_UNLIMITED; }
-    void connectivityChanged(sa_family_t) override { getProxyInfos(); }
+    void connectivityChanged(sa_family_t) override
+    {
+        launchConnectedCbs_ = true;
+        getProxyInfos();
+    }
     void connectivityChanged() override
     {
+        launchConnectedCbs_ = true;
         getProxyInfos();
         loopSignal_();
     }
