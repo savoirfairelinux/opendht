@@ -159,7 +159,13 @@ public:
     {}
 
     static Value::Filter getFilter() { return EncryptedValue::getFilter(); }
+    virtual void unpackValue(const dht::Value& v) override
+    {
+        BaseClass::unpackValue(v);
+        id = v.id;
+    }
 
+    dht::Value::Id id {0}; /// Value ID of the trust request, used for deserialization only.
     std::string service;
     std::string conversationId;
     Blob payload;
