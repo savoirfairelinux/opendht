@@ -1267,6 +1267,21 @@ DhtProxyServer::sendPushNotification(
                 Json::Value androidConfig(Json::objectValue);
                 androidConfig["priority"] = priority;
                 androidConfig["ttl"] = "86400s"; // time to live = 24 hours
+                // Make routine sync notifications (connection churn, value
+                // expirations) collapsible: FCM keeps only the last pending
+                // message per collapse key when the device is unreachable
+                // (dozing/offline), while non-collapsible messages pile up in
+                // a 100-message queue. When that queue overflows, FCM silently
+                // drops messages - including the high-priority ones that
+                // announce incoming calls. A single constant key is used
+                // because FCM only honors 4 distinct collapse keys per device
+                // and the Android client reacts to any of these notifications
+                // the same way: wake up and resynchronize against the proxy.
+                // High-priority notifications (calls, messages, invites - see
+                // Value::priority set by the client) and resubscribe requests
+                // remain non-collapsible so none of them can be overwritten.
+                if (!highPriority && !isResubscribe)
+                    androidConfig["collapse_key"] = "sync";
                 notification["android"] = std::move(androidConfig);
             } else {
                 notification["priority"] = priority;
