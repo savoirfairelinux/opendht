@@ -20,7 +20,7 @@ RUN cd opendht && mkdir build && cd build \
                 -DOPENDHT_SYSTEMD=On \
 	&& make -j8 && make install
 
-FROM alpine:3.23 AS install
+FROM alpine:3.24 AS install
 COPY --from=build /install /
 RUN apk add --no-cache \
         libstdc++ \
