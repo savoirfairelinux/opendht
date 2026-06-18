@@ -1195,20 +1195,23 @@ DhtProxyServer::handlePushListen(const InfoHash& infoHash,
         json["exp"] = json["ids"];
     }
 
-    auto minPriority = 1000u;
-    for (const auto& v : values)
-        minPriority = std::min(minPriority, v->priority);
+    const bool highPriority = isHighPriorityPush(values, expired);
 
-    if (logger_)
-        logger_->debug("[proxy:server] [listen {}] [client {}] [session {}] [expired {}] [priority {}] [values {}]",
+    if (logger_) {
+        auto minPriority = 1000u;
+        for (const auto& v : values)
+            minPriority = std::min(minPriority, v->priority);
+        logger_->debug("[proxy:server] [listen {}] [client {}] [session {}] [expired {}] [priority {}] [high {}] [values {}]",
                        infoHash,
                        clientId,
                        sessionCtx->sessionId,
                        expired,
                        minPriority,
+                       highPriority,
                        values.size());
+    }
 
-    sendPushNotification(pushToken, std::move(json), type, !expired and minPriority == 0, topic);
+    sendPushNotification(pushToken, std::move(json), type, highPriority, topic);
 
     return true;
 }
