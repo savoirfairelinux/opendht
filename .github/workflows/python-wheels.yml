@@ -36,7 +36,7 @@ jobs:
     name: Build wheels on Windows
     runs-on: windows-latest
     env:
-      VCPKG_VERSION: "2025.07.25"
+      VCPKG_VERSION: "2026.01.16"
       VCPKG_INSTALLATION_ROOT: "C:\\vcpkg"
       VCPKG_DISABLE_METRICS: "1"
       VCPKG_DEFAULT_TRIPLET: x64-windows-release
