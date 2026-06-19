@@ -96,7 +96,7 @@ if get_option('indexation').enabled()
     opendht_src += 'src/indexation/pht.cpp'
     add_project_arguments('-DOPENDHT_INDEXATION', language: 'cpp')
 endif
-if jsoncpp.found()
+if jsoncpp.found() and simdutf.found()
     opendht_src += ['src/base64.cpp']
     add_project_arguments('-DOPENDHT_JSONCPP', language: 'cpp')
     conf_data.set('jsoncpp_lib', ', jsoncpp')
