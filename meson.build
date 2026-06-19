@@ -15,10 +15,23 @@ nettle = dependency('nettle')
 msgpack = dependency('msgpack-cxx', required: false)
 argon2 = dependency('libargon2')
 fmt = dependency('fmt')
-openssl = dependency('openssl', required: get_option('proxy_client'))
-jsoncpp = dependency('jsoncpp', required: get_option('proxy_client'))
-llhttp = dependency('llhttp', 'libllhttp', required: get_option('proxy_client'))
-simdutf = dependency('simdutf', required: get_option('proxy_client'))
+
+proxy_enabled = get_option('proxy_client').enabled() or get_option('proxy_server').enabled()
+
+openssl = dependency('openssl', required: proxy_enabled)
+jsoncpp = dependency('jsoncpp', required: proxy_enabled)
+llhttp = dependency('llhttp', 'libllhttp', required: proxy_enabled)
+simdutf = dependency('simdutf', required: proxy_enabled)
+
+# restinio is a header-only library that may not ship a pkg-config file
+restinio_dep = dependency('restinio', required: false)
+if not restinio_dep.found()
+    cpp = meson.get_compiler('cpp')
+    if cpp.has_header('restinio/all.hpp', required: proxy_enabled)
+        restinio_dep = declare_dependency()
+    endif
+endif
+
 io_uring = host_machine.system() == 'linux' ? dependency('liburing', required: false) : disabler()
 
 deps = [
@@ -32,6 +45,10 @@ deps = [
     simdutf,
     llhttp,
 ]
+
+if restinio_dep.found()
+    deps += restinio_dep
+endif
 
 if host_machine.system() == 'linux' and io_uring.found()
     deps += io_uring
