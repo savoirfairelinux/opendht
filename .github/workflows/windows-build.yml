@@ -9,148 +9,178 @@ on:
     branches: [ main, master ]
 
 env:
-  VCPKG_VERSION: "2026.01.16"
-  VCPKG_INSTALLATION_ROOT: "C:\\vcpkg"
   VCPKG_DISABLE_METRICS: "1"
-  VCPKG_INSTALLED_DIR: ${{ github.workspace }}\vcpkg_installed
-  VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}\vcpkg_binary_cache
 
 jobs:
-  prepare-dependencies:
-    name: Prepare Windows Dependencies
+  # Pre-warm the vcpkg binary cache for x64-windows triplet.
+  # Builds all packages once and saves them to the GHA binary cache.
+  # Subsequent runs will restore from the binary cache (< 1 min).
+  vcpkg-shared:
+    name: Install vcpkg deps (x64-windows)
     runs-on: windows-latest
-    outputs:
-      vcpkg_cache_key: ${{ steps.generate_cache_key.outputs.key }}
-    strategy:
-      matrix:
-        arch: [x64]
-
+    env:
+      VCPKG_DEFAULT_TRIPLET: x64-windows
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v6
+      - uses: actions/checkout@v4
+      - uses: microsoft/setup-msbuild@v2
 
-      - name: Set up MSVC
-        uses: microsoft/setup-msbuild@v3
+      - name: Setup vcpkg
+        uses: lukka/run-vcpkg@v11
 
-      - name: Generate Cache Key
-        id: generate_cache_key
+      - name: Compute vcpkg cache key
+        id: vcpkg-key
         shell: pwsh
         run: |
-          $key_value = "${{ runner.os }}-vcpkg-${{ env.VCPKG_VERSION }}-${{ matrix.arch }}-shared-${{ hashFiles('**/vcpkg.json', '**/vcpkg-configuration.json') }}-${{ hashFiles('.github/workflows/windows-build.yml') }}"
-          echo "key=$key_value" >> $env:GITHUB_OUTPUT
+          $combined = (Get-FileHash vcpkg.json -Algorithm SHA256).Hash + (Get-FileHash vcpkg-configuration.json -Algorithm SHA256).Hash
+          $bytes = [System.Text.Encoding]::UTF8.GetBytes($combined)
+          $hash = (([System.Security.Cryptography.SHA256]::Create().ComputeHash($bytes) | ForEach-Object { $_.ToString('x2') }) -join '').Substring(0, 16)
+          echo "key=vcpkg-x64-windows-$hash-${{ runner.os }}" >> $env:GITHUB_OUTPUT
 
-      - name: Cache vcpkg installed packages
-        id: cache-vcpkg
-        uses: actions/cache@v5
+      - name: Restore vcpkg_installed from cache
+        id: cache-restore
+        uses: actions/cache/restore@v4
         with:
-          path: |
-            ${{ env.VCPKG_INSTALLED_DIR }}
-            ${{ env.VCPKG_DEFAULT_BINARY_CACHE }}
-          key: ${{ steps.generate_cache_key.outputs.key }}
-          restore-keys: |
-            ${{ runner.os }}-vcpkg-${{ env.VCPKG_VERSION }}-${{ matrix.arch }}-shared-${{ hashFiles('**/vcpkg.json', '**/vcpkg-configuration.json') }}
-            ${{ runner.os }}-vcpkg-${{ env.VCPKG_VERSION }}-${{ matrix.arch }}-shared-
+          path: vcpkg_installed
+          key: ${{ steps.vcpkg-key.outputs.key }}
 
-      - name: Setup vcpkg and install dependencies
-        if: steps.cache-vcpkg.outputs.cache-hit != 'true'
-        run: |
-          New-Item -Path "${{ env.VCPKG_INSTALLED_DIR }}" -ItemType Directory -Force
-          New-Item -Path "${{ env.VCPKG_DEFAULT_BINARY_CACHE }}" -ItemType Directory -Force
-          vcpkg install `
-            --recurse `
-            --clean-after-build `
-            --triplet=${{ matrix.arch }}-windows `
-            --x-install-root=${{ env.VCPKG_INSTALLED_DIR }} `
-            --x-feature=test
-        shell: pwsh
+      - name: Install vcpkg packages (with retry)
+        if: steps.cache-restore.outputs.cache-hit != 'true'
+        uses: nick-fields/retry@v3
+        with:
+          timeout_minutes: 60
+          max_attempts: 3
+          shell: pwsh
+          command: |
+            & "$env:VCPKG_ROOT/vcpkg.exe" install `
+              --recurse `
+              --clean-after-build `
+              --triplet=x64-windows `
+              --x-feature=test `
+              --x-manifest-root=.
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-  prepare-static-dependencies:
-    name: Prepare Windows Static Dependencies
+      - name: Save vcpkg_installed to cache
+        if: steps.cache-restore.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: vcpkg_installed
+          key: ${{ steps.vcpkg-key.outputs.key }}
+
+  # Pre-warm the vcpkg binary cache for x64-windows-static-release triplet.
+  vcpkg-static:
+    name: Install vcpkg deps (x64-windows-static-release)
     runs-on: windows-latest
-    outputs:
-      vcpkg_static_cache_key: ${{ steps.generate_static_cache_key.outputs.key }}
-    strategy:
-      matrix:
-        arch: [x64]
-
+    env:
+      VCPKG_DEFAULT_TRIPLET: x64-windows-static-release
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v6
+      - uses: actions/checkout@v4
+      - uses: microsoft/setup-msbuild@v2
 
-      - name: Set up MSVC
-        uses: microsoft/setup-msbuild@v3
+      - name: Setup vcpkg
+        uses: lukka/run-vcpkg@v11
 
-      - name: Generate Cache Key for Static Libs
-        id: generate_static_cache_key
+      - name: Compute vcpkg cache key
+        id: vcpkg-key
         shell: pwsh
         run: |
-          $key_value = "${{ runner.os }}-vcpkg-${{ env.VCPKG_VERSION }}-${{ matrix.arch }}-static-${{ hashFiles('**/vcpkg.json', '**/vcpkg-configuration.json') }}-${{ hashFiles('.github/workflows/windows-build.yml') }}"
-          echo "key=$key_value" >> $env:GITHUB_OUTPUT
+          $combined = (Get-FileHash vcpkg.json -Algorithm SHA256).Hash + (Get-FileHash vcpkg-configuration.json -Algorithm SHA256).Hash
+          $bytes = [System.Text.Encoding]::UTF8.GetBytes($combined)
+          $hash = (([System.Security.Cryptography.SHA256]::Create().ComputeHash($bytes) | ForEach-Object { $_.ToString('x2') }) -join '').Substring(0, 16)
+          echo "key=vcpkg-x64-windows-static-release-$hash-${{ runner.os }}" >> $env:GITHUB_OUTPUT
 
-      - name: Cache vcpkg static installed packages
-        id: cache-vcpkg-static
-        uses: actions/cache@v5
+      - name: Restore vcpkg_installed from cache
+        id: cache-restore
+        uses: actions/cache/restore@v4
         with:
-          path: |
-            ${{ env.VCPKG_INSTALLED_DIR }}
-            ${{ env.VCPKG_DEFAULT_BINARY_CACHE }}
-          key: ${{ steps.generate_static_cache_key.outputs.key }}
-          restore-keys: |
-            ${{ runner.os }}-vcpkg-${{ env.VCPKG_VERSION }}-${{ matrix.arch }}-static-${{ hashFiles('**/vcpkg.json', '**/vcpkg-configuration.json') }}
-            ${{ runner.os }}-vcpkg-${{ env.VCPKG_VERSION }}-${{ matrix.arch }}-static-
+          path: vcpkg_installed
+          key: ${{ steps.vcpkg-key.outputs.key }}
 
-      - name: Setup vcpkg and install static dependencies
-        if: steps.cache-vcpkg-static.outputs.cache-hit != 'true'
-        shell: pwsh
-        run: |
-          New-Item -Path "${{ env.VCPKG_INSTALLED_DIR }}" -ItemType Directory -Force
-          New-Item -Path "${{ env.VCPKG_DEFAULT_BINARY_CACHE }}" -ItemType Directory -Force
-          vcpkg install `
-            --recurse `
-            --clean-after-build `
-            --triplet=${{ matrix.arch }}-windows-static-release `
-            --x-install-root=${{ env.VCPKG_INSTALLED_DIR }} `
-            --x-feature=test
+      - name: Install vcpkg packages (with retry)
+        if: steps.cache-restore.outputs.cache-hit != 'true'
+        uses: nick-fields/retry@v3
+        with:
+          timeout_minutes: 60
+          max_attempts: 3
+          shell: pwsh
+          command: |
+            & "$env:VCPKG_ROOT/vcpkg.exe" install `
+              --recurse `
+              --clean-after-build `
+              --triplet=x64-windows-static-release `
+              --x-feature=test `
+              --x-manifest-root=.
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Save vcpkg_installed to cache
+        if: steps.cache-restore.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: vcpkg_installed
+          key: ${{ steps.vcpkg-key.outputs.key }}
 
   build-windows:
-    name: Windows MSVC Build
+    name: Windows MSVC (${{ matrix.arch }}-windows, ${{ matrix.build_type }}, C++${{ matrix.cxx_standard }})
     runs-on: windows-latest
-    needs: prepare-dependencies
-    
+    needs: vcpkg-shared
     strategy:
+      fail-fast: false
       matrix:
         build_type: [Debug, Release]
         arch: [x64]
         cxx_standard: [17, 20, 23]
+    env:
+      VCPKG_DEFAULT_TRIPLET: ${{ matrix.arch }}-windows
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
 
       - name: Set up MSVC
-        uses: microsoft/setup-msbuild@v3
+        uses: microsoft/setup-msbuild@v2
 
-      - name: Restore vcpkg installed packages
-        id: cache-vcpkg-restore
-        uses: actions/cache/restore@v5
+      - name: Setup vcpkg
+        uses: lukka/run-vcpkg@v11
+
+      - name: Compute vcpkg cache key
+        id: vcpkg-key
+        shell: pwsh
+        run: |
+          $combined = (Get-FileHash vcpkg.json -Algorithm SHA256).Hash + (Get-FileHash vcpkg-configuration.json -Algorithm SHA256).Hash
+          $bytes = [System.Text.Encoding]::UTF8.GetBytes($combined)
+          $hash = (([System.Security.Cryptography.SHA256]::Create().ComputeHash($bytes) | ForEach-Object { $_.ToString('x2') }) -join '').Substring(0, 16)
+          echo "key=vcpkg-x64-windows-$hash-${{ runner.os }}" >> $env:GITHUB_OUTPUT
+
+      - name: Restore vcpkg_installed from cache
+        id: cache-restore
+        uses: actions/cache/restore@v4
         with:
-          path: |
-            ${{ env.VCPKG_INSTALLED_DIR }}
-            ${{ env.VCPKG_DEFAULT_BINARY_CACHE }}
-          key: ${{ needs.prepare-dependencies.outputs.vcpkg_cache_key }}
-          restore-keys: |
-            ${{ runner.os }}-vcpkg-${{ env.VCPKG_VERSION }}-${{ matrix.arch }}-shared-${{ hashFiles('**/vcpkg.json', '**/vcpkg-configuration.json') }}
-            ${{ runner.os }}-vcpkg-${{ env.VCPKG_VERSION }}-${{ matrix.arch }}-shared-
+          path: vcpkg_installed
+          key: ${{ steps.vcpkg-key.outputs.key }}
+
+      - name: Install vcpkg packages if cache miss (with retry)
+        if: steps.cache-restore.outputs.cache-hit != 'true'
+        uses: nick-fields/retry@v3
+        with:
+          timeout_minutes: 60
+          max_attempts: 3
+          shell: pwsh
+          command: >-
+            & "$env:VCPKG_ROOT/vcpkg.exe" install
+            --recurse
+            --clean-after-build
+            --triplet=${{ matrix.arch }}-windows
+            --x-feature=test
+            --x-manifest-root=.
 
       - name: Configure CMake
         shell: pwsh
         run: |
-          mkdir build -ErrorAction SilentlyContinue
           cmake -B build `
             -S . `
-            -DCMAKE_TOOLCHAIN_FILE=${{ env.VCPKG_INSTALLATION_ROOT }}/scripts/buildsystems/vcpkg.cmake `
+            -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" `
             -DVCPKG_TARGET_TRIPLET=${{ matrix.arch }}-windows `
-            -DVCPKG_INSTALLED_DIR=${{ env.VCPKG_INSTALLED_DIR }} `
+            -DVCPKG_INSTALLED_DIR="${{ github.workspace }}/vcpkg_installed" `
+            -DVCPKG_MANIFEST_INSTALL=OFF `
             -DVCPKG_MANIFEST_FEATURES=test `
             -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} `
             -DCMAKE_CXX_STANDARD=${{ matrix.cxx_standard }} `
@@ -167,21 +197,15 @@ jobs:
             -A ${{ matrix.arch }}
 
       - name: Build
-        run: |
-          cmake --build build --config ${{ matrix.build_type }} --parallel 4
-          # Copy vcpkg installed libraries to the build directory
-          Copy-Item -Path "${{ env.VCPKG_INSTALLED_DIR }}\${{ matrix.arch }}-windows\lib\*.lib" -Destination "build" -Force
-          Copy-Item -Path "${{ env.VCPKG_INSTALLED_DIR }}\${{ matrix.arch }}-windows\bin\*.dll" -Destination "build" -Force
+        run: cmake --build build --config ${{ matrix.build_type }} --parallel 4
 
       - name: Test
         if: matrix.build_type == 'Release'
-        run: |
-          cd build
-          ctest --build-config ${{ matrix.build_type }} --output-on-failure --parallel 4
+        run: ctest --test-dir build --build-config ${{ matrix.build_type }} --output-on-failure
 
       - name: Upload build artifacts
         if: matrix.build_type == 'Release'
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v4
         with:
           name: opendht-windows-${{ matrix.arch }}-cxx${{ matrix.cxx_standard }}-${{ matrix.build_type }}
           path: |
@@ -191,43 +215,68 @@ jobs:
           retention-days: 7
 
   build-windows-static:
-    name: Windows Static MSVC Build
+    name: Windows Static MSVC (${{ matrix.arch }}-windows-static-release, ${{ matrix.build_type }}, C++${{ matrix.cxx_standard }})
     runs-on: windows-latest
-    needs: prepare-static-dependencies
+    needs: vcpkg-static
     strategy:
+      fail-fast: false
       matrix:
         build_type: [Release]
         arch: [x64]
         cxx_standard: [17, 20, 23]
+    env:
+      VCPKG_DEFAULT_TRIPLET: ${{ matrix.arch }}-windows-static-release
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
 
       - name: Set up MSVC
-        uses: microsoft/setup-msbuild@v3
+        uses: microsoft/setup-msbuild@v2
 
-      - name: Restore vcpkg static installed packages
-        id: cache-vcpkg-static-restore
-        uses: actions/cache/restore@v5
+      - name: Setup vcpkg
+        uses: lukka/run-vcpkg@v11
+
+      - name: Compute vcpkg cache key
+        id: vcpkg-key
+        shell: pwsh
+        run: |
+          $combined = (Get-FileHash vcpkg.json -Algorithm SHA256).Hash + (Get-FileHash vcpkg-configuration.json -Algorithm SHA256).Hash
+          $bytes = [System.Text.Encoding]::UTF8.GetBytes($combined)
+          $hash = (([System.Security.Cryptography.SHA256]::Create().ComputeHash($bytes) | ForEach-Object { $_.ToString('x2') }) -join '').Substring(0, 16)
+          echo "key=vcpkg-x64-windows-static-release-$hash-${{ runner.os }}" >> $env:GITHUB_OUTPUT
+
+      - name: Restore vcpkg_installed from cache
+        id: cache-restore
+        uses: actions/cache/restore@v4
         with:
-          path: |
-            ${{ env.VCPKG_INSTALLED_DIR }}
-            ${{ env.VCPKG_DEFAULT_BINARY_CACHE }}
-          key: ${{ needs.prepare-static-dependencies.outputs.vcpkg_static_cache_key }}
-          restore-keys: |
-            ${{ runner.os }}-vcpkg-${{ env.VCPKG_VERSION }}-${{ matrix.arch }}-static-${{ hashFiles('**/vcpkg.json', '**/vcpkg-configuration.json') }}
-            ${{ runner.os }}-vcpkg-${{ env.VCPKG_VERSION }}-${{ matrix.arch }}-static-
-      
+          path: vcpkg_installed
+          key: ${{ steps.vcpkg-key.outputs.key }}
+
+      - name: Install vcpkg packages if cache miss (with retry)
+        if: steps.cache-restore.outputs.cache-hit != 'true'
+        uses: nick-fields/retry@v3
+        with:
+          timeout_minutes: 60
+          max_attempts: 3
+          shell: pwsh
+          command: >-
+            & "$env:VCPKG_ROOT/vcpkg.exe" install
+            --recurse
+            --clean-after-build
+            --triplet=${{ matrix.arch }}-windows-static-release
+            --x-feature=test
+            --x-manifest-root=.
+
       - name: Configure CMake for Static Build
         shell: pwsh
         run: |
-          mkdir build -ErrorAction SilentlyContinue
           cmake -B build `
             -S . `
-            -DCMAKE_TOOLCHAIN_FILE=${{ env.VCPKG_INSTALLATION_ROOT }}/scripts/buildsystems/vcpkg.cmake `
+            -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" `
             -DVCPKG_TARGET_TRIPLET=${{ matrix.arch }}-windows-static-release `
-            -DVCPKG_INSTALLED_DIR=${{ env.VCPKG_INSTALLED_DIR }} `
+            -DVCPKG_INSTALLED_DIR="${{ github.workspace }}/vcpkg_installed" `
+            -DVCPKG_MANIFEST_INSTALL=OFF `
             -DVCPKG_MANIFEST_FEATURES=test `
             -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} `
             -DCMAKE_CXX_STANDARD=${{ matrix.cxx_standard }} `
@@ -245,18 +294,13 @@ jobs:
             -A ${{ matrix.arch }}
 
       - name: Build Static
-        shell: pwsh
-        run: |
-          cmake --build build --config ${{ matrix.build_type }} --parallel 4
+        run: cmake --build build --config ${{ matrix.build_type }} --parallel 4
 
       - name: Test Static Build
-        shell: pwsh
-        run: |
-          cd build
-          ctest --build-config ${{ matrix.build_type }} --output-on-failure --parallel 4
+        run: ctest --test-dir build --build-config ${{ matrix.build_type }} --output-on-failure
 
       - name: Upload static build artifacts
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v4
         with:
           name: opendht-windows-static-${{ matrix.arch }}-cxx${{ matrix.cxx_standard }}-${{ matrix.build_type }}
           path: |
@@ -275,7 +319,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
 
       - name: Setup MinGW
         uses: msys2/setup-msys2@v2
@@ -375,7 +419,7 @@ jobs:
 
       - name: Upload MinGW artifacts
         if: matrix.build_type == 'Release'
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v4
         with:
           name: opendht-windows-mingw-${{ matrix.build_type }}
           path: |
