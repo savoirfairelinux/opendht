@@ -1251,10 +1251,19 @@ DhtProxyClient::pushNotificationReceived([[maybe_unused]] const std::map<std::st
         // If a push notification is received, the proxy is up and running
         std::lock_guard l(lockCurrentProxyInfos_);
         auto oldStatus = std::max(statusIpv4_, statusIpv6_);
-        if (oldStatus != NodeStatus::Connected)
-            launchConnectedCbs_ = true;
         statusIpv4_ = NodeStatus::Connected;
         statusIpv6_ = NodeStatus::Connected;
+        if (oldStatus != NodeStatus::Connected) {
+            launchConnectedCbs_ = true;
+            // The push itself proves the proxy is reachable — restore subscriptions
+            // immediately without waiting for a getProxyInfos() HTTP round-trip.
+            // This mirrors what onProxyInfos() does on Connected transition, but
+            // avoids the extra network request (critical under Doze/App Standby where
+            // background DNS may be blocked).
+            listenerRestartTimer_->expires_at(std::chrono::steady_clock::now());
+            listenerRestartTimer_->async_wait(
+                std::bind(&DhtProxyClient::restartListeners, this, std::placeholders::_1));
+        }
     }
     auto launchLoop = false;
     try {
