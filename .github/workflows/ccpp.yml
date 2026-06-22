@@ -16,7 +16,7 @@ jobs:
     name: Ubuntu/GCC Meson build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Install Dependencies
         run: |
@@ -40,7 +40,7 @@ jobs:
       matrix:
         cxx_standard: [17, 20, 23]
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Install Minimal Dependencies
         run: |
@@ -78,7 +78,7 @@ jobs:
         DEBIAN_FRONTEND: noninteractive
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Install Dependencies
         run: |
@@ -131,7 +131,7 @@ jobs:
       matrix:
         cxx_standard: [17, 20, 23]
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Install Homebrew Dependencies
         run: brew install msgpack-cxx asio gnutls nettle readline fmt jsoncpp argon2 openssl cppunit
