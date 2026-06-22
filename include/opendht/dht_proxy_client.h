@@ -429,6 +429,10 @@ private:
     std::unique_ptr<asio::steady_timer> nextProxyConfirmationTimer_;
     std::unique_ptr<asio::steady_timer> listenerRestartTimer_;
 
+    // Exponential backoff for proxy reconnection (1 min → 2 → 4 → ... → 30 min)
+    std::chrono::minutes proxyRetryDelay_ {1};
+    static constexpr std::chrono::minutes MAX_PROXY_RETRY_DELAY {30};
+
     /**
      * Relaunch LISTEN requests if the client disconnect/reconnect.
      */
