@@ -28,8 +28,18 @@ install(CODE [[
         if(NOT _pip_check EQUAL 0)
             message(WARNING "Skipping Python package install: pip not available for ${Python3_EXECUTABLE}.")
         else()
+            set(_pip_install_args
+                install
+                --no-deps
+                --no-build-isolation
+                --break-system-packages
+                --prefix ${CMAKE_INSTALL_PREFIX})
+            if(DEFINED ENV{DESTDIR} AND NOT "$ENV{DESTDIR}" STREQUAL "")
+                list(APPEND _pip_install_args --root "$ENV{DESTDIR}")
+            endif()
+            list(APPEND _pip_install_args .)
             execute_process(
-                COMMAND ${Python3_EXECUTABLE} -m pip install --no-deps --break-system-packages .
+                COMMAND ${Python3_EXECUTABLE} -m pip ${_pip_install_args}
                 WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/python
                 OUTPUT_VARIABLE _pip_output
                 ERROR_VARIABLE _pip_error
