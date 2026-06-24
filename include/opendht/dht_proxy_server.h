@@ -146,6 +146,26 @@ public:
 
     std::shared_ptr<DhtRunner> getNode() const { return dht_; }
 
+#ifdef OPENDHT_PUSH_NOTIFICATIONS
+    /**
+     * Decide whether a batch of values notified to a push listener must be
+     * delivered as a high (urgent) priority push notification.
+     *
+     * Only real-time call signaling — values whose pushType is "audioCall" or
+     * "videoCall", published at high priority (priority == 0) — warrants an
+     * urgent push. Every other notification (presence/connection-request
+     * refreshes carrying an empty pushType, value expirations, etc.) is sent at
+     * normal priority so it does not saturate the mobile platform's adaptive
+     * high-priority quota; once that quota is tripped, the platform silently
+     * drops genuine call pushes.
+     *
+     * @param values the values being notified to the listener.
+     * @param expired whether this notification is for expired (removed) values.
+     * @return true if the notification must be sent at high priority.
+     */
+    static bool isHighPriorityPush(const std::vector<std::shared_ptr<Value>>& values, bool expired) noexcept;
+#endif // OPENDHT_PUSH_NOTIFICATIONS
+
 private:
     class ConnectionListener;
     struct RestRouterTraitsTls;

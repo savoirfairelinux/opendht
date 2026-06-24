@@ -1135,6 +1135,25 @@ DhtProxyServer::handleCancelPushListen(const asio::error_code& ec,
 }
 
 bool
+DhtProxyServer::isHighPriorityPush(const std::vector<std::shared_ptr<Value>>& values, bool expired) noexcept
+{
+    // Expired-value notifications (de-registration) are never time-critical.
+    if (expired)
+        return false;
+    // Promote to high (urgent) push priority only for real-time call signaling.
+    // Background traffic — most notably connection-request refreshes, which
+    // carry an empty pushType — stays at normal priority so it does not trip the
+    // mobile platform's adaptive high-priority quota, which would otherwise
+    // silently drop genuine call pushes once the high-priority noise ratio gets
+    // too high.
+    for (const auto& v : values) {
+        if (v->priority == 0 and (v->pushType == "videoCall" or v->pushType == "audioCall"))
+            return true;
+    }
+    return false;
+}
+
+bool
 DhtProxyServer::handlePushListen(const InfoHash& infoHash,
                                  const std::string& pushToken,
                                  PushType type,
@@ -1176,20 +1195,23 @@ DhtProxyServer::handlePushListen(const InfoHash& infoHash,
         json["exp"] = json["ids"];
     }
 
-    auto minPriority = 1000u;
-    for (const auto& v : values)
-        minPriority = std::min(minPriority, v->priority);
+    const bool highPriority = isHighPriorityPush(values, expired);
 
-    if (logger_)
-        logger_->debug("[proxy:server] [listen {}] [client {}] [session {}] [expired {}] [priority {}] [values {}]",
+    if (logger_) {
+        auto minPriority = 1000u;
+        for (const auto& v : values)
+            minPriority = std::min(minPriority, v->priority);
+        logger_->debug("[proxy:server] [listen {}] [client {}] [session {}] [expired {}] [priority {}] [high {}] [values {}]",
                        infoHash,
                        clientId,
                        sessionCtx->sessionId,
                        expired,
                        minPriority,
+                       highPriority,
                        values.size());
+    }
 
-    sendPushNotification(pushToken, std::move(json), type, !expired and minPriority == 0, topic);
+    sendPushNotification(pushToken, std::move(json), type, highPriority, topic);
 
     return true;
 }

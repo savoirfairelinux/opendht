@@ -327,4 +327,39 @@ DhtProxyTester::testShutdownStop()
     CPPUNIT_ASSERT_EQUAL(2 * C, callback_count.load());
 }
 
+#ifdef OPENDHT_PUSH_NOTIFICATIONS
+void
+DhtProxyTester::testPushNotificationPriority()
+{
+    auto mkValue = [](unsigned priority, const std::string& pushType) {
+        auto v = std::make_shared<dht::Value>();
+        v->priority = priority;
+        v->pushType = pushType;
+        return v;
+    };
+
+    // Real-time call signaling at high priority => urgent push.
+    CPPUNIT_ASSERT(dht::DhtProxyServer::isHighPriorityPush({mkValue(0, "videoCall")}, false));
+    CPPUNIT_ASSERT(dht::DhtProxyServer::isHighPriorityPush({mkValue(0, "audioCall")}, false));
+
+    // Connection-request refresh (empty pushType) is noise => normal push.
+    CPPUNIT_ASSERT(!dht::DhtProxyServer::isHighPriorityPush({mkValue(0, "")}, false));
+
+    // Any other pushType is not a call => normal push.
+    CPPUNIT_ASSERT(!dht::DhtProxyServer::isHighPriorityPush({mkValue(0, "message")}, false));
+
+    // Expired (de-registration) notifications are never urgent, even for calls.
+    CPPUNIT_ASSERT(!dht::DhtProxyServer::isHighPriorityPush({mkValue(0, "videoCall")}, true));
+
+    // A call value explicitly published at normal priority stays normal.
+    CPPUNIT_ASSERT(!dht::DhtProxyServer::isHighPriorityPush({mkValue(1, "videoCall")}, false));
+
+    // Mixed batch: a single high-priority call value is enough to make it urgent.
+    CPPUNIT_ASSERT(dht::DhtProxyServer::isHighPriorityPush({mkValue(0, ""), mkValue(0, "videoCall")}, false));
+
+    // Empty batch => normal.
+    CPPUNIT_ASSERT(!dht::DhtProxyServer::isHighPriorityPush({}, false));
+}
+#endif // OPENDHT_PUSH_NOTIFICATIONS
+
 } // namespace test
