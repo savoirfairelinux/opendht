@@ -294,8 +294,10 @@ void
 NetworkEngine::clear()
 {
     for (auto& request : requests) {
-        request.second->cancel();
-        request.second->node->setExpired();
+        if (request.second->node)
+            request.second->node->setExpired();
+        else
+            request.second->setExpired();
     }
     requests.clear();
     partial_messages.clear();
