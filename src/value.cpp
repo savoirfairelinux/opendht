@@ -202,6 +202,9 @@ Value::Value(const Json::Value& json)
     const auto& jprio = json["prio"];
     if (jprio.isIntegral())
         priority = jprio.asUInt();
+    const auto& jpt = json[VALUE_KEY_PUSHTYPE];
+    if (jpt.isString())
+        pushType = jpt.asString();
 }
 
 Json::Value
@@ -228,6 +231,8 @@ Value::toJson() const
     }
     if (priority)
         val["prio"] = priority;
+    if (not pushType.empty())
+        val[VALUE_KEY_PUSHTYPE] = pushType;
     return val;
 }
 
