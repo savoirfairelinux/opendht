@@ -137,4 +137,29 @@ ValueTester::testPushTypePreservedAfterEncrypt()
     CPPUNIT_ASSERT(encrypted.isEncrypted());
 }
 
+void
+ValueTester::testPushTypeJsonRoundTrip()
+{
+#ifdef OPENDHT_JSONCPP
+    dht::Value original {(const uint8_t*) "hello", 5};
+    original.id = 42;
+    original.priority = 1;
+    original.pushType = "videoCall";
+
+    dht::Value restored(original.toJson());
+
+    CPPUNIT_ASSERT_EQUAL(original.id, restored.id);
+    CPPUNIT_ASSERT_EQUAL(original.priority, restored.priority);
+    CPPUNIT_ASSERT_EQUAL(original.pushType, restored.pushType);
+
+    // No pushType: the field must stay absent from the JSON and empty after parse.
+    dht::Value plain {(const uint8_t*) "data", 4};
+    plain.id = 7;
+    auto json = plain.toJson();
+    CPPUNIT_ASSERT(!json.isMember("pt"));
+    dht::Value plainRestored(json);
+    CPPUNIT_ASSERT_EQUAL(std::string(), plainRestored.pushType);
+#endif
+}
+
 } // namespace test

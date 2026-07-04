@@ -16,6 +16,7 @@ class ValueTester : public CppUnit::TestFixture
     CPPUNIT_TEST(testPushTypeMsgpackRoundTrip);
     CPPUNIT_TEST(testPushTypeAbsentAfterUnpack);
     CPPUNIT_TEST(testPushTypePreservedAfterEncrypt);
+    CPPUNIT_TEST(testPushTypeJsonRoundTrip);
     CPPUNIT_TEST_SUITE_END();
 
 public:
@@ -38,6 +39,7 @@ public:
     void testPushTypeMsgpackRoundTrip();
     void testPushTypeAbsentAfterUnpack();
     void testPushTypePreservedAfterEncrypt();
+    void testPushTypeJsonRoundTrip();
 };
 
 } // namespace test
