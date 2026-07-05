@@ -99,6 +99,11 @@ DhtRunner::run(const Config& config, Context&& context)
         auto state_path = config.dht_config.node_config.persist_path;
         if (not state_path.empty())
             state_path += "_port.txt";
+        // Ports loaded from the persisted state are a best-effort hint to keep a
+        // stable identity across restarts; remember which ones we set so that we
+        // can fall back to random ports if they are already in use (e.g. a fast
+        // restart while the previous instance still holds them).
+        bool triedSavedPort = false;
         if (not state_path.empty() && (local4.getPort() == 0 || local6.getPort() == 0)) {
             std::ifstream inConfig(state_path);
             if (inConfig.is_open()) {
@@ -110,6 +115,7 @@ DhtRunner::run(const Config& config, Context&& context)
                                               fmt::ptr(this),
                                               port);
                         local4.setPort(port);
+                        triedSavedPort = true;
                     }
                 }
                 if (inConfig >> port) {
@@ -119,6 +125,7 @@ DhtRunner::run(const Config& config, Context&& context)
                                               fmt::ptr(this),
                                               port);
                         local6.setPort(port);
+                        triedSavedPort = true;
                     }
                 }
             }
@@ -136,7 +143,20 @@ DhtRunner::run(const Config& config, Context&& context)
 
         if (config.proxy_server.empty()) {
             if (not context.sock) {
-                context.sock.reset(new net::UdpSocket(local4, local6, context.logger));
+                try {
+                    context.sock.reset(new net::UdpSocket(local4, local6, context.logger));
+                } catch (const DhtException&) {
+                    if (not triedSavedPort)
+                        throw;
+                    // The saved ports are unavailable (typically still held by a
+                    // previous instance): fall back to OS-assigned ports.
+                    if (context.logger)
+                        context.logger->w("[runner %p] Saved ports unavailable, falling back to random ports",
+                                          fmt::ptr(this));
+                    local4.setPort(0);
+                    local6.setPort(0);
+                    context.sock.reset(new net::UdpSocket(local4, local6, context.logger));
+                }
             }
             context.sock->setOnReceive([&](net::PacketList&& pkts) {
                 net::PacketList ret;
