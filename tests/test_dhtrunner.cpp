@@ -9,6 +9,8 @@
 #include <future>
 #include <mutex>
 #include <condition_variable>
+#include <fstream>
+#include <cstdio>
 using namespace std::chrono_literals;
 using namespace std::literals;
 
@@ -538,6 +540,34 @@ DhtRunnerTester::testShutdownCompletesWithPendingPut()
     CPPUNIT_ASSERT(std::future_status::ready == shutdownFuture.wait_for(5s));
 
     clientNode.join();
+}
+
+void
+DhtRunnerTester::testSavedPortFallback()
+{
+    // A saved port that is already taken by another process (e.g. fast
+    // application restart while the old instance still holds it) must not
+    // prevent the node from starting: it should fall back to a random port.
+    dht::DhtRunner::Config config;
+    config.dht_config.node_config.persist_path = "/tmp/opendht_test_port_fallback";
+    std::string portFile = config.dht_config.node_config.persist_path + "_port.txt";
+
+    // node1 (from setUp) holds a port; save it as our persisted port.
+    auto takenPort = node1.getBoundPort();
+    {
+        std::ofstream out(portFile);
+        out << takenPort << std::endl << takenPort << std::endl;
+    }
+
+    dht::DhtRunner testNode;
+    CPPUNIT_ASSERT_NO_THROW(testNode.run(0, config));
+    CPPUNIT_ASSERT(testNode.getBoundPort());
+    CPPUNIT_ASSERT(testNode.getBoundPort() != takenPort);
+
+    testNode.shutdown();
+    testNode.join();
+    std::remove(portFile.c_str());
+    std::remove((config.dht_config.node_config.persist_path + "_port.txt").c_str());
 }
 
 void
