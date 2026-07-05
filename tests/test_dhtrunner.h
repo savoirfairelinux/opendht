@@ -27,6 +27,7 @@ class DhtRunnerTester : public CppUnit::TestFixture
     CPPUNIT_TEST(testBootstrapThenPutNoRace);
     CPPUNIT_TEST(testBootstrapMissingNodeThenPutFails);
     CPPUNIT_TEST(testShutdownCompletesWithPendingPut);
+    CPPUNIT_TEST(testSavedPortFallback);
     CPPUNIT_TEST_SUITE_END();
 
     dht::DhtRunner node1 {};
@@ -72,6 +73,7 @@ public:
     void testBootstrapThenPutNoRace();
     void testBootstrapMissingNodeThenPutFails();
     void testShutdownCompletesWithPendingPut();
+    void testSavedPortFallback();
     /**
      * Test listen method with lot of datas
      */
