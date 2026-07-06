@@ -10,7 +10,9 @@
 #include <future>
 #include <functional>
 
-#include <ciso646> // fix windows compiler bug
+#if __cplusplus < 202002L
+#include <ciso646>
+#endif
 
 namespace dht {
 

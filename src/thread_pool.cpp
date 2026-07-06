@@ -6,8 +6,10 @@
 #include <atomic>
 #include <thread>
 #include <iostream>
-#include <ciso646> // fix windows compiler bug
-#include <cmath>   // std::pow
+#include <cmath> // std::pow
+#if __cplusplus < 202002L
+#include <ciso646>
+#endif
 
 namespace dht {
 
