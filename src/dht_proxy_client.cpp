@@ -1260,6 +1260,28 @@ DhtProxyClient::pushNotificationReceived([[maybe_unused]] const std::map<std::st
     try {
         auto sessionId = notification.find("s");
         if (sessionId != notification.end() and sessionId->second != pushSessionId_) {
+            // The push was requested by another client instance sharing this
+            // push token and client id (e.g. the iOS notification extension
+            // subscribing while the app was suspended): the proxy now tags
+            // pushes with that other session. The notification still means
+            // that values are available for the given key, so if we listen
+            // on it, resubscribe (with refresh) to retrieve pending values
+            // immediately and re-associate the proxy-side subscription with
+            // this session, instead of dropping the notification.
+            auto keyIt = notification.find("key");
+            if (keyIt != notification.end()) {
+                std::lock_guard lock(searchLock_);
+                auto search = searches_.find(InfoHash(keyIt->second));
+                if (search != searches_.end() and not search->second.listeners.empty()) {
+                    if (logger_)
+                        logger_->debug("[proxy:client] [push] wrong session for [search {}], resubscribing",
+                                       search->first);
+                    for (auto& list : search->second.listeners)
+                        resubscribe(search->first, list.first, list.second);
+                    loopSignal_();
+                    return PushNotificationResult::ListenRefresh;
+                }
+            }
             if (logger_)
                 logger_->debug("[proxy:client] [push] ignoring push for other session");
             return PushNotificationResult::IgnoredWrongSession;
