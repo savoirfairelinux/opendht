@@ -224,7 +224,7 @@ SearchCache::expire(const time_point& now, const std::function<void(size_t)>& on
     auto ret = nextExpiration_;
     for (auto it = ops.begin(); it != ops.end();) {
         auto expiration = it->second->getExpiration();
-        if (expiration < now) {
+        if (expiration <= now) {
             auto cache = std::move(it->second);
             it = ops.erase(it);
             onCancel(cache->searchToken);
