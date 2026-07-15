@@ -917,8 +917,18 @@ Resolver::add_callback(ResolverCb cb, sa_family_t family)
                                                else
                                                    cb(ec, filter(endpoints, family));
                                            });
-    else
-        cb(ec_, family == AF_UNSPEC ? endpoints_ : filter(endpoints_, family));
+    else {
+        // Always dispatch the callback on the io_context thread. Invoking it
+        // synchronously would run the caller's continuation (e.g. the whole
+        // connect chain of Request::send) on the calling thread, mutating asio
+        // objects concurrently with the io thread running the io_context.
+        asio::post(resolver_.get_executor(),
+                   [cb = std::move(cb),
+                    ec = ec_,
+                    endpoints = family == AF_UNSPEC ? endpoints_ : filter(endpoints_, family)] {
+                       cb(ec, endpoints);
+                   });
+    }
 }
 
 void
