@@ -602,23 +602,31 @@ Connection::async_connect(std::vector<asio::ip::tcp::endpoint>&& endpoints, Conn
         cb(asio::error::operation_aborted, {});
         return;
     }
-    auto& base = ssl_socket_ ? ssl_socket_->lowest_layer() : *socket_;
-
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-variable"
-    ConnectHandlerCb wcb = [this, &base, cb = std::move(cb)](const asio::error_code& ec,
-                                                             const asio::ip::tcp::endpoint& endpoint) {
+    std::weak_ptr<Connection> wthis = shared_from_this();
+    ConnectHandlerCb wcb = [wthis, cb = std::move(cb)](const asio::error_code& ec,
+                                                       const asio::ip::tcp::endpoint& endpoint) {
         if (!ec) {
-            local_address_ = base.local_endpoint().address();
-            // Once connected, set a keep alive on the TCP socket with 30 seconds delay
-            // This will generate broken pipes as soon as possible.
-            // Note this needs to be done once connected to have a valid native_handle()
-            this->set_keepalive(30);
+            if (auto sthis = wthis.lock()) {
+                auto& this_ = *sthis;
+                {
+                    std::lock_guard lock(this_.mutex_);
+                    if (this_.ssl_socket_ || this_.socket_) {
+                        auto& base = this_.ssl_socket_ ? this_.ssl_socket_->lowest_layer() : *this_.socket_;
+                        asio::error_code lec;
+                        auto le = base.local_endpoint(lec);
+                        if (!lec)
+                            this_.local_address_ = le.address();
+                    }
+                }
+                // Once connected, set a keep alive on the TCP socket with 30 seconds delay
+                // This will generate broken pipes as soon as possible.
+                // Note this needs to be done once connected to have a valid native_handle()
+                this_.set_keepalive(30);
+            }
         }
         if (cb)
             cb(ec, endpoint);
     };
-#pragma GCC diagnostic pop
 
     if (ssl_socket_)
         asio::async_connect(ssl_socket_->lowest_layer(), std::move(endpoints), wrapCallback(std::move(wcb)));
@@ -917,8 +925,18 @@ Resolver::add_callback(ResolverCb cb, sa_family_t family)
                                                else
                                                    cb(ec, filter(endpoints, family));
                                            });
-    else
-        cb(ec_, family == AF_UNSPEC ? endpoints_ : filter(endpoints_, family));
+    else {
+        // Always dispatch the callback on the io_context thread. Invoking it
+        // synchronously would run the caller's continuation (e.g. the whole
+        // connect chain of Request::send) on the calling thread, mutating asio
+        // objects concurrently with the io thread running the io_context.
+        asio::post(resolver_.get_executor(),
+                   [cb = std::move(cb),
+                    ec = ec_,
+                    endpoints = family == AF_UNSPEC ? endpoints_ : filter(endpoints_, family)] {
+                       cb(ec, endpoints);
+                   });
+    }
 }
 
 void
