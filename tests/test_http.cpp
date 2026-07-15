@@ -8,6 +8,7 @@
 
 #include <iostream>
 #include <string>
+#include <atomic>
 #include <chrono>
 #include <condition_variable>
 
@@ -330,6 +331,36 @@ HttpTester::test_parse_url_just_slash()
     CPPUNIT_ASSERT_EQUAL(std::string("http"), parsed.protocol);
     CPPUNIT_ASSERT(parsed.host.empty());
     CPPUNIT_ASSERT_EQUAL(std::string("/"), parsed.target);
+}
+
+void
+HttpTester::test_completed_resolver_callback_uses_io_thread()
+{
+    asio::io_context ioContext;
+    const asio::ip::tcp::endpoint endpoint(asio::ip::address_v4::loopback(), 80);
+    dht::http::Resolver resolver(ioContext, {endpoint});
+    const auto callerThread = std::this_thread::get_id();
+    std::thread::id callbackThread;
+    asio::error_code callbackError;
+    std::vector<asio::ip::tcp::endpoint> resolvedEndpoints;
+    std::atomic_bool callbackCalled {false};
+
+    resolver.add_callback([&](const asio::error_code& ec, const auto& endpoints) {
+        callbackError = ec;
+        callbackThread = std::this_thread::get_id();
+        resolvedEndpoints = endpoints;
+        callbackCalled = true;
+    });
+
+    CPPUNIT_ASSERT(!callbackCalled);
+    std::thread ioThread([&] { ioContext.run(); });
+    ioThread.join();
+
+    CPPUNIT_ASSERT(callbackCalled);
+    CPPUNIT_ASSERT(!callbackError);
+    CPPUNIT_ASSERT(callbackThread != callerThread);
+    CPPUNIT_ASSERT_EQUAL(size_t(1), resolvedEndpoints.size());
+    CPPUNIT_ASSERT_EQUAL(endpoint, resolvedEndpoints.front());
 }
 
 void

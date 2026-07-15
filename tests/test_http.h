@@ -39,6 +39,7 @@ class HttpTester : public CppUnit::TestFixture
     CPPUNIT_TEST(test_parse_url_complex_path_query_fragment);
     CPPUNIT_TEST(test_parse_url_empty);
     CPPUNIT_TEST(test_parse_url_just_slash);
+    CPPUNIT_TEST(test_completed_resolver_callback_uses_io_thread);
     // send
     CPPUNIT_TEST(test_send_json);
     CPPUNIT_TEST_SUITE_END();
@@ -82,6 +83,7 @@ public:
     void test_parse_url_complex_path_query_fragment();
     void test_parse_url_empty();
     void test_parse_url_just_slash();
+    void test_completed_resolver_callback_uses_io_thread();
     /**
      * Test send(json)
      */
