@@ -302,7 +302,7 @@ static X509*
 issuer_from_chain(STACK_OF(X509) * fullchain)
 {
     X509 *cert, *issuer;
-    X509_NAME* issuer_name;
+    const X509_NAME* issuer_name;
 
     cert = cert_from_chain(fullchain);
     if ((issuer_name = X509_get_issuer_name(cert)) == nullptr)
@@ -925,9 +925,7 @@ Resolver::add_callback(ResolverCb cb, sa_family_t family)
         asio::post(resolver_.get_executor(),
                    [cb = std::move(cb),
                     ec = ec_,
-                    endpoints = family == AF_UNSPEC ? endpoints_ : filter(endpoints_, family)] {
-                       cb(ec, endpoints);
-                   });
+                    endpoints = family == AF_UNSPEC ? endpoints_ : filter(endpoints_, family)] { cb(ec, endpoints); });
     }
 }
 
