@@ -95,10 +95,159 @@ CryptoTester::testCertificateRevocation()
     CPPUNIT_ASSERT_MESSAGE(v.toString(), v);
 }
 
+namespace {
+
+/** Read a CRL Number extension blob (big-endian, variable length) as an integer. */
+uint64_t
+crlNumberValue(const dht::Blob& number)
+{
+    uint64_t value {0};
+    for (uint8_t byte : number)
+        value = (value << 8) | byte;
+    return value;
+}
+
+} // namespace
+
+void
+CryptoTester::testRevocationListNumber()
+{
+    auto ca = dht::crypto::generateIdentity("ca");
+    auto device = dht::crypto::generateIdentity("dev", ca);
+
+    dht::crypto::RevocationList crl;
+    CPPUNIT_ASSERT_EQUAL(uint64_t(0), crlNumberValue(crl.getNumber()));
+
+    crl.revoke(*device.second);
+    crl.sign(ca);
+    auto first = crl.getNumber();
+    // An unnumbered list gets a random number on its first signature.
+    CPPUNIT_ASSERT(not first.empty());
+    CPPUNIT_ASSERT(crlNumberValue(first) != 0);
+
+    // Re-signing keeps the same lineage and moves the number forward.
+    crl.sign(ca);
+    auto second = crl.getNumber();
+    CPPUNIT_ASSERT_EQUAL(crlNumberValue(first) + 1, crlNumberValue(second));
+
+    crl.sign(ca);
+    CPPUNIT_ASSERT_EQUAL(crlNumberValue(first) + 2, crlNumberValue(crl.getNumber()));
+
+    // The number is a DER integer, so it is stored with leading zeros stripped.
+    // Incrementing must still work for numbers shorter than 8 bytes.
+    for (uint64_t start : {uint64_t(1), uint64_t(0x7f), uint64_t(0x80), uint64_t(0xffff)}) {
+        dht::crypto::RevocationList small;
+        small.revoke(*device.second);
+        small.sign(ca, {}, start);
+        CPPUNIT_ASSERT_EQUAL(start, crlNumberValue(small.getNumber()));
+        small.sign(ca);
+        CPPUNIT_ASSERT_EQUAL(start + 1, crlNumberValue(small.getNumber()));
+        small.sign(ca);
+        CPPUNIT_ASSERT_EQUAL(start + 2, crlNumberValue(small.getNumber()));
+    }
+}
+
+void
+CryptoTester::testRevocationListExplicitNumber()
+{
+    auto ca = dht::crypto::generateIdentity("ca");
+    auto device = dht::crypto::generateIdentity("dev", ca);
+
+    // Values chosen to cover leading zero bytes, a full-width number and the largest
+    // value that still encodes as a positive 8-byte DER integer.
+    const std::vector<uint64_t> numbers {1,
+                                         42,
+                                         0xff,
+                                         0x100,
+                                         0x0000'0001'0000'0000ull,
+                                         0x0000'02a1'0000'0001ull,
+                                         0x7fff'ffff'ffff'ffffull};
+    for (auto number : numbers) {
+        dht::crypto::RevocationList crl;
+        crl.revoke(*device.second);
+        crl.sign(ca, {}, number);
+        CPPUNIT_ASSERT_EQUAL(number, crlNumberValue(crl.getNumber()));
+        CPPUNIT_ASSERT(crl.isSignedBy(*ca.second));
+        CPPUNIT_ASSERT(crl.isRevoked(*device.second));
+
+        // The number must survive a pack/unpack round-trip.
+        dht::crypto::RevocationList unpacked(crl.getPacked());
+        CPPUNIT_ASSERT_EQUAL(number, crlNumberValue(unpacked.getNumber()));
+    }
+
+    // An explicit number overrides the increment, in both directions.
+    dht::crypto::RevocationList crl;
+    crl.revoke(*device.second);
+    crl.sign(ca, {}, 1000);
+    CPPUNIT_ASSERT_EQUAL(uint64_t(1000), crlNumberValue(crl.getNumber()));
+    crl.sign(ca, {}, 5);
+    CPPUNIT_ASSERT_EQUAL(uint64_t(5), crlNumberValue(crl.getNumber()));
+
+    // Passing 0 falls back to the default behavior: increment the current number.
+    crl.sign(ca, {}, 0);
+    CPPUNIT_ASSERT_EQUAL(uint64_t(6), crlNumberValue(crl.getNumber()));
+}
+
+void
+CryptoTester::testRevocationListPartitionedNumber()
+{
+    // Two devices holding the same authority issue revocation lists independently.
+    // RFC 5280 5.2.3 requires CRL numbers to increase monotonically for a given CRL
+    // scope and issuer; partitioning the low bits by device keeps each sequence
+    // monotonic while making collisions between devices impossible.
+    constexpr unsigned TAG_BITS = 24;
+    constexpr uint64_t TAG_A = 0x0a0b0c;
+    constexpr uint64_t TAG_B = 0x0a0b0d;
+
+    auto ca = dht::crypto::generateIdentity("ca");
+    auto account = dht::crypto::generateIdentity("acc", ca, 4096, true);
+    auto deviceA = dht::crypto::generateIdentity("devA", account);
+    auto deviceB = dht::crypto::generateIdentity("devB", account);
+
+    uint64_t previous {0};
+    dht::crypto::RevocationList crlA;
+    for (unsigned i = 1; i <= 4; i++) {
+        crlA.revoke(*deviceA.second);
+        crlA.sign(account, {}, (uint64_t(i) << TAG_BITS) | TAG_A);
+        auto number = crlNumberValue(crlA.getNumber());
+        CPPUNIT_ASSERT_EQUAL(TAG_A, number & ((uint64_t(1) << TAG_BITS) - 1));
+        CPPUNIT_ASSERT(number > previous);
+        CPPUNIT_ASSERT_EQUAL(uint64_t(0), number >> 63);
+        previous = number;
+    }
+
+    // Both devices branch from the same counter but never mint the same number.
+    dht::crypto::RevocationList branchA;
+    branchA.revoke(*deviceA.second);
+    branchA.sign(account, {}, (uint64_t(9) << TAG_BITS) | TAG_A);
+    dht::crypto::RevocationList branchB;
+    branchB.revoke(*deviceB.second);
+    branchB.sign(account, {}, (uint64_t(9) << TAG_BITS) | TAG_B);
+    CPPUNIT_ASSERT(crlNumberValue(branchA.getNumber()) != crlNumberValue(branchB.getNumber()));
+
+    // Both are valid and revoke only their own target.
+    CPPUNIT_ASSERT(branchA.isSignedBy(*account.second));
+    CPPUNIT_ASSERT(branchB.isSignedBy(*account.second));
+    CPPUNIT_ASSERT(branchA.isRevoked(*deviceA.second));
+    CPPUNIT_ASSERT(not branchA.isRevoked(*deviceB.second));
+    CPPUNIT_ASSERT(branchB.isRevoked(*deviceB.second));
+    CPPUNIT_ASSERT(not branchB.isRevoked(*deviceA.second));
+
+    // A number minted by an older client is fully random, so bit 63 may be set. Masking
+    // it out and taking the counter part still yields a strictly greater number.
+    constexpr uint64_t legacy = 0xdead'beef'0123'4567ull;
+    dht::crypto::RevocationList legacyCrl;
+    legacyCrl.revoke(*deviceA.second);
+    legacyCrl.sign(account, {}, legacy);
+    auto counter = ((crlNumberValue(legacyCrl.getNumber()) & ~(uint64_t(1) << 63)) >> TAG_BITS) + 1;
+    legacyCrl.sign(account, {}, (counter << TAG_BITS) | TAG_A);
+    CPPUNIT_ASSERT(crlNumberValue(legacyCrl.getNumber()) > (legacy & ~(uint64_t(1) << 63)));
+    CPPUNIT_ASSERT_EQUAL(uint64_t(0), crlNumberValue(legacyCrl.getNumber()) >> 63);
+}
+
 void
 CryptoTester::testCertificateRequest()
-{
-    // Generate CA
+{    // Generate CA
     auto ca = dht::crypto::generateIdentity("Test CA");
 
     // Generate signed request

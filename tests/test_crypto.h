@@ -13,6 +13,9 @@ class CryptoTester : public CppUnit::TestFixture
     CPPUNIT_TEST_SUITE(CryptoTester);
     CPPUNIT_TEST(testSignatureEncryption);
     CPPUNIT_TEST(testCertificateRevocation);
+    CPPUNIT_TEST(testRevocationListNumber);
+    CPPUNIT_TEST(testRevocationListExplicitNumber);
+    CPPUNIT_TEST(testRevocationListPartitionedNumber);
     CPPUNIT_TEST(testCertificateRequest);
     CPPUNIT_TEST(testCertificateSerialNumber);
     CPPUNIT_TEST(testOcsp);
@@ -40,6 +43,18 @@ public:
      * Test certificate generation, validation and revocation
      */
     void testCertificateRevocation();
+    /**
+     * Test the default CRL Number behavior: random on first signature, incremented after
+     */
+    void testRevocationListNumber();
+    /**
+     * Test signing a revocation list with a caller-provided CRL Number
+     */
+    void testRevocationListExplicitNumber();
+    /**
+     * Test that issuers sharing an authority can partition the CRL Number space
+     */
+    void testRevocationListPartitionedNumber();
     /**
      * Test certificate requests
      */

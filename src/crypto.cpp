@@ -1873,34 +1873,8 @@ RevocationList::getUpdateTime() const
     return std::chrono::system_clock::from_time_t(t);
 }
 
-enum class Endian : uint32_t { LITTLE = 0, BIG = 1 };
-
-template<typename T>
-T
-endian(T w, Endian endian = Endian::BIG)
-{
-    // this gets optimized out into if (endian == host_endian) return w;
-    union {
-        uint64_t quad;
-        uint32_t islittle;
-    } t;
-    t.quad = 1;
-    if (t.islittle ^ (uint32_t) endian)
-        return w;
-    T r = 0;
-
-    // decent compilers will unroll this (gcc)
-    // or even convert straight into single bswap (clang)
-    for (size_t i = 0; i < sizeof(r); i++) {
-        r <<= 8;
-        r |= w & 0xff;
-        w >>= 8;
-    }
-    return r;
-}
-
 void
-RevocationList::sign(const PrivateKey& key, const Certificate& ca, duration validity)
+RevocationList::sign(const PrivateKey& key, const Certificate& ca, duration validity, uint64_t crlNumber)
 {
     if (auto err = gnutls_x509_crl_set_version(crl, 2))
         throw CryptoException(std::string("Unable to set CRL version: ") + gnutls_strerror(err));
@@ -1910,19 +1884,28 @@ RevocationList::sign(const PrivateKey& key, const Certificate& ca, duration vali
         throw CryptoException(std::string("Unable to set CRL update time: ") + gnutls_strerror(err));
     if (auto err = gnutls_x509_crl_set_next_update(crl, std::chrono::system_clock::to_time_t(next_update)))
         throw CryptoException(std::string("Unable to set CRL next update time: ") + gnutls_strerror(err));
-    uint64_t number {0};
-    size_t number_sz {sizeof(number)};
-    unsigned critical {0};
-    gnutls_x509_crl_get_number(crl, &number, &number_sz, &critical);
+    uint64_t number {crlNumber};
     if (number == 0) {
-        // initialize to a random number
-        number_sz = sizeof(number);
-        std::random_device rdev;
-        std::generate_n((uint8_t*) &number, sizeof(number), std::bind(rand_byte, std::ref(rdev)));
-    } else
-        number = endian(endian(number) + 1);
-    if (auto err = gnutls_x509_crl_set_number(crl, &number, sizeof(number)))
-        throw CryptoException(std::string("Unable to set CRL update time: ") + gnutls_strerror(err));
+        // The CRL Number extension holds a DER integer of variable length, so it must be
+        // read as a big-endian byte string rather than straight into an uint64_t.
+        auto current = getNumber();
+        for (uint8_t byte : current)
+            number = (number << 8) | byte;
+        if (number == 0) {
+            // Initialize to a random number.
+            std::random_device rdev;
+            do {
+                std::generate_n((uint8_t*) &number, sizeof(number), std::bind(rand_byte, std::ref(rdev)));
+            } while (number == 0);
+        } else
+            number++;
+    }
+    // Store the number in network byte order.
+    uint8_t packedNumber[sizeof(number)];
+    for (size_t i = 0; i < sizeof(packedNumber); i++)
+        packedNumber[i] = (uint8_t) ((number >> (8 * (sizeof(packedNumber) - 1 - i))) & 0xff);
+    if (auto err = gnutls_x509_crl_set_number(crl, packedNumber, sizeof(packedNumber)))
+        throw CryptoException(std::string("Unable to set CRL number: ") + gnutls_strerror(err));
     if (auto err = gnutls_x509_crl_sign2(crl, ca.cert, key.x509_key, GNUTLS_DIG_SHA512, 0))
         throw CryptoException(std::string("Unable to sign certificate revocation list: ") + gnutls_strerror(err));
     // to be able to actually use the CRL we need to serialize/deserialize it

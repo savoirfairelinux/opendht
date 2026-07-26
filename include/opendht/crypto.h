@@ -267,9 +267,14 @@ public:
     /**
      * Sign this revocation list using provided key and certificate.
      * Validity_period sets the duration until next update (default to no next update).
+     * If `number` is non-zero, it is stored verbatim (big-endian) as the CRL Number
+     * extension. Otherwise the number is initialized randomly on the first signature
+     * and incremented on subsequent ones.
      */
-    void sign(const PrivateKey&, const Certificate&, duration validity_period = {});
-    void sign(const Identity& id) { sign(*id.first, *id.second); }
+    void sign(const PrivateKey&, const Certificate&, duration validity_period = {}, uint64_t number = 0);
+    void sign(const Identity& id, duration validity_period = {}, uint64_t number = 0) {
+        sign(*id.first, *id.second, validity_period, number);
+    }
 
     bool isSignedBy(const Certificate& issuer) const;
 
