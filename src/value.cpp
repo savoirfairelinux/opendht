@@ -397,7 +397,7 @@ FieldValueIndex::containedIn(const FieldValueIndex& other) const
         return false;
     for (const auto& field : index) {
         auto other_field = other.index.find(field.first);
-        if (other_field == other.index.end())
+        if (other_field == other.index.end() or not (field.second == other_field->second))
             return false;
     }
     return true;
