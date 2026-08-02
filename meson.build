@@ -316,6 +316,14 @@ if get_option('tests').enabled()
     )
     test('ThreadPool', test_threadpool)
 
+    test_mdns = executable(
+        'test_mdns',
+        'tests/test_mdns.cpp',
+        'tests/tests_runner.cpp',
+        dependencies: [opendht_dep, cppunit, jsoncpp, fmt, openssl, msgpack],
+    )
+    test('Mdns', test_mdns)
+
     if get_option('proxy_client').enabled() or get_option('proxy_server').enabled()
         test_http = executable(
             'test_http',
