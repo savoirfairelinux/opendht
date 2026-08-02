@@ -571,6 +571,12 @@ PublicKey::toString() const
     }
     if (err != GNUTLS_E_SUCCESS)
         throw CryptoException(std::string("Could not print public key: ") + gnutls_strerror(err));
+    // GnuTLS reports the PEM size including the terminating null byte, which
+    // does not belong to the text and would end up embedded in whatever the
+    // string is copied into, such as the "owner" field of a serialized value.
+    ret.resize(sz);
+    if (not ret.empty() and ret.back() == '\0')
+        ret.pop_back();
     return ret;
 }
 

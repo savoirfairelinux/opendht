@@ -60,6 +60,24 @@ CryptoTester::testSignatureEncryption()
 }
 
 void
+CryptoTester::testPublicKeyPemIsPlainText()
+{
+    auto key = dht::crypto::PrivateKey::generate();
+    auto pem = key.getPublicKey().toString();
+
+    // The exported key is PEM text: it must not carry the terminating null
+    // byte GnuTLS counts in the exported size, which would otherwise be
+    // embedded in anything the string is serialized into.
+    CPPUNIT_ASSERT(not pem.empty());
+    CPPUNIT_ASSERT_EQUAL(std::string::npos, pem.find('\0'));
+    CPPUNIT_ASSERT_EQUAL('\n', pem.back());
+
+    // The exported text still reads back as the same key.
+    dht::crypto::PublicKey reloaded(dht::Blob(pem.begin(), pem.end()));
+    CPPUNIT_ASSERT_EQUAL(key.getPublicKey().getId(), reloaded.getId());
+}
+
+void
 CryptoTester::testCertificateRevocation()
 {
     auto ca1 = dht::crypto::generateIdentity("ca1");
