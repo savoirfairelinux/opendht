@@ -4,8 +4,13 @@
 
 #include "mdns.h"
 
+#if __has_include("infohash.h")
+#include "infohash.h"
+#include "utils.h"
+#else
 #include "opendht/infohash.h"
 #include "opendht/utils.h"
+#endif
 
 #include <chrono>
 #include <functional>
