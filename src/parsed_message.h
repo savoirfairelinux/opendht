@@ -370,6 +370,8 @@ ParsedMessage::msgpack_unpack(const msgpack::object& msg)
     } else if (parsedReq.fields) {
         if (auto rfields = findMapValue(*parsedReq.fields, "f"sv)) {
             auto vfields = rfields->as<std::set<Value::Field>>();
+            if (vfields.empty())
+                throw msgpack::type_error();
             if (auto rvalues = findMapValue(*parsedReq.fields, "v"sv)) {
                 if (rvalues->type != msgpack::type::ARRAY)
                     throw msgpack::type_error();
