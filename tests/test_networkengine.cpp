@@ -214,9 +214,12 @@ makeEngine(std::unique_ptr<TestDatagramSocket>&& socket,
            std::mt19937_64& rd,
            int& onNewNodeCalls)
 {
+    net::NetworkConfig config {};
+    config.max_req_per_sec = -1;
+    config.max_peer_req_per_sec = -1;
     return net::NetworkEngine(
         myid,
-        {},
+        config,
         std::move(socket),
         {},
         rd,
@@ -243,18 +246,68 @@ NetworkEngineTester::tearDown()
 {}
 
 void
-NetworkEngineTester::testIgnoresUnknownPartialData()
+NetworkEngineTester::testCompletesPartialSessionWithDataBeforeHeader()
 {
     Scheduler scheduler;
     std::mt19937_64 rd(0);
     InfoHash myid = InfoHash::getRandom(rd);
+    InfoHash remoteId = InfoHash::getRandom(rd);
     int onNewNodeCalls = 0;
     auto engine = makeEngine(std::make_unique<TestDatagramSocket>(), scheduler, myid, rd, onNewNodeCalls);
 
-    Blob fragment = {1, 2, 3};
-    auto packet = makeValueDataPacketBlob(99, 0, 0, fragment);
+    auto serialized = serializeValue("fragment before header");
     auto from = makeIPv4("127.0.0.2", 5000);
+    auto fragment = makeValueDataPacketBlob(99, 0, 0, serialized);
+    auto header = makeReplyHeaderPacketBlob(remoteId, 99, {serialized.size()});
 
+    engine.processMessage(fragment.data(), fragment.size(), from);
+    CPPUNIT_ASSERT_EQUAL((size_t) 1, engine.getPartialCount());
+    CPPUNIT_ASSERT_EQUAL(0, onNewNodeCalls);
+
+    engine.processMessage(header.data(), header.size(), from);
+
+    CPPUNIT_ASSERT_EQUAL((size_t) 0, engine.getPartialCount());
+    CPPUNIT_ASSERT(onNewNodeCalls > 0);
+}
+
+void
+NetworkEngineTester::testBuffersLargeValueBeforeHeader()
+{
+    Scheduler scheduler;
+    std::mt19937_64 rd(8);
+    InfoHash myid = InfoHash::getRandom(rd);
+    InfoHash remoteId = InfoHash::getRandom(rd);
+    int onNewNodeCalls = 0;
+    auto engine = makeEngine(std::make_unique<TestDatagramSocket>(), scheduler, myid, rd, onNewNodeCalls);
+
+    auto serialized = serializeValue(std::string(57 * 1024, 'l'));
+    auto from = makeIPv4("127.0.0.2", 5008);
+    for (size_t offset = 0; offset < serialized.size(); offset += TEST_MTU) {
+        auto end = std::min(offset + TEST_MTU, serialized.size());
+        Blob data(serialized.begin() + offset, serialized.begin() + end);
+        auto fragment = makeValueDataPacketBlob(101, 0, offset, data);
+        engine.processMessage(fragment.data(), fragment.size(), from);
+    }
+    CPPUNIT_ASSERT_EQUAL((size_t) 1, engine.getPartialCount());
+
+    auto header = makeReplyHeaderPacketBlob(remoteId, 101, {serialized.size()});
+    engine.processMessage(header.data(), header.size(), from);
+
+    CPPUNIT_ASSERT_EQUAL((size_t) 0, engine.getPartialCount());
+    CPPUNIT_ASSERT(onNewNodeCalls > 0);
+}
+
+void
+NetworkEngineTester::testIgnoresEmptyPartialData()
+{
+    Scheduler scheduler;
+    std::mt19937_64 rd(7);
+    InfoHash myid = InfoHash::getRandom(rd);
+    int onNewNodeCalls = 0;
+    auto engine = makeEngine(std::make_unique<TestDatagramSocket>(), scheduler, myid, rd, onNewNodeCalls);
+
+    auto packet = makeValueDataPacketBlob(100, 0, 0, {});
+    auto from = makeIPv4("127.0.0.2", 5007);
     engine.processMessage(packet.data(), packet.size(), from);
 
     CPPUNIT_ASSERT_EQUAL((size_t) 0, engine.getPartialCount());
@@ -291,38 +344,30 @@ NetworkEngineTester::testCompletesPartialSessionFromSameSource()
 }
 
 void
-NetworkEngineTester::testKeepsSessionForWrongSourceFragment()
+NetworkEngineTester::testSeparatesPartialSessionsBySource()
 {
     Scheduler scheduler;
     std::mt19937_64 rd(2);
     InfoHash myid = InfoHash::getRandom(rd);
-    InfoHash remoteId = InfoHash::getRandom(rd);
+    InfoHash firstRemoteId = InfoHash::getRandom(rd);
+    InfoHash secondRemoteId = InfoHash::getRandom(rd);
     int onNewNodeCalls = 0;
     auto engine = makeEngine(std::make_unique<TestDatagramSocket>(), scheduler, myid, rd, onNewNodeCalls);
 
-    std::string data(TEST_MTU + 32, 'w');
-    auto serialized = serializeValue(data);
-    auto goodFrom = makeIPv4("127.0.0.2", 5002);
-    auto badFrom = makeIPv4("127.0.0.3", 5002);
-    auto header = makeReplyHeaderPacketBlob(remoteId, 11, {serialized.size()});
+    auto serialized = serializeValue("same transaction, different peers");
+    auto firstFrom = makeIPv4("127.0.0.2", 5002);
+    auto secondFrom = makeIPv4("127.0.0.3", 5002);
+    auto firstHeader = makeReplyHeaderPacketBlob(firstRemoteId, 11, {serialized.size()});
+    auto secondHeader = makeReplyHeaderPacketBlob(secondRemoteId, 11, {serialized.size()});
 
-    engine.processMessage(header.data(), header.size(), goodFrom);
+    engine.processMessage(firstHeader.data(), firstHeader.size(), firstFrom);
+    engine.processMessage(secondHeader.data(), secondHeader.size(), secondFrom);
+    CPPUNIT_ASSERT_EQUAL((size_t) 2, engine.getPartialCount());
+
+    auto fragment = makeValueDataPacketBlob(11, 0, 0, serialized);
+    engine.processMessage(fragment.data(), fragment.size(), firstFrom);
     CPPUNIT_ASSERT_EQUAL((size_t) 1, engine.getPartialCount());
-
-    auto firstEnd = std::min(TEST_MTU, serialized.size());
-    Blob firstFragment(serialized.begin(), serialized.begin() + firstEnd);
-    auto firstPacket = makeValueDataPacketBlob(11, 0, 0, firstFragment);
-    engine.processMessage(firstPacket.data(), firstPacket.size(), badFrom);
-
-    CPPUNIT_ASSERT_EQUAL((size_t) 1, engine.getPartialCount());
-    CPPUNIT_ASSERT_EQUAL(0, onNewNodeCalls);
-
-    engine.processMessage(firstPacket.data(), firstPacket.size(), goodFrom);
-    if (firstEnd < serialized.size()) {
-        Blob tail(serialized.begin() + firstEnd, serialized.end());
-        auto tailPacket = makeValueDataPacketBlob(11, 0, firstEnd, tail);
-        engine.processMessage(tailPacket.data(), tailPacket.size(), goodFrom);
-    }
+    engine.processMessage(fragment.data(), fragment.size(), secondFrom);
 
     CPPUNIT_ASSERT_EQUAL((size_t) 0, engine.getPartialCount());
     CPPUNIT_ASSERT(onNewNodeCalls > 0);
