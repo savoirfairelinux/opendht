@@ -146,6 +146,28 @@ forEachRecord(const Message& message, Callback&& callback)
         callback(record);
 }
 
+bool
+matches(const Question& question, const ResourceRecord& record)
+{
+    return question.name == record.name and (question.type == Type::ANY or question.type == record.type)
+        and (question.classCode == CLASS_ANY or question.classCode == record.classCode);
+}
+
+bool
+sameRecord(const ResourceRecord& lhs, const ResourceRecord& rhs)
+{
+    return lhs.name == rhs.name and lhs.type == rhs.type and lhs.classCode == rhs.classCode
+        and lhs.data == rhs.data;
+}
+
+bool
+isKnownAnswer(const Message& query, const ResourceRecord& record)
+{
+    return std::any_of(query.answers.begin(), query.answers.end(), [&](const ResourceRecord& known) {
+        return sameRecord(known, record) and known.ttl > record.ttl / 2;
+    });
+}
+
 } // namespace
 
 Name
@@ -180,6 +202,56 @@ Message
 goodbye(const Service& service)
 {
     return makeAdvertisement(service, 0, 0);
+}
+
+Message
+browseQuery()
+{
+    Message query;
+    query.questions.push_back({serviceName(), Type::PTR, CLASS_IN, false});
+    return query;
+}
+
+std::optional<Message>
+respond(const Message& query, const Service& service)
+{
+    if (query.response)
+        return {};
+
+    const auto advertisement = announcement(service);
+    Message response;
+    response.id = query.id;
+    response.response = true;
+    response.authoritative = true;
+
+    auto addMatching = [&](const ResourceRecord& record) {
+        const auto question = std::find_if(query.questions.begin(), query.questions.end(), [&](const Question& q) {
+            return matches(q, record);
+        });
+        if (question == query.questions.end() or (not question->unicastResponse and isKnownAnswer(query, record)))
+            return;
+        if (std::find_if(response.answers.begin(), response.answers.end(), [&](const ResourceRecord& answer) {
+                return sameRecord(answer, record);
+            }) == response.answers.end())
+            response.answers.push_back(record);
+    };
+
+    for (const auto& record : advertisement.answers)
+        addMatching(record);
+    for (const auto& record : advertisement.additionals)
+        addMatching(record);
+    if (response.answers.empty())
+        return {};
+
+    response.additionals = advertisement.additionals;
+    response.additionals.erase(
+        std::remove_if(response.additionals.begin(), response.additionals.end(), [&](const ResourceRecord& record) {
+            return std::any_of(response.answers.begin(), response.answers.end(), [&](const ResourceRecord& answer) {
+                return sameRecord(answer, record);
+            });
+        }),
+        response.additionals.end());
+    return response;
 }
 
 std::optional<Service>
