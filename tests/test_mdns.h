@@ -15,6 +15,9 @@ class MdnsTester : public CppUnit::TestFixture
     CPPUNIT_TEST(testCompression);
     CPPUNIT_TEST(testMalformedPackets);
     CPPUNIT_TEST(testPacketSizeLimit);
+    CPPUNIT_TEST(testDnsSdAdvertisement);
+    CPPUNIT_TEST(testDnsSdGoodbye);
+    CPPUNIT_TEST(testDnsSdValidation);
     CPPUNIT_TEST_SUITE_END();
 
 public:
@@ -23,6 +26,9 @@ public:
     void testCompression();
     void testMalformedPackets();
     void testPacketSizeLimit();
+    void testDnsSdAdvertisement();
+    void testDnsSdGoodbye();
+    void testDnsSdValidation();
 };
 
 } // namespace test
