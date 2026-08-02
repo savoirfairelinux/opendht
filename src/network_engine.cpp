@@ -45,6 +45,39 @@ struct NetworkEngine::PartialMessage
     bool request_quota_consumed {};
 };
 
+bool
+NetworkEngine::isExpectedReply(const ParsedMessage& msg, const SockAddr& from)
+{
+    auto request = requests.find(msg.tid);
+    if (request != requests.end() && request->second->pending() && !request->second->node->id
+        && request->second->node->getAddr() == from)
+        return true;
+
+    auto node = cache.getNode(msg.id, from.getFamily());
+    if (!node || node->getAddr() != from)
+        return false;
+
+    auto pending = node->getRequest(msg.tid);
+    return (pending && pending->pending()) || node->getSocket(msg.tid);
+}
+
+bool
+NetworkEngine::tryCompleteMessage(PartialMessage& partial, const SockAddr& from)
+{
+    try {
+        if (!partial.msg->complete())
+            return false;
+        process(std::move(partial.msg), from);
+    } catch (const std::exception& e) {
+        if (logger_)
+            logger_->warn("Error while processing partial message: {}", e.what());
+    } catch (...) {
+        if (logger_)
+            logger_->warn("Unknown error while processing partial message");
+    }
+    return true;
+}
+
 std::vector<Blob>
 serializeValues(const std::vector<Sp<Value>>& st)
 {
@@ -517,15 +550,7 @@ NetworkEngine::processMessage(const uint8_t* buf, size_t buflen, SockAddr f)
         // append data block
         if (pmsg.msg->append(*msg)) {
             pmsg.last_part = now;
-            // check data completion
-            if (pmsg.msg->complete()) {
-                try {
-                    // process the full message
-                    process(std::move(pmsg.msg), from);
-                } catch (const std::exception& e) {
-                    if (logger_)
-                        logger_->warn("Error while processing partial message: {}", e.what());
-                }
+            if (tryCompleteMessage(pmsg, from)) {
                 partial_messages.erase(pmsg_it);
             } else
                 scheduler.add(now + RX_TIMEOUT, std::bind(&NetworkEngine::maintainRxBuffer, this, key));
@@ -558,6 +583,9 @@ NetworkEngine::processMessage(const uint8_t* buf, size_t buflen, SockAddr f)
     }
 
     PartialMessageKey partial_key {from, msg->tid};
+    if (msg->type == MessageType::Reply && !isExpectedReply(*msg, from))
+        return;
+
     const auto partial = partial_messages.find(partial_key);
     const bool request_quota_consumed = partial != partial_messages.end() && !partial->second.msg
                                         && partial->second.request_quota_consumed;
@@ -585,13 +613,7 @@ NetworkEngine::processMessage(const uint8_t* buf, size_t buflen, SockAddr f)
             pmsg.msg->append(*part);
         pmsg.early_parts.clear();
         pmsg.early_bytes = 0;
-        if (pmsg.msg->complete()) {
-            try {
-                process(std::move(pmsg.msg), from);
-            } catch (const std::exception& e) {
-                if (logger_)
-                    logger_->warn("Error while processing partial message: {}", e.what());
-            }
+        if (tryCompleteMessage(pmsg, from)) {
             partial_messages.erase(inserted.first);
         } else {
             scheduler.add(now + RX_TIMEOUT, std::bind(&NetworkEngine::maintainRxBuffer, this, partial_key));
