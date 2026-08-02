@@ -30,6 +30,8 @@ OPENDHT_PUBLIC Name hostName(const InfoHash& nodeId);
 
 OPENDHT_PUBLIC Message announcement(const Service& service);
 OPENDHT_PUBLIC Message goodbye(const Service& service);
+OPENDHT_PUBLIC Message browseQuery();
+OPENDHT_PUBLIC std::optional<Message> respond(const Message& query, const Service& service);
 OPENDHT_PUBLIC std::optional<Service> resolve(const Message& message);
 
 } // namespace dht::mdns::dns_sd
