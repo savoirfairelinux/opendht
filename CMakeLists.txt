@@ -854,6 +854,8 @@ if (BUILD_TESTING)
     endif()
     # unit testing
     list (APPEND test_FILES
+        tests/test_mdns.h
+        tests/test_mdns.cpp
         tests/test_infohash.h
         tests/test_infohash.cpp
         tests/test_value.h
