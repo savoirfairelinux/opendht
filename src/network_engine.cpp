@@ -40,6 +40,9 @@ struct NetworkEngine::PartialMessage
     time_point start;
     time_point last_part;
     std::unique_ptr<ParsedMessage> msg;
+    std::vector<std::unique_ptr<ParsedMessage>> early_parts;
+    size_t early_bytes {};
+    bool request_quota_consumed {};
 };
 
 std::vector<Blob>
@@ -466,35 +469,66 @@ NetworkEngine::processMessage(const uint8_t* buf, size_t buflen, SockAddr f)
 
     // partial value data
     if (msg->type == MessageType::ValueData) {
-        auto pmsg_it = partial_messages.find(msg->tid);
-        if (pmsg_it == partial_messages.end()) {
-            if (logIncoming_)
-                if (logger_)
-                    logger_->debug("Unable to find partial message");
+        if (msg->fragment_parts.empty()
+            || std::any_of(msg->fragment_parts.begin(), msg->fragment_parts.end(), [](const auto& fragment) {
+                   return fragment.second.second.empty();
+               })) {
             rateLimit(from);
             return;
         }
-        if (!pmsg_it->second.from.equals(from)) {
-            if (logger_)
-                logger_->debug("Received partial message data from unexpected IP address");
-            rateLimit(from);
+        PartialMessageKey key {from, msg->tid};
+        auto pmsg_it = partial_messages.find(key);
+        if (pmsg_it == partial_messages.end()) {
+            if (!rateLimit(from))
+                return;
+            auto inserted = partial_messages.emplace(key, PartialMessage {});
+            pmsg_it = inserted.first;
+            pmsg_it->second.from = from;
+            pmsg_it->second.start = now;
+            pmsg_it->second.last_part = now;
+            pmsg_it->second.request_quota_consumed = true;
+            scheduler.add(now + RX_MAX_PACKET_TIME, std::bind(&NetworkEngine::maintainRxBuffer, this, key));
+        }
+        auto& pmsg = pmsg_it->second;
+        if (!pmsg.msg) {
+            if (pmsg.early_parts.size() >= RX_MAX_EARLY_PARTS) {
+                partial_messages.erase(pmsg_it);
+                return;
+            }
+            size_t fragment_bytes {};
+            for (const auto& [index, fragment] : msg->fragment_parts) {
+                (void) index;
+                if (fragment.second.size() > RX_MAX_EARLY_BYTES - fragment_bytes) {
+                    partial_messages.erase(pmsg_it);
+                    return;
+                }
+                fragment_bytes += fragment.second.size();
+            }
+            if (fragment_bytes > RX_MAX_EARLY_BYTES - pmsg.early_bytes) {
+                partial_messages.erase(pmsg_it);
+                return;
+            }
+            pmsg.early_bytes += fragment_bytes;
+            pmsg.early_parts.emplace_back(std::move(msg));
+            pmsg.last_part = now;
+            scheduler.add(now + RX_TIMEOUT, std::bind(&NetworkEngine::maintainRxBuffer, this, key));
             return;
         }
         // append data block
-        if (pmsg_it->second.msg->append(*msg)) {
-            pmsg_it->second.last_part = now;
+        if (pmsg.msg->append(*msg)) {
+            pmsg.last_part = now;
             // check data completion
-            if (pmsg_it->second.msg->complete()) {
+            if (pmsg.msg->complete()) {
                 try {
                     // process the full message
-                    process(std::move(pmsg_it->second.msg), from);
+                    process(std::move(pmsg.msg), from);
                 } catch (const std::exception& e) {
                     if (logger_)
                         logger_->warn("Error while processing partial message: {}", e.what());
                 }
                 partial_messages.erase(pmsg_it);
             } else
-                scheduler.add(now + RX_TIMEOUT, std::bind(&NetworkEngine::maintainRxBuffer, this, msg->tid));
+                scheduler.add(now + RX_TIMEOUT, std::bind(&NetworkEngine::maintainRxBuffer, this, key));
         }
         return;
     }
@@ -505,7 +539,11 @@ NetworkEngine::processMessage(const uint8_t* buf, size_t buflen, SockAddr f)
         return;
     }
 
-    if (msg->type > MessageType::Reply) {
+    PartialMessageKey partial_key {from, msg->tid};
+    const auto partial = partial_messages.find(partial_key);
+    const bool request_quota_consumed = !msg->value_parts.empty() && partial != partial_messages.end()
+                                        && !partial->second.msg && partial->second.request_quota_consumed;
+    if (msg->type > MessageType::Reply && !request_quota_consumed) {
         /* Rate limit requests. */
         if (!rateLimit(from)) {
             if (logger_)
@@ -524,17 +562,34 @@ NetworkEngine::processMessage(const uint8_t* buf, size_t buflen, SockAddr f)
         }
     } else {
         // starting partial message session
-        auto k = msg->tid;
-        auto& pmsg = partial_messages[k];
+        auto inserted = partial_messages.emplace(partial_key, PartialMessage {});
+        auto& pmsg = inserted.first->second;
         if (not pmsg.msg) {
-            pmsg.from = from;
+            if (inserted.second) {
+                pmsg.from = from;
+                pmsg.start = now;
+                scheduler.add(now + RX_MAX_PACKET_TIME,
+                              std::bind(&NetworkEngine::maintainRxBuffer, this, partial_key));
+            }
             pmsg.msg = std::move(msg);
-            pmsg.start = now;
             pmsg.last_part = now;
-            scheduler.add(now + RX_MAX_PACKET_TIME, std::bind(&NetworkEngine::maintainRxBuffer, this, k));
-            scheduler.add(now + RX_TIMEOUT, std::bind(&NetworkEngine::maintainRxBuffer, this, k));
+            for (const auto& part : pmsg.early_parts)
+                pmsg.msg->append(*part);
+            pmsg.early_parts.clear();
+            pmsg.early_bytes = 0;
+            if (pmsg.msg->complete()) {
+                try {
+                    process(std::move(pmsg.msg), from);
+                } catch (const std::exception& e) {
+                    if (logger_)
+                        logger_->warn("Error while processing partial message: {}", e.what());
+                }
+                partial_messages.erase(inserted.first);
+            } else {
+                scheduler.add(now + RX_TIMEOUT, std::bind(&NetworkEngine::maintainRxBuffer, this, partial_key));
+            }
         } else if (logger_)
-            logger_->error("Partial message with given TID {} already exists", k);
+            logger_->error("Partial message from {} with given TID {} already exists", from.toString(), msg->tid);
     }
 }
 
@@ -1614,9 +1669,9 @@ NetworkEngine::sendError(const SockAddr& addr, Tid tid, uint16_t code, const std
 }
 
 void
-NetworkEngine::maintainRxBuffer(Tid tid)
+NetworkEngine::maintainRxBuffer(const PartialMessageKey& key)
 {
-    auto msg = partial_messages.find(tid);
+    auto msg = partial_messages.find(key);
     if (msg != partial_messages.end()) {
         const auto& now = scheduler.time();
         if (msg->second.start + RX_MAX_PACKET_TIME < now || msg->second.last_part + RX_TIMEOUT < now) {
