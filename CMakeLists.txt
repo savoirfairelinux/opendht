@@ -864,6 +864,8 @@ if (BUILD_TESTING)
         tests/test_dhtrunner.cpp
         tests/test_storage.h
         tests/test_storage.cpp
+        tests/test_persistence.h
+        tests/test_persistence.cpp
         tests/test_threadpool.h
         tests/test_threadpool.cpp
         tests/test_parsedmessage.h
