@@ -2270,8 +2270,16 @@ Dht::onDisconnected()
 void
 Dht::bootstrap()
 {
-    if (dht4.status != NodeStatus::Disconnected || dht6.status != NodeStatus::Disconnected)
+    if (dht4.status != NodeStatus::Disconnected || dht6.status != NodeStatus::Disconnected) {
+        // The job that led here has already run, and the scheduler does not
+        // clear the handle to a job it has executed. onDisconnected() reads a
+        // set handle as "a bootstrap is already scheduled" and does nothing,
+        // so leaving it set here means the node never tries to rejoin the
+        // network once it has lost it. Clearing it is what says that no
+        // bootstrap is pending any more.
+        bootstrapJob.reset();
         return;
+    }
     if (logger_)
         logger_->debug("[{}] Bootstraping", myid.to_view());
     bootstrap_pending = false;
