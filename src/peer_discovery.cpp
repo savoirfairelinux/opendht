@@ -2,473 +2,417 @@
 // SPDX-License-Identifier: MIT
 
 #include "peer_discovery.h"
-#include "network_utils.h"
-#include "utils.h"
 
-#ifdef __ANDROID__
-#include "compat/getif_workaround_android.h"
-#endif
+#include "dns_sd.h"
+#include "mdns_transport.h"
 
 #include <asio.hpp>
-
-using namespace std::literals;
+#include <chrono>
+#include <cstring>
+#include <mutex>
+#include <optional>
+#include <random>
 
 namespace dht {
+namespace {
 
-// Organization-local Scope multicast
-constexpr char MULTICAST_ADDRESS_IPV4[] = "239.192.0.1";
-constexpr char MULTICAST_ADDRESS_IPV6[] = "ff08::101";
+constexpr auto BROWSE_INTERVAL = std::chrono::seconds(60);
+constexpr auto CONNECTIVITY_RETRY = std::chrono::seconds(10);
+constexpr auto CONNECTIVITY_RETRY_MAX = std::chrono::minutes(1);
 
-class PeerDiscovery::DomainPeerDiscovery
+SockAddr
+socketAddress(const mdns::dns_sd::AddressData& data,
+              in_port_t port,
+              const asio::ip::udp::endpoint& source)
+{
+    SockAddr address;
+    std::visit(
+        [&](const auto& record) {
+            using Record = std::decay_t<decltype(record)>;
+            if constexpr (std::is_same_v<Record, mdns::AData>) {
+                address.setFamily(AF_INET);
+                std::memcpy(&address.getIPv4().sin_addr, record.address.data(), record.address.size());
+            } else {
+                address.setFamily(AF_INET6);
+                std::memcpy(&address.getIPv6().sin6_addr, record.address.data(), record.address.size());
+                const asio::ip::address_v6 parsed(record.address);
+                if (parsed.is_link_local() and source.address().is_v6())
+                    address.getIPv6().sin6_scope_id = source.address().to_v6().scope_id();
+            }
+        },
+        data);
+    address.setPort(port);
+    return address;
+}
+
+bool
+isGoodbye(const mdns::Message& message)
+{
+    return std::any_of(message.answers.begin(), message.answers.end(), [](const mdns::ResourceRecord& record) {
+        return record.type == mdns::Type::PTR and record.name == mdns::dns_sd::serviceName() and record.ttl == 0;
+    });
+}
+
+} // namespace
+
+class PeerDiscovery::Impl : public std::enable_shared_from_this<PeerDiscovery::Impl>
 {
 public:
-    DomainPeerDiscovery(asio::ip::udp domain,
-                        in_port_t port,
-                        Sp<asio::io_context> ioContext = {},
-                        Sp<Logger> logger = {});
-    ~DomainPeerDiscovery();
+    Impl(std::shared_ptr<asio::io_context> ioContext, std::shared_ptr<Logger> logger)
+        : ioContext_(std::move(ioContext))
+        , logger_(std::move(logger))
+        , transport_(ioContext_, logger_)
+        , browseTimer_(*ioContext_)
+        , announceTimer_(*ioContext_)
+        , connectivityTimer_(*ioContext_)
+    {}
 
-    void startDiscovery(std::string_view type, ServiceDiscoveredCallback callback);
-    void startPublish(std::string_view type, const msgpack::sbuffer& pack_buf);
+    void start()
+    {
+        transport_.start([weak = weak_from_this()](const mdns::Packet& packet,
+                                                   const asio::ip::udp::endpoint& source) {
+            if (const auto self = weak.lock())
+                self->receive(packet, source);
+        });
+    }
 
-    void stop();
+    void startDiscovery(NetId network, PeerDiscoveredCallback callback)
+    {
+        {
+            std::lock_guard lock(mutex_);
+            discoveryNetwork_ = network;
+            discoveryCallback_ = std::move(callback);
+        }
+        asio::post(*ioContext_, [weak = weak_from_this()] {
+            if (const auto self = weak.lock())
+                self->browse();
+        });
+    }
 
-    bool stopDiscovery(std::string_view type);
-    bool stopPublish(std::string_view type);
+    void startPublish(const InfoHash& nodeId, NetId network, in_port_t port)
+    {
+        mdns::dns_sd::Service service {nodeId, network, port, transport_.addresses()};
+        const auto message = mdns::dns_sd::announcement(service);
+        {
+            std::lock_guard lock(mutex_);
+            published_ = std::move(service);
+        }
+        transport_.send(mdns::encode(message));
+        asio::post(*ioContext_, [weak = weak_from_this()] {
+            const auto self = weak.lock();
+            if (not self)
+                return;
+            self->announceTimer_.expires_after(std::chrono::seconds(1));
+            self->announceTimer_.async_wait([weak](const asio::error_code& error) {
+                if (not error) {
+                    if (const auto locked = weak.lock())
+                        locked->announce();
+                }
+            });
+        });
+    }
 
-    void connectivityChanged();
+    bool stopDiscovery()
+    {
+        std::lock_guard lock(mutex_);
+        const auto stopped = bool(discoveryCallback_);
+        discoveryCallback_ = {};
+        discoveryNetwork_.reset();
+        asio::post(*ioContext_, [weak = weak_from_this()] {
+            if (const auto self = weak.lock())
+                self->browseTimer_.cancel();
+        });
+        return stopped;
+    }
 
-    void stopConnectivityChanged();
+    bool stopPublish()
+    {
+        std::optional<mdns::dns_sd::Service> service;
+        {
+            std::lock_guard lock(mutex_);
+            service = std::exchange(published_, {});
+        }
+        asio::post(*ioContext_, [weak = weak_from_this()] {
+            if (const auto self = weak.lock())
+                self->announceTimer_.cancel();
+        });
+        if (service)
+            transport_.send(mdns::encode(mdns::dns_sd::goodbye(*service)));
+        return bool(service);
+    }
+
+    void stop()
+    {
+        stopConnectivityChanged();
+        stopDiscovery();
+        std::optional<mdns::dns_sd::Service> service;
+        {
+            std::lock_guard lock(mutex_);
+            service = std::exchange(published_, {});
+        }
+        asio::post(*ioContext_, [weak = weak_from_this()] {
+            if (const auto self = weak.lock())
+                self->announceTimer_.cancel();
+        });
+        if (service)
+            transport_.sendAndWait(mdns::encode(mdns::dns_sd::goodbye(*service)));
+        transport_.stop();
+    }
+
+    void connectivityChanged()
+    {
+        asio::post(*ioContext_, [weak = weak_from_this()] {
+            if (const auto self = weak.lock())
+                self->handleConnectivityChanged();
+        });
+    }
+
+    void stopConnectivityChanged()
+    {
+        asio::post(*ioContext_, [weak = weak_from_this()] {
+            if (const auto self = weak.lock()) {
+                self->connectivityTimer_.cancel();
+                self->connectivityRetry_ = CONNECTIVITY_RETRY;
+            }
+        });
+    }
 
 private:
-    Sp<Logger> logger_;
-    // dmtx_ for callbackmap_ and drunning_ (write)
-    std::mutex dmtx_;
-    // mtx_ for messages_ and lrunning (listen)
-    std::mutex mtx_;
+    void handleConnectivityChanged()
+    {
+        transport_.refresh();
+        refreshPublication();
+        browse();
+
+        connectivityTimer_.expires_after(connectivityRetry_);
+        connectivityTimer_.async_wait([weak = weak_from_this()](const asio::error_code& error) {
+            if (not error) {
+                if (const auto self = weak.lock())
+                    self->handleConnectivityChanged();
+            }
+        });
+        connectivityRetry_ = std::min(
+            connectivityRetry_ * 2,
+            std::chrono::duration_cast<std::chrono::steady_clock::duration>(CONNECTIVITY_RETRY_MAX));
+    }
+
+    void browse()
+    {
+        bool active;
+        {
+            std::lock_guard lock(mutex_);
+            active = bool(discoveryCallback_);
+        }
+        if (not active)
+            return;
+        transport_.send(mdns::encode(mdns::dns_sd::browseQuery()));
+        browseTimer_.expires_after(BROWSE_INTERVAL);
+        browseTimer_.async_wait([weak = weak_from_this()](const asio::error_code& error) {
+            if (not error) {
+                if (const auto self = weak.lock())
+                    self->browse();
+            }
+        });
+    }
+
+    void announce()
+    {
+        std::optional<mdns::dns_sd::Service> service;
+        {
+            std::lock_guard lock(mutex_);
+            service = published_;
+        }
+        if (service)
+            transport_.send(mdns::encode(mdns::dns_sd::announcement(*service)));
+    }
+
+    void refreshPublication()
+    {
+        std::optional<mdns::dns_sd::Service> service;
+        {
+            std::lock_guard lock(mutex_);
+            if (published_) {
+                published_->addresses = transport_.addresses();
+                service = published_;
+            }
+        }
+        if (service)
+            transport_.send(mdns::encode(mdns::dns_sd::announcement(*service)));
+    }
+
+    void receive(const mdns::Packet& packet, const asio::ip::udp::endpoint& source)
+    {
+        try {
+            const auto message = mdns::decode(packet.data(), packet.size());
+            if (message.response)
+                discover(message, source);
+            else
+                answer(message, source);
+        } catch (const std::exception& error) {
+            if (logger_)
+                logger_->warn("Ignoring invalid mDNS packet: {}", error.what());
+        }
+    }
+
+    void answer(const mdns::Message& query, const asio::ip::udp::endpoint& source)
+    {
+        std::optional<mdns::dns_sd::Service> service;
+        {
+            std::lock_guard lock(mutex_);
+            service = published_;
+        }
+        if (service) {
+            if (auto response = mdns::dns_sd::respond(query, *service)) {
+                const auto unicast = source.port() != 5353
+                    or std::any_of(query.questions.begin(), query.questions.end(), [](const mdns::Question& question) {
+                           return question.unicastResponse;
+                       });
+                if (source.port() != 5353)
+                    response->questions = query.questions;
+                auto packet = mdns::encode(*response);
+                const auto sharedAnswer = std::any_of(
+                    response->answers.begin(), response->answers.end(), [](const mdns::ResourceRecord& record) {
+                        return not record.cacheFlush;
+                    });
+                if (not sharedAnswer) {
+                    if (unicast)
+                        transport_.send(std::move(packet), source);
+                    else
+                        transport_.send(std::move(packet));
+                    return;
+                }
+
+                static thread_local std::mt19937 random {std::random_device {}()};
+                const auto delay = std::chrono::milliseconds(std::uniform_int_distribution<int> {20, 120}(random));
+                auto timer = std::make_shared<asio::steady_timer>(*ioContext_, delay);
+                timer->async_wait([weak = weak_from_this(), timer, packet = std::move(packet), source, unicast](
+                                      const asio::error_code& error) mutable {
+                    if (error)
+                        return;
+                    const auto self = weak.lock();
+                    if (not self)
+                        return;
+                    if (unicast)
+                        self->transport_.send(std::move(packet), source);
+                    else
+                        self->transport_.send(std::move(packet));
+                });
+            }
+        }
+    }
+
+    void discover(const mdns::Message& message, const asio::ip::udp::endpoint& source)
+    {
+        if (isGoodbye(message))
+            return;
+        const auto service = mdns::dns_sd::resolve(message);
+        if (not service)
+            return;
+
+        PeerDiscoveredCallback callback;
+        std::optional<NetId> network;
+        std::optional<InfoHash> localNode;
+        {
+            std::lock_guard lock(mutex_);
+            callback = discoveryCallback_;
+            network = discoveryNetwork_;
+            if (published_)
+                localNode = published_->nodeId;
+        }
+        if (not callback or not network or service->network != *network
+            or (localNode and service->nodeId == *localNode))
+            return;
+
+        for (const auto& address : service->addresses)
+            callback(service->nodeId, socketAddress(address, service->port, source));
+    }
+
     std::shared_ptr<asio::io_context> ioContext_;
-
-    static constexpr dht::duration PeerDiscovery_PERIOD_MAX {std::chrono::minutes(1)};
-    static constexpr std::chrono::seconds PeerDiscovery_PERIOD {10};
-    asio::steady_timer peerDiscoveryTimer;
-    std::chrono::steady_clock::duration peerDiscovery_period {PeerDiscovery_PERIOD};
-
-    asio::ip::udp::socket sockFd_;
-    asio::ip::udp::endpoint sockAddrSend_;
-
-    std::array<char, 64 * 1024> receiveBuf_;
-    asio::ip::udp::endpoint receiveFrom_;
-
-    msgpack::sbuffer sbuf_;
-    std::map<std::string, msgpack::sbuffer, std::less<>> messages_;
-    std::map<std::string, ServiceDiscoveredCallback, std::less<>> callbackmap_;
-    bool lrunning_ {false};
-    bool drunning_ {false};
-
-    void loopListener();
-    void query(const asio::ip::udp::endpoint& peer);
-    void reloadMessages();
-
-    void stopDiscovery();
-    void stopPublish();
-
-    void publish(const asio::ip::udp::endpoint& peer);
-
-    void reDiscover();
+    std::shared_ptr<Logger> logger_;
+    mdns::MdnsTransport transport_;
+    asio::steady_timer browseTimer_;
+    asio::steady_timer announceTimer_;
+    asio::steady_timer connectivityTimer_;
+    std::chrono::steady_clock::duration connectivityRetry_ {CONNECTIVITY_RETRY};
+    std::mutex mutex_;
+    std::optional<NetId> discoveryNetwork_;
+    PeerDiscoveredCallback discoveryCallback_;
+    std::optional<mdns::dns_sd::Service> published_;
 };
 
-PeerDiscovery::DomainPeerDiscovery::DomainPeerDiscovery(asio::ip::udp domain,
-                                                        in_port_t port,
-                                                        Sp<asio::io_context> ioContext,
-                                                        Sp<Logger> logger)
-    : logger_(logger)
-    , ioContext_(ioContext)
-    , peerDiscoveryTimer(*ioContext_)
-    , sockFd_(*ioContext_, domain)
-    , sockAddrSend_(asio::ip::make_address(domain.family() == AF_INET ? MULTICAST_ADDRESS_IPV4 : MULTICAST_ADDRESS_IPV6),
-                    port)
-{
-    try {
-        sockFd_.set_option(asio::ip::multicast::join_group(sockAddrSend_.address()));
-        sockFd_.set_option(asio::ip::udp::socket::reuse_address(true));
-        sockFd_.bind({domain, port});
-    } catch (const std::exception& e) {
-#ifdef __ANDROID__
-        if (domain.family() == AF_INET && strcmp(e.what(), "set_option: No such device") == 0) {
-            try {
-                sockFd_.set_option(asio::ip::udp::socket::reuse_address(true));
-                auto mc_interface = workaround::get_interface();
-                sockFd_.set_option(asio::ip::multicast::outbound_interface(mc_interface));
-                sockFd_.set_option(asio::ip::multicast::join_group(sockAddrSend_.address().to_v4(), mc_interface));
-                sockFd_.bind({domain, port});
-            } catch (const std::exception& e) {
-                if (logger_)
-                    logger_->error("Unable to start peer discovery using android workaround: {}", e.what());
-            }
-        } else
-#endif
-            if (logger_)
-            logger_->error("Unable to start peer discovery for {}: {}",
-                           domain.family() == AF_INET ? "IPv4" : "IPv6",
-                           e.what());
-    }
-}
-
-PeerDiscovery::DomainPeerDiscovery::~DomainPeerDiscovery()
-{
-    stop();
-    sockFd_.close();
-}
-
-void
-PeerDiscovery::DomainPeerDiscovery::startDiscovery(std::string_view type, ServiceDiscoveredCallback callback)
-{
-    std::lock_guard lck(dmtx_);
-    callbackmap_[std::string(type)] = callback;
-    if (not drunning_) {
-        drunning_ = true;
-        asio::post(*ioContext_, [this]() {
-            loopListener();
-            query(sockAddrSend_);
-        });
-    }
-}
-
-void
-PeerDiscovery::DomainPeerDiscovery::loopListener()
-{
-    std::lock_guard lck(dmtx_);
-    if (not drunning_)
-        return;
-    sockFd_.async_receive_from(asio::buffer(receiveBuf_),
-                               receiveFrom_,
-                               [this](const asio::error_code& error, size_t bytes) {
-                                   if (error == asio::error::operation_aborted)
-                                       return;
-                                   if (error) {
-                                       if (logger_)
-                                           logger_->error("Error receiving message: {}", error.message());
-                                   }
-                                   try {
-                                       auto rcv = msgpack::unpack(receiveBuf_.data(), bytes);
-                                       msgpack::object obj = rcv.get();
-
-                                       if (obj.type == msgpack::type::STR) {
-                                           if (lrunning_ and obj.as<std::string_view>() == "q"sv)
-                                               publish(receiveFrom_);
-                                       } else if (obj.type == msgpack::type::MAP) {
-                                           for (unsigned i = 0; i < obj.via.map.size; i++) {
-                                               auto& o = obj.via.map.ptr[i];
-                                               if (o.key.type != msgpack::type::STR)
-                                                   continue;
-                                               ServiceDiscoveredCallback cb;
-                                               {
-                                                   std::lock_guard lck(dmtx_);
-                                                   if (drunning_) {
-                                                       auto callback = callbackmap_.find(o.key.as<std::string_view>());
-                                                       if (callback != callbackmap_.end())
-                                                           cb = callback->second;
-                                                   } else
-                                                       return;
-                                               }
-                                               if (cb)
-                                                   cb(std::move(o.val),
-                                                      SockAddr {receiveFrom_.data(), (socklen_t) receiveFrom_.size()});
-                                           }
-                                       } else {
-                                           throw msgpack::type_error {};
-                                       }
-                                   } catch (const std::exception& e) {
-                                       if (logger_)
-                                           logger_->error("Error receiving packet: {}", e.what());
-                                   }
-                                   loopListener();
-                               });
-}
-
-void
-PeerDiscovery::DomainPeerDiscovery::query(const asio::ip::udp::endpoint& peer)
-{
-    std::lock_guard lck(dmtx_);
-    if (not drunning_)
-        return;
-
-    msgpack::sbuffer pbuf_request;
-    msgpack::pack(pbuf_request, "q");
-
-    sockFd_.async_send_to(asio::buffer(pbuf_request.data(), pbuf_request.size()),
-                          peer,
-                          [logger = logger_, peer](const asio::error_code& ec, size_t) {
-                              if (ec and (ec != asio::error::operation_aborted) and logger)
-                                  logger->warn("Error sending packet to: {} with err: {}",
-                                               peer.address().to_string(),
-                                               ec.message());
-                          });
-}
-
-void
-PeerDiscovery::DomainPeerDiscovery::publish(const asio::ip::udp::endpoint& peer)
-{
-    std::lock_guard lck(mtx_);
-    if (not lrunning_)
-        return;
-
-    sockFd_.async_send_to(asio::buffer((const void*) sbuf_.data(), sbuf_.size()),
-                          peer,
-                          [logger = logger_, peer](const asio::error_code& ec, size_t) {
-                              if (ec and (ec != asio::error::operation_aborted) and logger)
-                                  logger->warn("Error sending packet to: {} with err: {}",
-                                               peer.address().to_string(),
-                                               ec.message());
-                          });
-}
-
-void
-PeerDiscovery::DomainPeerDiscovery::startPublish(std::string_view type, const msgpack::sbuffer& pack_buf)
-{
-    msgpack::sbuffer pack_buf_c(pack_buf.size());
-    pack_buf_c.write(pack_buf.data(), pack_buf.size());
-
-    std::lock_guard lck(mtx_);
-    messages_[std::string(type)] = std::move(pack_buf_c);
-    reloadMessages();
-    lrunning_ = true;
-    asio::post(*ioContext_, [this]() { publish(sockAddrSend_); });
-}
-
-bool
-PeerDiscovery::DomainPeerDiscovery::stopDiscovery(std::string_view type)
-{
-    std::lock_guard lck(dmtx_);
-    auto it = callbackmap_.find(type);
-    if (it != callbackmap_.end()) {
-        callbackmap_.erase(it);
-        if (callbackmap_.empty())
-            stopDiscovery();
-        return true;
-    }
-    return false;
-}
-
-bool
-PeerDiscovery::DomainPeerDiscovery::stopPublish(std::string_view type)
-{
-    std::lock_guard lck(mtx_);
-    auto it = messages_.find(type);
-    if (it != messages_.end()) {
-        messages_.erase(it);
-        if (messages_.empty())
-            stopPublish();
-        else
-            reloadMessages();
-        return true;
-    }
-    return false;
-}
-
-void
-PeerDiscovery::DomainPeerDiscovery::stopDiscovery()
-{
-    drunning_ = false;
-}
-
-void
-PeerDiscovery::DomainPeerDiscovery::stopPublish()
-{
-    lrunning_ = false;
-}
-
-void
-PeerDiscovery::DomainPeerDiscovery::stop()
-{
-    {
-        std::lock_guard lck(dmtx_);
-        stopDiscovery();
-    }
-    {
-        std::lock_guard lck(mtx_);
-        stopPublish();
-    }
-}
-
-void
-PeerDiscovery::DomainPeerDiscovery::reloadMessages()
-{
-    sbuf_.clear();
-    msgpack::packer<msgpack::sbuffer> pk(&sbuf_);
-    pk.pack_map(messages_.size());
-    for (const auto& m : messages_) {
-        pk.pack(m.first);
-        sbuf_.write(m.second.data(), m.second.size());
-    }
-}
-
-void
-PeerDiscovery::DomainPeerDiscovery::reDiscover()
-{
-    asio::error_code ec;
-
-    sockFd_.set_option(asio::ip::multicast::join_group(sockAddrSend_.address()), ec);
-    if (ec and logger_)
-        logger_->warn("Unable to multicast on {}: {}", sockAddrSend_.address().to_string(), ec.message());
-    query(sockAddrSend_);
-}
-
-void
-PeerDiscovery::DomainPeerDiscovery::connectivityChanged()
-{
-    asio::post(*ioContext_, [this]() {
-        reDiscover();
-        publish(sockAddrSend_);
-    });
-    if (logger_)
-        logger_->debug("PeerDiscovery: connectivity changed");
-
-    if (peerDiscovery_period == PeerDiscovery_PERIOD_MAX) {
-        peerDiscovery_period = PeerDiscovery_PERIOD;
-    } else {
-        peerDiscoveryTimer.expires_after(peerDiscovery_period);
-        peerDiscoveryTimer.async_wait([this](const asio::error_code& ec) {
-            if (ec == asio::error::operation_aborted)
-                return;
-            connectivityChanged();
-        });
-        peerDiscovery_period = std::min(peerDiscovery_period * 2, PeerDiscovery_PERIOD_MAX);
-    }
-}
-
-void
-PeerDiscovery::DomainPeerDiscovery::stopConnectivityChanged()
-{
-    peerDiscoveryTimer.cancel();
-    peerDiscovery_period = PeerDiscovery_PERIOD;
-}
-
-PeerDiscovery::PeerDiscovery(in_port_t port, Sp<asio::io_context> ioContext, Sp<Logger> logger)
+PeerDiscovery::PeerDiscovery(std::shared_ptr<asio::io_context> ioContext, std::shared_ptr<Logger> logger)
 {
     if (not ioContext) {
         ioContext = std::make_shared<asio::io_context>();
         ioContext_ = ioContext;
-        ioRunnner_ = std::thread([logger, ioContext] {
+    }
+    impl_ = std::make_shared<Impl>(ioContext, logger);
+    impl_->start();
+
+    if (ioContext_) {
+        ioRunner_ = std::thread([logger = std::move(logger), ioContext = std::move(ioContext)] {
             try {
-                if (logger)
-                    logger->d("[peerdiscovery] starting io_context");
                 auto work = asio::make_work_guard(*ioContext);
                 ioContext->run();
+            } catch (const std::exception& error) {
                 if (logger)
-                    logger->d("[peerdiscovery] io_context stopped");
-            } catch (const std::exception& ex) {
-                if (logger)
-                    logger->e("[peerdiscovery] run error: %s", ex.what());
+                    logger->error("Peer discovery event loop failed: {}", error.what());
             }
         });
-    }
-
-    try {
-        peerDiscovery4_.reset(new DomainPeerDiscovery(asio::ip::udp::v4(), port, ioContext, logger));
-    } catch (const std::exception& e) {
-        if (logger)
-            logger->e("[peerdiscovery] Unable to start IPv4: %s", e.what());
-    }
-    try {
-        peerDiscovery6_.reset(new DomainPeerDiscovery(asio::ip::udp::v6(), port, ioContext, logger));
-    } catch (const std::exception& e) {
-        if (logger)
-            logger->e("[peerdiscovery] Unable to start IPv6: %s", e.what());
     }
 }
 
 PeerDiscovery::~PeerDiscovery()
 {
     stop();
+    impl_.reset();
     if (ioContext_)
         ioContext_->stop();
-    if (ioRunnner_.joinable())
-        ioRunnner_.join();
+    if (ioRunner_.joinable())
+        ioRunner_.join();
 }
 
 void
-PeerDiscovery::startDiscovery(std::string_view type, ServiceDiscoveredCallback callback)
+PeerDiscovery::startDiscovery(NetId network, PeerDiscoveredCallback callback)
 {
-    if (peerDiscovery4_)
-        peerDiscovery4_->startDiscovery(type, callback);
-    if (peerDiscovery6_)
-        peerDiscovery6_->startDiscovery(type, callback);
+    impl_->startDiscovery(network, std::move(callback));
 }
 
 void
-PeerDiscovery::startPublish(std::string_view type, const msgpack::sbuffer& pack_buf)
+PeerDiscovery::startPublish(const InfoHash& nodeId, NetId network, in_port_t port)
 {
-    if (peerDiscovery4_)
-        peerDiscovery4_->startPublish(type, pack_buf);
-    if (peerDiscovery6_)
-        peerDiscovery6_->startPublish(type, pack_buf);
+    impl_->startPublish(nodeId, network, port);
 }
 
-void
-PeerDiscovery::startPublish(sa_family_t domain, std::string_view type, const msgpack::sbuffer& pack_buf)
+bool
+PeerDiscovery::stopDiscovery()
 {
-    if (domain == AF_INET) {
-        if (peerDiscovery4_)
-            peerDiscovery4_->startPublish(type, pack_buf);
-    } else if (domain == AF_INET6) {
-        if (peerDiscovery6_)
-            peerDiscovery6_->startPublish(type, pack_buf);
-    }
+    return impl_->stopDiscovery();
+}
+
+bool
+PeerDiscovery::stopPublish()
+{
+    return impl_->stopPublish();
 }
 
 void
 PeerDiscovery::stop()
 {
-    if (peerDiscovery4_)
-        peerDiscovery4_->stop();
-    if (peerDiscovery6_)
-        peerDiscovery6_->stop();
-}
-
-bool
-PeerDiscovery::stopDiscovery(std::string_view type)
-{
-    bool stopped4 = peerDiscovery4_ and peerDiscovery4_->stopDiscovery(type);
-    bool stopped6 = peerDiscovery6_ and peerDiscovery6_->stopDiscovery(type);
-    return stopped4 or stopped6;
-}
-
-bool
-PeerDiscovery::stopPublish(std::string_view type)
-{
-    bool stopped4 = peerDiscovery4_ and peerDiscovery4_->stopPublish(type);
-    bool stopped6 = peerDiscovery6_ and peerDiscovery6_->stopPublish(type);
-    return stopped4 or stopped6;
-}
-
-bool
-PeerDiscovery::stopPublish(sa_family_t domain, std::string_view type)
-{
-    if (domain == AF_INET) {
-        return peerDiscovery4_ and peerDiscovery4_->stopPublish(type);
-    } else if (domain == AF_INET6) {
-        return peerDiscovery6_ and peerDiscovery6_->stopPublish(type);
-    }
-    return false;
+    if (impl_)
+        impl_->stop();
 }
 
 void
 PeerDiscovery::connectivityChanged()
 {
-    if (peerDiscovery4_)
-        peerDiscovery4_->connectivityChanged();
-    if (peerDiscovery6_)
-        peerDiscovery6_->connectivityChanged();
+    impl_->connectivityChanged();
 }
 
 void
 PeerDiscovery::stopConnectivityChanged()
 {
-    if (peerDiscovery4_)
-        peerDiscovery4_->stopConnectivityChanged();
-    if (peerDiscovery6_)
-        peerDiscovery6_->stopConnectivityChanged();
+    impl_->stopConnectivityChanged();
 }
 
-} /* namespace dht */
+} // namespace dht

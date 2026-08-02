@@ -21,16 +21,6 @@ namespace dht {
 
 using namespace std::literals;
 
-constexpr auto PEER_DISCOVERY_DHT_SERVICE = "dht"sv;
-
-struct NodeInsertionPack
-{
-    dht::InfoHash nodeId;
-    in_port_t port;
-    dht::NetId net;
-    MSGPACK_DEFINE(nodeId, port, net)
-};
-
 DhtRunner::DhtRunner()
     : dht_()
 {
@@ -256,32 +246,22 @@ DhtRunner::run(const Config& config, Context&& context)
 #ifdef OPENDHT_PEER_DISCOVERY
         auto netId = config.dht_config.node_config.network;
         if (config.peer_discovery) {
-            peerDiscovery_->startDiscovery<NodeInsertionPack>(PEER_DISCOVERY_DHT_SERVICE,
-                                                              [this, netId](NodeInsertionPack&& v, SockAddr&& addr) {
-                                                                  addr.setPort(v.port);
-                                                                  if (v.nodeId != dht_->getNodeId() && netId == v.net) {
-                                                                      bootstrap(v.nodeId, addr);
-                                                                  }
-                                                              });
+            peerDiscovery_->startDiscovery(netId, [this](const InfoHash& nodeId, SockAddr&& address) {
+                if (nodeId != dht_->getNodeId())
+                    bootstrap(nodeId, address);
+            });
         }
         if (config.peer_publish) {
-            msgpack::sbuffer sbuf_node;
-            NodeInsertionPack adc;
-            adc.net = netId;
-            adc.nodeId = dht_->getNodeId();
             if (auto socket = dht_->getSocket()) {
-                // IPv4
-                if (const auto& bound4 = socket->getBoundRef(AF_INET)) {
-                    adc.port = bound4.getPort();
-                    msgpack::pack(sbuf_node, adc);
-                    peerDiscovery_->startPublish(AF_INET, PEER_DISCOVERY_DHT_SERVICE, sbuf_node);
-                }
-                // IPv6
-                if (const auto& bound6 = socket->getBoundRef(AF_INET6)) {
-                    adc.port = bound6.getPort();
-                    sbuf_node.clear();
-                    msgpack::pack(sbuf_node, adc);
-                    peerDiscovery_->startPublish(AF_INET6, PEER_DISCOVERY_DHT_SERVICE, sbuf_node);
+                const auto& bound4 = socket->getBoundRef(AF_INET);
+                const auto& bound6 = socket->getBoundRef(AF_INET6);
+                const auto port4 = bound4 ? bound4.getPort() : 0;
+                const auto port6 = bound6 ? bound6.getPort() : 0;
+                if (port4 and port6 and port4 != port6) {
+                    if (logger_)
+                        logger_->error("Unable to publish peer discovery with different IPv4 and IPv6 ports");
+                } else if (const auto port = port4 ? port4 : port6) {
+                    peerDiscovery_->startPublish(dht_->getNodeId(), netId, port);
                 }
             }
         }
