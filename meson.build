@@ -123,7 +123,7 @@ if get_option('push_notifications').enabled()
     add_project_arguments('-DOPENDHT_PUSH_NOTIFICATIONS', language: 'cpp')
 endif
 if get_option('peer_discovery').enabled()
-    opendht_src += ['src/mdns.cpp', 'src/peer_discovery.cpp']
+    opendht_src += ['src/mdns.cpp', 'src/dns_sd.cpp', 'src/peer_discovery.cpp']
     add_project_arguments('-DOPENDHT_PEER_DISCOVERY', language: 'cpp')
 endif
 opendht = library(
