@@ -539,10 +539,28 @@ NetworkEngine::processMessage(const uint8_t* buf, size_t buflen, SockAddr f)
         return;
     }
 
+    if (msg->value_parts.empty()) {
+        if (msg->type > MessageType::Reply) {
+            /* Rate limit requests. */
+            if (!rateLimit(from)) {
+                if (logger_)
+                    logger_->warn("Dropping request due to rate limiting");
+                return;
+            }
+        }
+        try {
+            process(std::move(msg), from);
+        } catch (const std::exception& e) {
+            if (logger_)
+                logger_->warn("Error while processing message: {}", e.what());
+        }
+        return;
+    }
+
     PartialMessageKey partial_key {from, msg->tid};
     const auto partial = partial_messages.find(partial_key);
-    const bool request_quota_consumed = !msg->value_parts.empty() && partial != partial_messages.end()
-                                        && !partial->second.msg && partial->second.request_quota_consumed;
+    const bool request_quota_consumed = partial != partial_messages.end() && !partial->second.msg
+                                        && partial->second.request_quota_consumed;
     if (msg->type > MessageType::Reply && !request_quota_consumed) {
         /* Rate limit requests. */
         if (!rateLimit(from)) {
@@ -552,45 +570,34 @@ NetworkEngine::processMessage(const uint8_t* buf, size_t buflen, SockAddr f)
         }
     }
 
-    if (msg->value_parts.empty()) {
-        try {
-            process(std::move(msg), from);
-        } catch (const std::exception& e) {
-            if (logger_)
-                logger_->warn("Error while processing message: {}", e.what());
-            return;
+    // starting partial message session
+    auto inserted = partial_messages.emplace(partial_key, PartialMessage {});
+    auto& pmsg = inserted.first->second;
+    if (not pmsg.msg) {
+        if (inserted.second) {
+            pmsg.from = from;
+            pmsg.start = now;
+            scheduler.add(now + RX_MAX_PACKET_TIME, std::bind(&NetworkEngine::maintainRxBuffer, this, partial_key));
         }
-    } else {
-        // starting partial message session
-        auto inserted = partial_messages.emplace(partial_key, PartialMessage {});
-        auto& pmsg = inserted.first->second;
-        if (not pmsg.msg) {
-            if (inserted.second) {
-                pmsg.from = from;
-                pmsg.start = now;
-                scheduler.add(now + RX_MAX_PACKET_TIME,
-                              std::bind(&NetworkEngine::maintainRxBuffer, this, partial_key));
+        pmsg.msg = std::move(msg);
+        pmsg.last_part = now;
+        for (const auto& part : pmsg.early_parts)
+            pmsg.msg->append(*part);
+        pmsg.early_parts.clear();
+        pmsg.early_bytes = 0;
+        if (pmsg.msg->complete()) {
+            try {
+                process(std::move(pmsg.msg), from);
+            } catch (const std::exception& e) {
+                if (logger_)
+                    logger_->warn("Error while processing partial message: {}", e.what());
             }
-            pmsg.msg = std::move(msg);
-            pmsg.last_part = now;
-            for (const auto& part : pmsg.early_parts)
-                pmsg.msg->append(*part);
-            pmsg.early_parts.clear();
-            pmsg.early_bytes = 0;
-            if (pmsg.msg->complete()) {
-                try {
-                    process(std::move(pmsg.msg), from);
-                } catch (const std::exception& e) {
-                    if (logger_)
-                        logger_->warn("Error while processing partial message: {}", e.what());
-                }
-                partial_messages.erase(inserted.first);
-            } else {
-                scheduler.add(now + RX_TIMEOUT, std::bind(&NetworkEngine::maintainRxBuffer, this, partial_key));
-            }
-        } else if (logger_)
-            logger_->error("Partial message from {} with given TID {} already exists", from.toString(), msg->tid);
-    }
+            partial_messages.erase(inserted.first);
+        } else {
+            scheduler.add(now + RX_TIMEOUT, std::bind(&NetworkEngine::maintainRxBuffer, this, partial_key));
+        }
+    } else if (logger_)
+        logger_->error("Partial message from {} with given TID {} already exists", from.toString(), msg->tid);
 }
 
 void
