@@ -21,6 +21,21 @@ struct Dht::Get
     QueryCallback query_cb;
     GetCallback get_cb;
     DoneCallback done_cb;
+
+    /**
+     * Tells if the answer to `answered` can be reported to this operation as-is.
+     *
+     * A vanilla get applies its own filter to the values it receives, so a
+     * broader answer is usable. A projected get only receives the fields
+     * selected by `answered` and can no longer filter them, so it requires the
+     * very same filters.
+     */
+    bool isSatisfiedBy(const Query& answered) const
+    {
+        if (not query)
+            return true;
+        return query_cb ? query->isProjectionSatisfiedBy(answered) : query->isSatisfiedBy(answered);
+    }
 };
 
 /**

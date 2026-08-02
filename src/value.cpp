@@ -591,6 +591,14 @@ Query::isSatisfiedBy(const Query& q) const
     return none or (where.isSatisfiedBy(q.where) and select.isSatisfiedBy(q.select));
 }
 
+bool
+Query::isProjectionSatisfiedBy(const Query& q) const
+{
+    /* A projected answer can not be filtered afterwards, so requiring the
+       filters of both queries to be a subset of each other, that is equal. */
+    return none or (isSatisfiedBy(q) and q.where.isSatisfiedBy(where));
+}
+
 std::ostream&
 operator<<(std::ostream& s, const dht::Select& select)
 {
