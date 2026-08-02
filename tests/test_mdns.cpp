@@ -198,4 +198,30 @@ MdnsTester::testDnsSdQueryResponse()
     CPPUNIT_ASSERT(dns_sd::respond(knownAnswerQuery, service));
 }
 
+void
+MdnsTester::testDnsSdCache()
+{
+    dns_sd::Service service;
+    service.nodeId = dht::InfoHash("0123456789abcdef0123456789abcdef01234567");
+    service.network = 42;
+    service.port = 4222;
+    service.addresses.emplace_back(AData {{192, 0, 2, 1}});
+
+    auto now = dns_sd::Cache::Clock::now();
+    dns_sd::Cache cache([&] { return now; });
+    auto ptr = dns_sd::announcement(service);
+    auto details = ptr;
+    ptr.additionals.clear();
+    details.answers.clear();
+
+    CPPUNIT_ASSERT(cache.update(ptr).empty());
+    const auto discovered = cache.update(details);
+    CPPUNIT_ASSERT_EQUAL(size_t(1), discovered.size());
+    CPPUNIT_ASSERT_EQUAL(service.nodeId, discovered.front().nodeId);
+    CPPUNIT_ASSERT_EQUAL(size_t(1), cache.services().size());
+
+    now += std::chrono::seconds(dns_sd::HOST_RECORD_TTL + 1);
+    CPPUNIT_ASSERT(cache.services().empty());
+}
+
 } // namespace test
