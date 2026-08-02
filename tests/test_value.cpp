@@ -59,6 +59,34 @@ ValueTester::testFilter()
 }
 
 void
+ValueTester::testFieldValueIndexContainedIn()
+{
+    dht::Value first {(const uint8_t*) "a", 1};
+    first.id = 1;
+    dht::Value second {(const uint8_t*) "b", 1};
+    second.id = 2;
+
+    const dht::Select select {dht::Select {}.field(dht::Value::Field::Id)};
+    dht::FieldValueIndex first_index {first, select};
+    dht::FieldValueIndex second_index {second, select};
+
+    // Same projected field, different values: neither index contains the other.
+    CPPUNIT_ASSERT(not first_index.containedIn(second_index));
+    CPPUNIT_ASSERT(not second_index.containedIn(first_index));
+
+    // An index is always contained in an equal one.
+    dht::FieldValueIndex first_copy {first, select};
+    CPPUNIT_ASSERT(first_index.containedIn(first_copy));
+    CPPUNIT_ASSERT(first_copy.containedIn(first_index));
+
+    // A narrower projection with a matching value stays contained in a wider one.
+    const dht::Select wider {dht::Select {}.field(dht::Value::Field::Id).field(dht::Value::Field::ValueType)};
+    dht::FieldValueIndex first_wide {first, wider};
+    CPPUNIT_ASSERT(first_index.containedIn(first_wide));
+    CPPUNIT_ASSERT(not second_index.containedIn(first_wide));
+}
+
+void
 ValueTester::tearDown()
 {}
 
