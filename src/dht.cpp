@@ -304,7 +304,7 @@ Dht::searchNodeGetDone(const net::Request& req, net::RequestAnswer&& answer, std
                should not be sent anymore */
             for (auto& g : sr->callbacks) {
                 auto& q = g.second.query;
-                if (q->isSatisfiedBy(*query) and q != query) {
+                if (q != query and g.second.isSatisfiedBy(*query)) {
                     auto dummy_req = std::make_shared<net::Request>();
                     dummy_req->cancel();
                     srn->getStatus[q] = std::move(dummy_req);
@@ -2633,7 +2633,7 @@ Dht::onGetValuesDone(const Sp<Node>& node, net::RequestAnswer& a, Sp<Search>& sr
             for (auto& getp : sr->callbacks) { /* call all callbacks for this search */
                 auto& get = getp.second;
                 if (not(get.get_cb or get.query_cb)
-                    or (orig_query and get.query and not get.query->isSatisfiedBy(*orig_query)))
+                    or (orig_query and get.query and not get.isSatisfiedBy(*orig_query)))
                     continue;
 
                 if (get.query_cb) { /* in case of a request with query */
