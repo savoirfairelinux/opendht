@@ -274,13 +274,20 @@ ParsedMessage::msgpack_unpack(const msgpack::object& msg)
 
     if (!parsed.a && !parsed.r && !parsed.e && !parsed.u)
         throw msgpack::type_error();
-    auto& req = parsed.a ? *parsed.a : (parsed.r ? *parsed.r : (parsed.u ? *parsed.u : *parsed.e));
 
     if (parsed.e) {
-        if (parsed.e->type != msgpack::type::ARRAY)
+        if (parsed.e->type != msgpack::type::ARRAY or parsed.e->via.array.size < 1)
             throw msgpack::type_error();
         error_code = parsed.e->via.array.ptr[0].as<uint16_t>();
     }
+
+    /* An error-only message carries no request map. The error array must never
+       be reached through the map view of the msgpack object union, and a
+       request field that is not a map must be rejected rather than
+       reinterpreted. */
+    const msgpack::object* req = parsed.a ? parsed.a : (parsed.r ? parsed.r : parsed.u);
+    if (req and req->type != msgpack::type::MAP)
+        throw msgpack::type_error();
 
     struct ParsedReq
     {
@@ -290,8 +297,9 @@ ParsedMessage::msgpack_unpack(const msgpack::object& msg)
         msgpack::object* want;
     } parsedReq {};
 
-    for (unsigned i = 0; i < req.via.map.size; i++) {
-        auto& o = req.via.map.ptr[i];
+    const uint32_t req_size = req ? req->via.map.size : 0;
+    for (unsigned i = 0; i < req_size; i++) {
+        auto& o = req->via.map.ptr[i];
         if (o.key.type != msgpack::type::STR)
             continue;
         auto key = o.key.as<std::string_view>();
