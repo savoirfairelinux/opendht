@@ -16,6 +16,8 @@ class NetworkEngineTester : public CppUnit::TestFixture
     CPPUNIT_TEST(testCompletesPartialSessionWithDataBeforeHeader);
     CPPUNIT_TEST(testBuffersLargeValueBeforeHeader);
     CPPUNIT_TEST(testIgnoresEmptyPartialData);
+    CPPUNIT_TEST(testRejectsUnsolicitedPartialReply);
+    CPPUNIT_TEST(testDropsMalformedCompletedPartialMessage);
     CPPUNIT_TEST(testCompletesPartialSessionFromSameSource);
     CPPUNIT_TEST(testSeparatesPartialSessionsBySource);
     CPPUNIT_TEST(testListenConfirmationCarriesToken);
@@ -35,6 +37,8 @@ public:
     void testCompletesPartialSessionWithDataBeforeHeader();
     void testBuffersLargeValueBeforeHeader();
     void testIgnoresEmptyPartialData();
+    void testRejectsUnsolicitedPartialReply();
+    void testDropsMalformedCompletedPartialMessage();
     void testCompletesPartialSessionFromSameSource();
     void testSeparatesPartialSessionsBySource();
     void testListenConfirmationCarriesToken();
