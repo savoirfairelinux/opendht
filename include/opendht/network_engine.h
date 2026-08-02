@@ -493,6 +493,8 @@ private:
     static constexpr size_t RX_MAX_EARLY_PARTS {RX_MAX_EARLY_BYTES / MTU + 2};
 
     void process(std::unique_ptr<ParsedMessage>&&, const SockAddr& from);
+    bool isExpectedReply(const ParsedMessage&, const SockAddr& from);
+    bool tryCompleteMessage(PartialMessage&, const SockAddr& from);
 
     bool rateLimit(const SockAddr& addr);
 
