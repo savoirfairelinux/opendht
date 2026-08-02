@@ -171,4 +171,31 @@ MdnsTester::testDnsSdValidation()
     CPPUNIT_ASSERT_THROW(dns_sd::announcement({}), ParseError);
 }
 
+void
+MdnsTester::testDnsSdQueryResponse()
+{
+    dns_sd::Service service;
+    service.nodeId = dht::InfoHash("0123456789abcdef0123456789abcdef01234567");
+    service.network = 42;
+    service.port = 4222;
+    service.addresses.emplace_back(AData {{192, 0, 2, 1}});
+
+    const auto query = dns_sd::browseQuery();
+    CPPUNIT_ASSERT(not query.response);
+    CPPUNIT_ASSERT_EQUAL(size_t(1), query.questions.size());
+    CPPUNIT_ASSERT(query.questions.front().name == dns_sd::serviceName());
+    CPPUNIT_ASSERT(query.questions.front().type == Type::PTR);
+
+    const auto response = dns_sd::respond(query, service);
+    CPPUNIT_ASSERT(response);
+    CPPUNIT_ASSERT(dns_sd::resolve(*response));
+
+    auto knownAnswerQuery = query;
+    knownAnswerQuery.answers = response->answers;
+    CPPUNIT_ASSERT(not dns_sd::respond(knownAnswerQuery, service));
+
+    knownAnswerQuery.answers.front().ttl = dns_sd::SERVICE_RECORD_TTL / 2;
+    CPPUNIT_ASSERT(dns_sd::respond(knownAnswerQuery, service));
+}
+
 } // namespace test
