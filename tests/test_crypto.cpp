@@ -316,6 +316,15 @@ CryptoTester::testCertificateSerialNumber()
     };
     auto serial = dht::crypto::Certificate(cert_pem).getSerialNumber();
     CPPUNIT_ASSERT(std::equal(SERIAL.begin(), SERIAL.end(), serial.begin(), serial.end()));
+
+    auto key = dht::crypto::PrivateKey::generateEC();
+    for (unsigned i = 0; i < 32; i++) {
+        auto generated = dht::crypto::Certificate::generate(key, "generated", {});
+        auto generatedSerial = generated.getSerialNumber();
+        CPPUNIT_ASSERT(not generatedSerial.empty());
+        CPPUNIT_ASSERT_EQUAL(uint8_t {0}, uint8_t(generatedSerial.front() & 0x80));
+        CPPUNIT_ASSERT(std::any_of(generatedSerial.begin(), generatedSerial.end(), [](uint8_t byte) { return byte != 0; }));
+    }
 }
 
 void
