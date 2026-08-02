@@ -20,6 +20,7 @@ class NetworkEngineTester : public CppUnit::TestFixture
     CPPUNIT_TEST(testListenConfirmationUpdatesSearchNodeToken);
     CPPUNIT_TEST(testListenReopensSocketAfterNodeExpiration);
     CPPUNIT_TEST(testUnauthorizedListenFlushClearsListenState);
+    CPPUNIT_TEST(testRemoteListenerQuota);
 #endif
     CPPUNIT_TEST_SUITE_END();
 
@@ -37,6 +38,7 @@ public:
     void testListenConfirmationUpdatesSearchNodeToken();
     void testListenReopensSocketAfterNodeExpiration();
     void testUnauthorizedListenFlushClearsListenState();
+    void testRemoteListenerQuota();
 #endif
 };
 
