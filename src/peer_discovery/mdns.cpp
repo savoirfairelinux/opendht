@@ -145,10 +145,7 @@ public:
         return static_cast<uint16_t>((high << 8) | low);
     }
 
-    uint32_t read32()
-    {
-        return (static_cast<uint32_t>(read16()) << 16) | read16();
-    }
+    uint32_t read32() { return (static_cast<uint32_t>(read16()) << 16) | read16(); }
 
     Name readName()
     {
@@ -493,7 +490,7 @@ Packet
 encode(const Message& message)
 {
     const auto recordCount = message.questions.size() + message.answers.size() + message.authorities.size()
-        + message.additionals.size();
+                             + message.additionals.size();
     if (recordCount > MAX_RECORD_COUNT)
         throw ParseError("too many DNS records");
 

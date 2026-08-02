@@ -123,7 +123,12 @@ if get_option('push_notifications').enabled()
     add_project_arguments('-DOPENDHT_PUSH_NOTIFICATIONS', language: 'cpp')
 endif
 if get_option('peer_discovery').enabled()
-    opendht_src += ['src/mdns.cpp', 'src/dns_sd.cpp', 'src/mdns_transport.cpp', 'src/peer_discovery.cpp']
+    opendht_src += [
+        'src/peer_discovery/mdns.cpp',
+        'src/peer_discovery/dns_sd.cpp',
+        'src/peer_discovery/mdns_transport.cpp',
+        'src/peer_discovery/peer_discovery.cpp',
+    ]
     add_project_arguments('-DOPENDHT_PEER_DISCOVERY', language: 'cpp')
     if host_machine.system() == 'windows'
         deps += meson.get_compiler('cpp').find_library('iphlpapi')
@@ -132,7 +137,7 @@ endif
 opendht = library(
     'opendht',
     opendht_src,
-    include_directories: opendht_inc,
+    include_directories: [opendht_inc, opendht_interface_inc],
     dependencies: deps,
     cpp_args: ['-DOPENDHT_BUILD', '-Dopendht_EXPORTS'],
     install: true,

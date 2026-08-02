@@ -9,6 +9,7 @@
 #include <asio.hpp>
 #include <chrono>
 #include <cstring>
+#include <map>
 #include <mutex>
 #include <optional>
 #include <random>
@@ -21,9 +22,7 @@ constexpr auto CONNECTIVITY_RETRY = std::chrono::seconds(10);
 constexpr auto CONNECTIVITY_RETRY_MAX = std::chrono::minutes(1);
 
 SockAddr
-socketAddress(const mdns::dns_sd::AddressData& data,
-              in_port_t port,
-              const asio::ip::udp::endpoint& source)
+socketAddress(const mdns::dns_sd::AddressData& data, in_port_t port, const mdns::ReceiveContext& context)
 {
     SockAddr address;
     std::visit(
@@ -36,8 +35,8 @@ socketAddress(const mdns::dns_sd::AddressData& data,
                 address.setFamily(AF_INET6);
                 std::memcpy(&address.getIPv6().sin6_addr, record.address.data(), record.address.size());
                 const asio::ip::address_v6 parsed(record.address);
-                if (parsed.is_link_local() and source.address().is_v6())
-                    address.getIPv6().sin6_scope_id = source.address().to_v6().scope_id();
+                if (parsed.is_link_local())
+                    address.getIPv6().sin6_scope_id = context.ipv6Index;
             }
         },
         data);
@@ -61,11 +60,12 @@ public:
 
     void start()
     {
-        transport_.start([weak = weak_from_this()](const mdns::Packet& packet,
-                                                   const asio::ip::udp::endpoint& source) {
+        transport_.start([weak = weak_from_this()](const mdns::Packet& packet, const mdns::ReceiveContext& context) {
             if (const auto self = weak.lock())
-                self->receive(packet, source);
+                self->receive(packet, context);
         });
+        if (logger_)
+            logger_->debug("[peer discovery {:p}] Started.", fmt::ptr(this));
     }
 
     void startDiscovery(NetId network, PeerDiscoveredCallback callback)
@@ -83,13 +83,14 @@ public:
 
     void startPublish(const InfoHash& nodeId, NetId network, in_port_t port)
     {
-        mdns::dns_sd::Service service {nodeId, network, port, transport_.addresses()};
-        const auto message = mdns::dns_sd::announcement(service);
+        mdns::dns_sd::Service service {nodeId, network, port, {}};
+        if (transport_.interfaces().empty())
+            throw mdns::ParseError("DNS-SD service requires a multicast interface");
         {
             std::lock_guard lock(mutex_);
             published_ = std::move(service);
         }
-        transport_.send(mdns::encode(message));
+        announce();
         asio::post(*ioContext_, [weak = weak_from_this()] {
             const auto self = weak.lock();
             if (not self)
@@ -129,7 +130,7 @@ public:
                 self->announceTimer_.cancel();
         });
         if (service)
-            transport_.send(mdns::encode(mdns::dns_sd::goodbye(*service)));
+            advertise(*service, true, false);
         return bool(service);
     }
 
@@ -147,7 +148,7 @@ public:
                 self->announceTimer_.cancel();
         });
         if (service)
-            transport_.sendAndWait(mdns::encode(mdns::dns_sd::goodbye(*service)));
+            advertise(*service, true, true);
         transport_.stop();
     }
 
@@ -172,6 +173,7 @@ public:
 private:
     void handleConnectivityChanged()
     {
+        caches_.clear();
         transport_.refresh();
         refreshPublication();
         browse();
@@ -183,9 +185,9 @@ private:
                     self->handleConnectivityChanged();
             }
         });
-        connectivityRetry_ = std::min(
-            connectivityRetry_ * 2,
-            std::chrono::duration_cast<std::chrono::steady_clock::duration>(CONNECTIVITY_RETRY_MAX));
+        connectivityRetry_ = std::min(connectivityRetry_ * 2,
+                                      std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+                                          CONNECTIVITY_RETRY_MAX));
     }
 
     void browse()
@@ -197,6 +199,8 @@ private:
         }
         if (not active)
             return;
+        if (logger_)
+            logger_->debug("[peer discovery {:p}] Browsing.", fmt::ptr(this));
         transport_.send(mdns::encode(mdns::dns_sd::browseQuery()));
         browseTimer_.expires_after(BROWSE_INTERVAL);
         browseTimer_.async_wait([weak = weak_from_this()](const asio::error_code& error) {
@@ -214,8 +218,10 @@ private:
             std::lock_guard lock(mutex_);
             service = published_;
         }
+        if (logger_)
+            logger_->debug("[peer discovery {:p}] Announcing.", fmt::ptr(this));
         if (service)
-            transport_.send(mdns::encode(mdns::dns_sd::announcement(*service)));
+            advertise(*service, false, false);
     }
 
     void refreshPublication()
@@ -223,30 +229,43 @@ private:
         std::optional<mdns::dns_sd::Service> service;
         {
             std::lock_guard lock(mutex_);
-            if (published_) {
-                published_->addresses = transport_.addresses();
+            if (published_)
                 service = published_;
-            }
         }
         if (service)
-            transport_.send(mdns::encode(mdns::dns_sd::announcement(*service)));
+            advertise(*service, false, false);
     }
 
-    void receive(const mdns::Packet& packet, const asio::ip::udp::endpoint& source)
+    void advertise(const mdns::dns_sd::Service& service, bool goodbye, bool wait)
     {
+        for (const auto& interface : transport_.interfaces()) {
+            auto scoped = service;
+            scoped.addresses = interface.addresses;
+            auto packet = mdns::encode(goodbye ? mdns::dns_sd::goodbye(scoped) : mdns::dns_sd::announcement(scoped));
+            if (wait)
+                transport_.sendAndWait(std::move(packet), interface.id);
+            else
+                transport_.send(std::move(packet), interface.id);
+        }
+    }
+
+    void receive(const mdns::Packet& packet, const mdns::ReceiveContext& context)
+    {
+        if (logger_)
+            logger_->debug("[peer discovery {:p}] Got packet of size {}.", fmt::ptr(this), packet.size());
         try {
             const auto message = mdns::decode(packet.data(), packet.size());
             if (message.response)
-                discover(message, source);
+                discover(message, context);
             else
-                answer(message, source);
+                answer(message, context);
         } catch (const std::exception& error) {
             if (logger_)
                 logger_->warn("Ignoring invalid mDNS packet: {}", error.what());
         }
     }
 
-    void answer(const mdns::Message& query, const asio::ip::udp::endpoint& source)
+    void answer(const mdns::Message& query, const mdns::ReceiveContext& context)
     {
         std::optional<mdns::dns_sd::Service> service;
         {
@@ -254,30 +273,40 @@ private:
             service = published_;
         }
         if (service) {
+            const auto interfaces = transport_.interfaces();
+            const auto interface = std::find_if(interfaces.begin(), interfaces.end(), [&](const auto& candidate) {
+                return candidate.id == context.interface;
+            });
+            if (interface == interfaces.end())
+                return;
+            service->addresses = interface->addresses;
             if (auto response = mdns::dns_sd::respond(query, *service)) {
-                const auto unicast = source.port() != 5353
-                    or std::any_of(query.questions.begin(), query.questions.end(), [](const mdns::Question& question) {
-                           return question.unicastResponse;
-                       });
-                if (source.port() != 5353)
+                const auto unicast = context.source.port() != 5353
+                                     or std::any_of(query.questions.begin(),
+                                                    query.questions.end(),
+                                                    [](const mdns::Question& question) {
+                                                        return question.unicastResponse;
+                                                    });
+                if (context.source.port() != 5353)
                     response->questions = query.questions;
                 auto packet = mdns::encode(*response);
-                const auto sharedAnswer = std::any_of(
-                    response->answers.begin(), response->answers.end(), [](const mdns::ResourceRecord& record) {
-                        return not record.cacheFlush;
-                    });
+                const auto sharedAnswer = std::any_of(response->answers.begin(),
+                                                      response->answers.end(),
+                                                      [](const mdns::ResourceRecord& record) {
+                                                          return not record.cacheFlush;
+                                                      });
                 if (not sharedAnswer) {
                     if (unicast)
-                        transport_.send(std::move(packet), source);
+                        transport_.send(std::move(packet), context.source, context.interface);
                     else
-                        transport_.send(std::move(packet));
+                        transport_.send(std::move(packet), context.interface);
                     return;
                 }
 
                 static thread_local std::mt19937 random {std::random_device {}()};
                 const auto delay = std::chrono::milliseconds(std::uniform_int_distribution<int> {20, 120}(random));
                 auto timer = std::make_shared<asio::steady_timer>(*ioContext_, delay);
-                timer->async_wait([weak = weak_from_this(), timer, packet = std::move(packet), source, unicast](
+                timer->async_wait([weak = weak_from_this(), timer, packet = std::move(packet), context, unicast](
                                       const asio::error_code& error) mutable {
                     if (error)
                         return;
@@ -285,15 +314,15 @@ private:
                     if (not self)
                         return;
                     if (unicast)
-                        self->transport_.send(std::move(packet), source);
+                        self->transport_.send(std::move(packet), context.source, context.interface);
                     else
-                        self->transport_.send(std::move(packet));
+                        self->transport_.send(std::move(packet), context.interface);
                 });
             }
         }
     }
 
-    void discover(const mdns::Message& message, const asio::ip::udp::endpoint& source)
+    void discover(const mdns::Message& message, const mdns::ReceiveContext& context)
     {
         PeerDiscoveredCallback callback;
         std::optional<NetId> network;
@@ -308,11 +337,12 @@ private:
         if (not callback or not network)
             return;
 
-        for (const auto& service : cache_.update(message)) {
+        const auto cache = caches_.try_emplace(context.interface).first;
+        for (const auto& service : cache->second.update(message)) {
             if (service.network != *network or (localNode and service.nodeId == *localNode))
                 continue;
             for (const auto& address : service.addresses)
-                callback(service.nodeId, socketAddress(address, service.port, source));
+                callback(service.nodeId, socketAddress(address, service.port, context));
         }
     }
 
@@ -327,7 +357,7 @@ private:
     std::optional<NetId> discoveryNetwork_;
     PeerDiscoveredCallback discoveryCallback_;
     std::optional<mdns::dns_sd::Service> published_;
-    mdns::dns_sd::Cache cache_;
+    std::map<mdns::InterfaceId, mdns::dns_sd::Cache> caches_;
 };
 
 PeerDiscovery::PeerDiscovery(std::shared_ptr<asio::io_context> ioContext, std::shared_ptr<Logger> logger)

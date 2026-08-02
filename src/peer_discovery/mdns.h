@@ -2,11 +2,7 @@
 // SPDX-License-Identifier: MIT
 #pragma once
 
-#if __has_include("def.h")
-#include "def.h"
-#else
 #include "opendht/def.h"
-#endif
 
 #include <array>
 #include <cstddef>
@@ -136,38 +132,63 @@ using Packet = std::vector<uint8_t>;
 OPENDHT_PUBLIC Packet encode(const Message& message);
 OPENDHT_PUBLIC Message decode(const uint8_t* packet, size_t size);
 
-inline bool operator==(const Question& lhs, const Question& rhs)
+inline bool
+operator==(const Question& lhs, const Question& rhs)
 {
     return lhs.name == rhs.name and lhs.type == rhs.type and lhs.classCode == rhs.classCode
-        and lhs.unicastResponse == rhs.unicastResponse;
+           and lhs.unicastResponse == rhs.unicastResponse;
 }
 
-inline bool operator==(const AData& lhs, const AData& rhs) { return lhs.address == rhs.address; }
-inline bool operator==(const AaaaData& lhs, const AaaaData& rhs) { return lhs.address == rhs.address; }
-inline bool operator==(const PtrData& lhs, const PtrData& rhs) { return lhs.name == rhs.name; }
-inline bool operator==(const TxtData& lhs, const TxtData& rhs) { return lhs.strings == rhs.strings; }
-inline bool operator==(const SrvData& lhs, const SrvData& rhs)
+inline bool
+operator==(const AData& lhs, const AData& rhs)
+{
+    return lhs.address == rhs.address;
+}
+inline bool
+operator==(const AaaaData& lhs, const AaaaData& rhs)
+{
+    return lhs.address == rhs.address;
+}
+inline bool
+operator==(const PtrData& lhs, const PtrData& rhs)
+{
+    return lhs.name == rhs.name;
+}
+inline bool
+operator==(const TxtData& lhs, const TxtData& rhs)
+{
+    return lhs.strings == rhs.strings;
+}
+inline bool
+operator==(const SrvData& lhs, const SrvData& rhs)
 {
     return lhs.priority == rhs.priority and lhs.weight == rhs.weight and lhs.port == rhs.port
-        and lhs.target == rhs.target;
+           and lhs.target == rhs.target;
 }
-inline bool operator==(const NsecData& lhs, const NsecData& rhs)
+inline bool
+operator==(const NsecData& lhs, const NsecData& rhs)
 {
     return lhs.nextDomain == rhs.nextDomain and lhs.types == rhs.types;
 }
-inline bool operator==(const UnknownData& lhs, const UnknownData& rhs) { return lhs.bytes == rhs.bytes; }
-
-inline bool operator==(const ResourceRecord& lhs, const ResourceRecord& rhs)
+inline bool
+operator==(const UnknownData& lhs, const UnknownData& rhs)
 {
-    return lhs.name == rhs.name and lhs.type == rhs.type and lhs.classCode == rhs.classCode
-        and lhs.cacheFlush == rhs.cacheFlush and lhs.ttl == rhs.ttl and lhs.data == rhs.data;
+    return lhs.bytes == rhs.bytes;
 }
 
-inline bool operator==(const Message& lhs, const Message& rhs)
+inline bool
+operator==(const ResourceRecord& lhs, const ResourceRecord& rhs)
+{
+    return lhs.name == rhs.name and lhs.type == rhs.type and lhs.classCode == rhs.classCode
+           and lhs.cacheFlush == rhs.cacheFlush and lhs.ttl == rhs.ttl and lhs.data == rhs.data;
+}
+
+inline bool
+operator==(const Message& lhs, const Message& rhs)
 {
     return lhs.id == rhs.id and lhs.response == rhs.response and lhs.authoritative == rhs.authoritative
-        and lhs.truncated == rhs.truncated and lhs.questions == rhs.questions and lhs.answers == rhs.answers
-        and lhs.authorities == rhs.authorities and lhs.additionals == rhs.additionals;
+           and lhs.truncated == rhs.truncated and lhs.questions == rhs.questions and lhs.answers == rhs.answers
+           and lhs.authorities == rhs.authorities and lhs.additionals == rhs.additionals;
 }
 
 } // namespace dht::mdns

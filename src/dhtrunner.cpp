@@ -237,7 +237,7 @@ DhtRunner::run(const Config& config, Context&& context)
         if (config.peer_discovery or config.peer_publish) {
 #ifdef OPENDHT_PEER_DISCOVERY
             peerDiscovery_ = context.peerDiscovery ? std::move(context.peerDiscovery)
-                                                   : std::make_shared<PeerDiscovery>();
+                                                   : std::make_shared<PeerDiscovery>(nullptr, context.logger);
 #else
             std::cerr << "Peer discovery requested but OpenDHT built without peer discovery support." << std::endl;
 #endif
