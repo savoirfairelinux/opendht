@@ -7,6 +7,9 @@
 #include "opendht/infohash.h"
 #include "opendht/utils.h"
 
+#include <chrono>
+#include <functional>
+#include <memory>
 #include <optional>
 
 namespace dht::mdns::dns_sd {
@@ -22,6 +25,27 @@ struct Service
     NetId network {};
     in_port_t port {};
     std::vector<AddressData> addresses;
+};
+
+class OPENDHT_PUBLIC Cache
+{
+public:
+    using Clock = std::chrono::steady_clock;
+    using Now = std::function<Clock::time_point()>;
+
+    explicit Cache(Now now = [] { return Clock::now(); });
+    ~Cache();
+
+    Cache(Cache&&) noexcept;
+    Cache& operator=(Cache&&) noexcept;
+
+    std::vector<Service> update(const Message& message);
+    std::vector<Service> services();
+    void clear();
+
+private:
+    class Impl;
+    std::unique_ptr<Impl> impl_;
 };
 
 OPENDHT_PUBLIC Name serviceName();
