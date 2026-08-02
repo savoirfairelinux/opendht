@@ -170,6 +170,165 @@ isKnownAnswer(const Message& query, const ResourceRecord& record)
 
 } // namespace
 
+class Cache::Impl
+{
+public:
+    explicit Impl(Now now)
+        : now_(std::move(now))
+    {}
+
+    struct Entry
+    {
+        ResourceRecord record;
+        Clock::time_point expires;
+    };
+
+    std::vector<Service> update(const Message& message)
+    {
+        expire();
+        std::vector<const ResourceRecord*> records;
+        forEachRecord(message, [&](const ResourceRecord& record) { records.push_back(&record); });
+
+        std::vector<const ResourceRecord*> flushed;
+        for (const auto* record : records) {
+            if (not record->cacheFlush)
+                continue;
+            const auto alreadyFlushed = std::any_of(flushed.begin(), flushed.end(), [&](const ResourceRecord* other) {
+                return other->name == record->name
+                    and other->type == record->type and other->classCode == record->classCode;
+            });
+            if (not alreadyFlushed) {
+                flushed.push_back(record);
+                entries_.erase(
+                    std::remove_if(entries_.begin(), entries_.end(), [&](const Entry& entry) {
+                        return entry.record.name == record->name and entry.record.type == record->type
+                            and entry.record.classCode == record->classCode;
+                    }),
+                    entries_.end());
+            }
+        }
+
+        for (const auto* record : records) {
+            if (record->ttl == 0) {
+                entries_.erase(
+                    std::remove_if(entries_.begin(), entries_.end(), [&](const Entry& entry) {
+                        return sameRecord(entry.record, *record);
+                    }),
+                    entries_.end());
+                continue;
+            }
+            const auto expires = now_() + std::chrono::seconds(record->ttl);
+            const auto existing = std::find_if(entries_.begin(), entries_.end(), [&](const Entry& entry) {
+                return sameRecord(entry.record, *record);
+            });
+            if (existing == entries_.end())
+                entries_.push_back({*record, expires});
+            else {
+                existing->record = *record;
+                existing->expires = expires;
+            }
+        }
+
+        auto current = collect();
+        std::vector<Service> discovered;
+        for (const auto& service : current) {
+            if (std::find_if(emitted_.begin(), emitted_.end(), [&](const Service& previous) {
+                    return equal(previous, service);
+                }) == emitted_.end())
+                discovered.push_back(service);
+        }
+        emitted_ = std::move(current);
+        return discovered;
+    }
+
+    std::vector<Service> services()
+    {
+        expire();
+        auto current = collect();
+        emitted_ = current;
+        return current;
+    }
+
+    void clear()
+    {
+        entries_.clear();
+        emitted_.clear();
+    }
+
+private:
+    static bool equal(const Service& lhs, const Service& rhs)
+    {
+        return lhs.nodeId == rhs.nodeId and lhs.network == rhs.network and lhs.port == rhs.port
+            and lhs.addresses == rhs.addresses;
+    }
+
+    void expire()
+    {
+        const auto now = now_();
+        entries_.erase(std::remove_if(entries_.begin(), entries_.end(), [&](const Entry& entry) {
+                           return entry.expires <= now;
+                       }),
+                       entries_.end());
+    }
+
+    std::vector<Service> collect() const
+    {
+        std::vector<Service> result;
+        for (const auto& entry : entries_) {
+            if (entry.record.type != Type::PTR or entry.record.classCode != CLASS_IN
+                or entry.record.name != serviceName())
+                continue;
+            const auto* ptr = std::get_if<PtrData>(&entry.record.data);
+            if (not ptr)
+                continue;
+
+            Message message;
+            message.response = true;
+            message.answers.push_back(entry.record);
+            for (const auto& additional : entries_) {
+                if (&additional != &entry and additional.record.type != Type::PTR)
+                    message.additionals.push_back(additional.record);
+            }
+            const auto service = resolve(message);
+            if (service and std::none_of(result.begin(), result.end(), [&](const Service& existing) {
+                    return equal(existing, *service);
+                }))
+                result.push_back(*service);
+        }
+        return result;
+    }
+
+    Now now_;
+    std::vector<Entry> entries_;
+    std::vector<Service> emitted_;
+};
+
+Cache::Cache(Now now)
+    : impl_(std::make_unique<Impl>(std::move(now)))
+{}
+
+Cache::~Cache() = default;
+Cache::Cache(Cache&&) noexcept = default;
+Cache& Cache::operator=(Cache&&) noexcept = default;
+
+std::vector<Service>
+Cache::update(const Message& message)
+{
+    return impl_->update(message);
+}
+
+std::vector<Service>
+Cache::services()
+{
+    return impl_->services();
+}
+
+void
+Cache::clear()
+{
+    impl_->clear();
+}
+
 Name
 serviceName()
 {

@@ -45,14 +45,6 @@ socketAddress(const mdns::dns_sd::AddressData& data,
     return address;
 }
 
-bool
-isGoodbye(const mdns::Message& message)
-{
-    return std::any_of(message.answers.begin(), message.answers.end(), [](const mdns::ResourceRecord& record) {
-        return record.type == mdns::Type::PTR and record.name == mdns::dns_sd::serviceName() and record.ttl == 0;
-    });
-}
-
 } // namespace
 
 class PeerDiscovery::Impl : public std::enable_shared_from_this<PeerDiscovery::Impl>
@@ -303,12 +295,6 @@ private:
 
     void discover(const mdns::Message& message, const asio::ip::udp::endpoint& source)
     {
-        if (isGoodbye(message))
-            return;
-        const auto service = mdns::dns_sd::resolve(message);
-        if (not service)
-            return;
-
         PeerDiscoveredCallback callback;
         std::optional<NetId> network;
         std::optional<InfoHash> localNode;
@@ -319,12 +305,15 @@ private:
             if (published_)
                 localNode = published_->nodeId;
         }
-        if (not callback or not network or service->network != *network
-            or (localNode and service->nodeId == *localNode))
+        if (not callback or not network)
             return;
 
-        for (const auto& address : service->addresses)
-            callback(service->nodeId, socketAddress(address, service->port, source));
+        for (const auto& service : cache_.update(message)) {
+            if (service.network != *network or (localNode and service.nodeId == *localNode))
+                continue;
+            for (const auto& address : service.addresses)
+                callback(service.nodeId, socketAddress(address, service.port, source));
+        }
     }
 
     std::shared_ptr<asio::io_context> ioContext_;
@@ -338,6 +327,7 @@ private:
     std::optional<NetId> discoveryNetwork_;
     PeerDiscoveredCallback discoveryCallback_;
     std::optional<mdns::dns_sd::Service> published_;
+    mdns::dns_sd::Cache cache_;
 };
 
 PeerDiscovery::PeerDiscovery(std::shared_ptr<asio::io_context> ioContext, std::shared_ptr<Logger> logger)
