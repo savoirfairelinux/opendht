@@ -11,6 +11,7 @@ namespace dht::mdns::dns_sd {
 namespace {
 
 constexpr std::string_view SERVICE_NAME = "_opendht._udp.local.";
+constexpr std::string_view SERVICE_ENUMERATION_NAME = "_services._dns-sd._udp.local.";
 constexpr std::string_view SERVICE_SUFFIX = "._opendht._udp.local.";
 constexpr std::string_view HOST_SUFFIX = ".local.";
 
@@ -55,10 +56,10 @@ makeAdvertisement(const Service& service, uint32_t serviceTtl, uint32_t hostTtl)
     Message message;
     message.response = true;
     message.authoritative = true;
-    message.answers.push_back(
-        {serviceName(), Type::PTR, CLASS_IN, false, serviceTtl, PtrData {instance}});
-    message.additionals.push_back(
-        {instance, Type::SRV, CLASS_IN, true, hostTtl, SrvData {0, 0, service.port, host}});
+    message.answers.push_back({serviceName(), Type::PTR, CLASS_IN, false, serviceTtl, PtrData {instance}});
+    message.additionals.push_back({
+        instance, Type::SRV, CLASS_IN, true, hostTtl, SrvData {0, 0, service.port, host}
+    });
 
     TxtData txt;
     txt.strings.emplace_back(txtString("txtvers=1"));
@@ -150,14 +151,13 @@ bool
 matches(const Question& question, const ResourceRecord& record)
 {
     return question.name == record.name and (question.type == Type::ANY or question.type == record.type)
-        and (question.classCode == CLASS_ANY or question.classCode == record.classCode);
+           and (question.classCode == CLASS_ANY or question.classCode == record.classCode);
 }
 
 bool
 sameRecord(const ResourceRecord& lhs, const ResourceRecord& rhs)
 {
-    return lhs.name == rhs.name and lhs.type == rhs.type and lhs.classCode == rhs.classCode
-        and lhs.data == rhs.data;
+    return lhs.name == rhs.name and lhs.type == rhs.type and lhs.classCode == rhs.classCode and lhs.data == rhs.data;
 }
 
 bool
@@ -194,27 +194,28 @@ public:
             if (not record->cacheFlush)
                 continue;
             const auto alreadyFlushed = std::any_of(flushed.begin(), flushed.end(), [&](const ResourceRecord* other) {
-                return other->name == record->name
-                    and other->type == record->type and other->classCode == record->classCode;
+                return other->name == record->name and other->type == record->type
+                       and other->classCode == record->classCode;
             });
             if (not alreadyFlushed) {
                 flushed.push_back(record);
-                entries_.erase(
-                    std::remove_if(entries_.begin(), entries_.end(), [&](const Entry& entry) {
-                        return entry.record.name == record->name and entry.record.type == record->type
-                            and entry.record.classCode == record->classCode;
-                    }),
-                    entries_.end());
+                entries_.erase(std::remove_if(entries_.begin(),
+                                              entries_.end(),
+                                              [&](const Entry& entry) {
+                                                  return entry.record.name == record->name
+                                                         and entry.record.type == record->type
+                                                         and entry.record.classCode == record->classCode;
+                                              }),
+                               entries_.end());
             }
         }
 
         for (const auto* record : records) {
             if (record->ttl == 0) {
-                entries_.erase(
-                    std::remove_if(entries_.begin(), entries_.end(), [&](const Entry& entry) {
-                        return sameRecord(entry.record, *record);
-                    }),
-                    entries_.end());
+                entries_.erase(std::remove_if(entries_.begin(),
+                                              entries_.end(),
+                                              [&](const Entry& entry) { return sameRecord(entry.record, *record); }),
+                               entries_.end());
                 continue;
             }
             const auto expires = now_() + std::chrono::seconds(record->ttl);
@@ -232,9 +233,10 @@ public:
         auto current = collect();
         std::vector<Service> discovered;
         for (const auto& service : current) {
-            if (std::find_if(emitted_.begin(), emitted_.end(), [&](const Service& previous) {
-                    return equal(previous, service);
-                }) == emitted_.end())
+            if (std::find_if(emitted_.begin(),
+                             emitted_.end(),
+                             [&](const Service& previous) { return equal(previous, service); })
+                == emitted_.end())
                 discovered.push_back(service);
         }
         emitted_ = std::move(current);
@@ -259,15 +261,15 @@ private:
     static bool equal(const Service& lhs, const Service& rhs)
     {
         return lhs.nodeId == rhs.nodeId and lhs.network == rhs.network and lhs.port == rhs.port
-            and lhs.addresses == rhs.addresses;
+               and lhs.addresses == rhs.addresses;
     }
 
     void expire()
     {
         const auto now = now_();
-        entries_.erase(std::remove_if(entries_.begin(), entries_.end(), [&](const Entry& entry) {
-                           return entry.expires <= now;
-                       }),
+        entries_.erase(std::remove_if(entries_.begin(),
+                                      entries_.end(),
+                                      [&](const Entry& entry) { return entry.expires <= now; }),
                        entries_.end());
     }
 
@@ -383,18 +385,29 @@ respond(const Message& query, const Service& service)
     response.response = true;
     response.authoritative = true;
 
+    const ResourceRecord serviceType {
+        Name::fromString(SERVICE_ENUMERATION_NAME),
+        Type::PTR,
+        CLASS_IN,
+        false,
+        SERVICE_RECORD_TTL,
+        PtrData {serviceName()},
+    };
+
     auto addMatching = [&](const ResourceRecord& record) {
         const auto question = std::find_if(query.questions.begin(), query.questions.end(), [&](const Question& q) {
             return matches(q, record);
         });
         if (question == query.questions.end() or (not question->unicastResponse and isKnownAnswer(query, record)))
             return;
-        if (std::find_if(response.answers.begin(), response.answers.end(), [&](const ResourceRecord& answer) {
-                return sameRecord(answer, record);
-            }) == response.answers.end())
+        if (std::find_if(response.answers.begin(),
+                         response.answers.end(),
+                         [&](const ResourceRecord& answer) { return sameRecord(answer, record); })
+            == response.answers.end())
             response.answers.push_back(record);
     };
 
+    addMatching(serviceType);
     for (const auto& record : advertisement.answers)
         addMatching(record);
     for (const auto& record : advertisement.additionals)
@@ -402,14 +415,23 @@ respond(const Message& query, const Service& service)
     if (response.answers.empty())
         return {};
 
+    const auto metaOnly = std::all_of(response.answers.begin(), response.answers.end(), [&](const auto& answer) {
+        return sameRecord(answer, serviceType);
+    });
+    if (metaOnly)
+        return response;
+
     response.additionals = advertisement.additionals;
-    response.additionals.erase(
-        std::remove_if(response.additionals.begin(), response.additionals.end(), [&](const ResourceRecord& record) {
-            return std::any_of(response.answers.begin(), response.answers.end(), [&](const ResourceRecord& answer) {
-                return sameRecord(answer, record);
-            });
-        }),
-        response.additionals.end());
+    response.additionals.erase(std::remove_if(response.additionals.begin(),
+                                              response.additionals.end(),
+                                              [&](const ResourceRecord& record) {
+                                                  return std::any_of(response.answers.begin(),
+                                                                     response.answers.end(),
+                                                                     [&](const ResourceRecord& answer) {
+                                                                         return sameRecord(answer, record);
+                                                                     });
+                                              }),
+                               response.additionals.end());
     return response;
 }
 
