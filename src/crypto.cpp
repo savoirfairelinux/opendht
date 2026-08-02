@@ -1402,8 +1402,11 @@ setRandomSerial(gnutls_x509_crt_t cert)
 {
     std::random_device rdev;
     std::uniform_int_distribution<int64_t> dist {1};
-    int64_t cert_serial = dist(rdev);
-    gnutls_x509_crt_set_serial(cert, &cert_serial, sizeof(cert_serial));
+    const auto cert_serial = dist(rdev);
+    std::array<uint8_t, sizeof(cert_serial)> packed_serial;
+    for (size_t i = 0; i < packed_serial.size(); i++)
+        packed_serial[i] = cert_serial >> (8 * (packed_serial.size() - 1 - i));
+    gnutls_x509_crt_set_serial(cert, packed_serial.data(), packed_serial.size());
 }
 
 Certificate
