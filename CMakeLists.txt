@@ -502,7 +502,7 @@ list (APPEND opendht_HEADERS
 )
 
 if (OPENDHT_PEER_DISCOVERY)
-    list (APPEND opendht_SOURCES src/peer_discovery.cpp)
+    list (APPEND opendht_SOURCES src/mdns.cpp src/peer_discovery.cpp)
     list (APPEND opendht_HEADERS include/opendht/peer_discovery.h)
     add_definitions(-DOPENDHT_PEER_DISCOVERY)
 endif()
@@ -854,8 +854,6 @@ if (BUILD_TESTING)
     endif()
     # unit testing
     list (APPEND test_FILES
-        tests/test_mdns.h
-        tests/test_mdns.cpp
         tests/test_infohash.h
         tests/test_infohash.cpp
         tests/test_value.h
@@ -890,6 +888,8 @@ if (BUILD_TESTING)
         endif()
         if (OPENDHT_PEER_DISCOVERY)
             list (APPEND test_FILES
+                tests/test_mdns.h
+                tests/test_mdns.cpp
                 tests/test_peerdiscovery.h
                 tests/test_peerdiscovery.cpp
             )
