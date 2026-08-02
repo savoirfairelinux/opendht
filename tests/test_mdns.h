@@ -20,6 +20,7 @@ class MdnsTester : public CppUnit::TestFixture
     CPPUNIT_TEST(testDnsSdValidation);
     CPPUNIT_TEST(testDnsSdQueryResponse);
     CPPUNIT_TEST(testDnsSdCache);
+    CPPUNIT_TEST(testInterfaceScoping);
     CPPUNIT_TEST_SUITE_END();
 
 public:
@@ -33,6 +34,7 @@ public:
     void testDnsSdValidation();
     void testDnsSdQueryResponse();
     void testDnsSdCache();
+    void testInterfaceScoping();
 };
 
 } // namespace test

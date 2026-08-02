@@ -3,8 +3,9 @@
 
 #include "test_mdns.h"
 
-#include "../src/dns_sd.h"
-#include "../src/mdns.h"
+#include "../src/peer_discovery/dns_sd.h"
+#include "../src/peer_discovery/mdns.h"
+#include "../src/peer_discovery/mdns_transport.h"
 
 #include <array>
 #include <string>
@@ -113,9 +114,12 @@ MdnsTester::testDnsSdAdvertisement()
     service.nodeId = dht::InfoHash("0123456789abcdef0123456789abcdef01234567");
     service.network = 42;
     service.port = 4222;
-    service.addresses.emplace_back(AData {{192, 0, 2, 1}});
-    service.addresses.emplace_back(
-        AaaaData {{0x20, 0x01, 0x0d, 0xb8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1}});
+    service.addresses.emplace_back(AData {
+        {192, 0, 2, 1}
+    });
+    service.addresses.emplace_back(AaaaData {
+        {0x20, 0x01, 0x0d, 0xb8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1}
+    });
 
     const auto message = dns_sd::announcement(service);
     CPPUNIT_ASSERT(message.response);
@@ -138,7 +142,9 @@ MdnsTester::testDnsSdGoodbye()
     dns_sd::Service service;
     service.nodeId = dht::InfoHash("0123456789abcdef0123456789abcdef01234567");
     service.port = 4222;
-    service.addresses.emplace_back(AData {{192, 0, 2, 1}});
+    service.addresses.emplace_back(AData {
+        {192, 0, 2, 1}
+    });
 
     const auto message = dns_sd::goodbye(service);
     CPPUNIT_ASSERT(std::all_of(message.answers.begin(), message.answers.end(), [](const auto& record) {
@@ -156,7 +162,9 @@ MdnsTester::testDnsSdValidation()
     service.nodeId = dht::InfoHash("0123456789abcdef0123456789abcdef01234567");
     service.network = 42;
     service.port = 4222;
-    service.addresses.emplace_back(AData {{192, 0, 2, 1}});
+    service.addresses.emplace_back(AData {
+        {192, 0, 2, 1}
+    });
 
     auto message = dns_sd::announcement(service);
     auto& txt = std::get<TxtData>(message.additionals[1].data);
@@ -178,7 +186,9 @@ MdnsTester::testDnsSdQueryResponse()
     service.nodeId = dht::InfoHash("0123456789abcdef0123456789abcdef01234567");
     service.network = 42;
     service.port = 4222;
-    service.addresses.emplace_back(AData {{192, 0, 2, 1}});
+    service.addresses.emplace_back(AData {
+        {192, 0, 2, 1}
+    });
 
     const auto query = dns_sd::browseQuery();
     CPPUNIT_ASSERT(not query.response);
@@ -196,6 +206,19 @@ MdnsTester::testDnsSdQueryResponse()
 
     knownAnswerQuery.answers.front().ttl = dns_sd::SERVICE_RECORD_TTL / 2;
     CPPUNIT_ASSERT(dns_sd::respond(knownAnswerQuery, service));
+
+    Message metaQuery;
+    const auto metaName = Name::fromString("_services._dns-sd._udp.local.");
+    metaQuery.questions.push_back({metaName, Type::PTR, CLASS_IN, false});
+    const auto metaResponse = dns_sd::respond(metaQuery, service);
+    CPPUNIT_ASSERT(metaResponse);
+    CPPUNIT_ASSERT_EQUAL(size_t(1), metaResponse->answers.size());
+    CPPUNIT_ASSERT(metaResponse->answers.front().name == metaName);
+    CPPUNIT_ASSERT(std::get<PtrData>(metaResponse->answers.front().data).name == dns_sd::serviceName());
+    CPPUNIT_ASSERT(metaResponse->additionals.empty());
+
+    metaQuery.answers = metaResponse->answers;
+    CPPUNIT_ASSERT(not dns_sd::respond(metaQuery, service));
 }
 
 void
@@ -205,7 +228,9 @@ MdnsTester::testDnsSdCache()
     service.nodeId = dht::InfoHash("0123456789abcdef0123456789abcdef01234567");
     service.network = 42;
     service.port = 4222;
-    service.addresses.emplace_back(AData {{192, 0, 2, 1}});
+    service.addresses.emplace_back(AData {
+        {192, 0, 2, 1}
+    });
 
     auto now = dns_sd::Cache::Clock::now();
     dns_sd::Cache cache([&] { return now; });
@@ -222,6 +247,34 @@ MdnsTester::testDnsSdCache()
 
     now += std::chrono::seconds(dns_sd::HOST_RECORD_TTL + 1);
     CPPUNIT_ASSERT(cache.services().empty());
+}
+
+void
+MdnsTester::testInterfaceScoping()
+{
+    const std::vector<InterfaceAddress> addresses {
+        {1, 1, asio::ip::make_address("192.0.2.1"), true,  false},
+        {1, 1, asio::ip::make_address("fe80::1"),   true,  false},
+        {2, 2, asio::ip::make_address("fe80::2"),   true,  false},
+        {3, 3, asio::ip::make_address("fe80::3"),   false, false},
+        {4, 4, asio::ip::make_address("::1"),       true,  true },
+    };
+
+    const auto interfaces = groupInterfaces(addresses);
+    CPPUNIT_ASSERT_EQUAL(size_t(2), interfaces.size());
+    CPPUNIT_ASSERT_EQUAL(InterfaceId {1}, interfaces[0].id);
+    CPPUNIT_ASSERT_EQUAL(size_t(2), interfaces[0].addresses.size());
+    CPPUNIT_ASSERT_EQUAL(InterfaceId {2}, interfaces[1].id);
+    CPPUNIT_ASSERT_EQUAL(size_t(1), interfaces[1].addresses.size());
+
+    dns_sd::Service service;
+    service.nodeId = dht::InfoHash("0123456789abcdef0123456789abcdef01234567");
+    service.port = 4222;
+    service.addresses = interfaces[0].addresses;
+    const auto announcement = dns_sd::announcement(service);
+    const auto resolved = dns_sd::resolve(announcement);
+    CPPUNIT_ASSERT(resolved);
+    CPPUNIT_ASSERT(resolved->addresses == interfaces[0].addresses);
 }
 
 } // namespace test
