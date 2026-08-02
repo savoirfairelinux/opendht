@@ -301,6 +301,20 @@ CryptoTester::testCertificateSerialNumber()
 }
 
 void
+CryptoTester::testGeneratedSerialNumberIsPositive()
+{
+    /* RFC 5280 section 4.1.2.2: the serial number MUST be a positive integer.
+       A leading byte with its high bit set encodes a negative DER INTEGER. */
+    for (unsigned i = 0; i < 16; i++) {
+        auto id = dht::crypto::generateIdentity("test", {}, 2048, true);
+        auto serial = id.second->getSerialNumber();
+        CPPUNIT_ASSERT(not serial.empty());
+        CPPUNIT_ASSERT_MESSAGE("generated serial number must not be negative",
+                               (serial.front() & 0x80) == 0);
+    }
+}
+
+void
 CryptoTester::testOcsp()
 {
     auto ca = dht::crypto::generateIdentity("Test CA");

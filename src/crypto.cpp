@@ -17,6 +17,7 @@ extern "C" {
 #include <argon2.h>
 }
 
+#include <array>
 #include <random>
 #include <sstream>
 #include <fstream>
@@ -1395,9 +1396,19 @@ void
 setRandomSerial(gnutls_x509_crt_t cert)
 {
     std::random_device rdev;
-    std::uniform_int_distribution<int64_t> dist {1};
-    int64_t cert_serial = dist(rdev);
-    gnutls_x509_crt_set_serial(cert, &cert_serial, sizeof(cert_serial));
+    std::uniform_int_distribution<uint64_t> dist {1};
+    /* RFC 5280 section 4.1.2.2 requires the serial number to be a positive
+       integer, and gnutls_x509_crt_set_serial() expects its buffer in network
+       byte order. Handing over the native representation of an integer made
+       the leading DER byte arbitrary, so on little-endian hosts roughly half
+       of the generated certificates carried a negative serial number. */
+    uint64_t cert_serial = dist(rdev) & 0x7fffffffffffffffULL;
+    if (cert_serial == 0)
+        cert_serial = 1;
+    std::array<uint8_t, sizeof(cert_serial)> serial_bytes;
+    for (size_t i = 0; i < serial_bytes.size(); i++)
+        serial_bytes[i] = static_cast<uint8_t>(cert_serial >> (8 * (serial_bytes.size() - 1 - i)));
+    gnutls_x509_crt_set_serial(cert, serial_bytes.data(), serial_bytes.size());
 }
 
 Certificate

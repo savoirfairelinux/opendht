@@ -18,6 +18,7 @@ class CryptoTester : public CppUnit::TestFixture
     CPPUNIT_TEST(testRevocationListPartitionedNumber);
     CPPUNIT_TEST(testCertificateRequest);
     CPPUNIT_TEST(testCertificateSerialNumber);
+    CPPUNIT_TEST(testGeneratedSerialNumberIsPositive);
     CPPUNIT_TEST(testOcsp);
     CPPUNIT_TEST(testAesEncryption);
     CPPUNIT_TEST(testAesEncryptionWithMultipleKeySizes);
@@ -63,6 +64,7 @@ public:
      * Test certificate serial number extraction
      */
     void testCertificateSerialNumber();
+    void testGeneratedSerialNumberIsPositive();
     /**
      * Test OCSP
      */
