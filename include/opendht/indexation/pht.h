@@ -123,28 +123,19 @@ ee     *
      */
     static inline unsigned commonBits(const Prefix& p1, const Prefix& p2)
     {
-        unsigned i, j;
-        uint8_t x;
+        /* size_ counts bits, so the comparison walks bits: reading it as a
+           byte count would run past the end of the shorter content. */
         auto longest_prefix_size = std::min(p1.size_, p2.size_);
 
-        for (i = 0; i < longest_prefix_size; i++) {
-            if (p1.content_.data()[i] != p2.content_.data()[i] or not p1.isFlagActive(i) or not p2.isFlagActive(i)) {
+        unsigned common = 0;
+        while (common < longest_prefix_size) {
+            if (not p1.isFlagActive(common) or not p2.isFlagActive(common)
+                or p1.isContentBitActive(common) != p2.isContentBitActive(common))
                 break;
-            }
+            common++;
         }
 
-        if (i == longest_prefix_size)
-            return 8 * longest_prefix_size;
-
-        x = p1.content_.data()[i] ^ p2.content_.data()[i];
-
-        j = 0;
-        while ((x & 0x80) == 0) {
-            x <<= 1;
-            j++;
-        }
-
-        return 8 * i + j;
+        return common;
     }
 
     /**
@@ -242,8 +233,9 @@ private:
         if (bit >= b.size() * 8)
             throw std::out_of_range("bit larger than prefix size.");
 
-        size_t offset_bit = (8 - bit) % 8;
-        b[bit / 8] ^= (1 << offset_bit);
+        /* Bit 0 is the most significant one of the first byte, as
+           isActiveBit reads it. */
+        b[bit / 8] ^= (1 << (7 - (bit % 8)));
     }
 };
 

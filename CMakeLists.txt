@@ -875,6 +875,12 @@ if (BUILD_TESTING)
         tests/test_valuecache.h
         tests/test_valuecache.cpp
     )
+    if (OPENDHT_INDEX)
+        list (APPEND test_FILES
+            tests/test_pht.h
+            tests/test_pht.cpp
+        )
+    endif()
     if (OPENDHT_PROXY_CLIENT)
         list (APPEND test_FILES
             tests/test_dhtproxy_client.h
