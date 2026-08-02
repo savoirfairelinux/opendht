@@ -13,9 +13,11 @@ class NetworkEngineTester : public CppUnit::TestFixture
 #ifdef _MSC_VER
     CPPUNIT_TEST(testDisabledOnMsvc);
 #else
-    CPPUNIT_TEST(testIgnoresUnknownPartialData);
+    CPPUNIT_TEST(testCompletesPartialSessionWithDataBeforeHeader);
+    CPPUNIT_TEST(testBuffersLargeValueBeforeHeader);
+    CPPUNIT_TEST(testIgnoresEmptyPartialData);
     CPPUNIT_TEST(testCompletesPartialSessionFromSameSource);
-    CPPUNIT_TEST(testKeepsSessionForWrongSourceFragment);
+    CPPUNIT_TEST(testSeparatesPartialSessionsBySource);
     CPPUNIT_TEST(testListenConfirmationCarriesToken);
     CPPUNIT_TEST(testListenConfirmationUpdatesSearchNodeToken);
     CPPUNIT_TEST(testListenReopensSocketAfterNodeExpiration);
@@ -30,9 +32,11 @@ public:
 #ifdef _MSC_VER
     void testDisabledOnMsvc();
 #else
-    void testIgnoresUnknownPartialData();
+    void testCompletesPartialSessionWithDataBeforeHeader();
+    void testBuffersLargeValueBeforeHeader();
+    void testIgnoresEmptyPartialData();
     void testCompletesPartialSessionFromSameSource();
-    void testKeepsSessionForWrongSourceFragment();
+    void testSeparatesPartialSessionsBySource();
     void testListenConfirmationCarriesToken();
     void testListenConfirmationUpdatesSearchNodeToken();
     void testListenReopensSocketAfterNodeExpiration();

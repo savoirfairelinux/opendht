@@ -489,6 +489,8 @@ private:
     static constexpr size_t MTU {1280};
     static constexpr size_t MAX_PACKET_VALUE_SIZE {600};
     static constexpr size_t MAX_MESSAGE_VALUE_SIZE {56 * 1024};
+    static constexpr size_t RX_MAX_EARLY_BYTES {MAX_MESSAGE_VALUE_SIZE + MAX_VALUE_SIZE + 32};
+    static constexpr size_t RX_MAX_EARLY_PARTS {RX_MAX_EARLY_BYTES / MTU + 2};
 
     void process(std::unique_ptr<ParsedMessage>&&, const SockAddr& from);
 
@@ -527,7 +529,8 @@ private:
     {
         return packValueHeader(buf, values.begin(), values.end());
     }
-    void maintainRxBuffer(Tid tid);
+    using PartialMessageKey = std::pair<SockAddr, Tid>;
+    void maintainRxBuffer(const PartialMessageKey& key);
 
     /*************
      *  Answers  *
@@ -573,7 +576,7 @@ private:
 
     // requests handling
     std::map<Tid, Sp<Request>> requests {};
-    std::map<Tid, PartialMessage> partial_messages;
+    std::map<PartialMessageKey, PartialMessage> partial_messages;
 
     MessageStats in_stats {}, out_stats {};
     std::set<SockAddr> blacklist {};
