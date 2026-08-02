@@ -12,6 +12,7 @@ class CryptoTester : public CppUnit::TestFixture
 {
     CPPUNIT_TEST_SUITE(CryptoTester);
     CPPUNIT_TEST(testSignatureEncryption);
+    CPPUNIT_TEST(testPublicKeyPemIsPlainText);
     CPPUNIT_TEST(testCertificateRevocation);
     CPPUNIT_TEST(testRevocationListNumber);
     CPPUNIT_TEST(testRevocationListExplicitNumber);
@@ -39,6 +40,10 @@ public:
      * Test data signature, encryption and decryption
      */
     void testSignatureEncryption();
+    /**
+     * Test that an exported public key is text only, with no embedded null byte
+     */
+    void testPublicKeyPemIsPlainText();
     /**
      * Test certificate generation, validation and revocation
      */
