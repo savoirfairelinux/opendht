@@ -2363,6 +2363,9 @@ Dht::confirmNodes()
 std::vector<ValuesExport>
 Dht::exportValues() const
 {
+    const auto& now = scheduler.time();
+    const auto system_now = system_clock::now();
+
     std::vector<ValuesExport> e {};
     e.reserve(store.size());
     for (const auto& h : store) {
@@ -2375,7 +2378,7 @@ Dht::exportValues() const
         pk.pack_array(vals.size());
         for (const auto& v : vals) {
             pk.pack_array(4);
-            pk.pack(v.created.time_since_epoch().count());
+            pk.pack(to_system_time(v.created, now, system_now));
             v.data->msgpack_pack(pk);
             if (const auto& store_addr = v.store_bucket ? v.store_bucket->getAddr() : SockAddr {}) {
                 pk.pack_bin(store_addr.getLength());
@@ -2383,7 +2386,7 @@ Dht::exportValues() const
             } else {
                 pk.pack_bin(0);
             }
-            pk.pack(v.expiration.time_since_epoch().count());
+            pk.pack(to_system_time(v.expiration, now, system_now));
         }
         ve.second = {buffer.data(), buffer.data() + buffer.size()};
         e.push_back(std::move(ve));
@@ -2395,6 +2398,7 @@ void
 Dht::importValues(const std::vector<ValuesExport>& import)
 {
     const auto& now = scheduler.time();
+    const auto system_now = system_clock::now();
 
     unsigned imported = 0, ignored = 0;
     size_t imported_size = 0;
@@ -2419,8 +2423,15 @@ Dht::importValues(const std::vector<ValuesExport>& import)
                 Value tmp_val;
                 SockAddr store_addr;
                 try {
-                    val_time = time_point {
-                        time_point::duration {valel.via.array.ptr[0].as<time_point::duration::rep>()}};
+                    const bool uses_system_time = valel.via.array.ptr[0].type == msgpack::type::EXT;
+                    if (uses_system_time) {
+                        val_time = from_system_time(valel.via.array.ptr[0].as<system_clock::time_point>(),
+                                                    now,
+                                                    system_now);
+                    } else {
+                        val_time = time_point {
+                            time_point::duration {valel.via.array.ptr[0].as<time_point::duration::rep>()}};
+                    }
                     tmp_val.msgpack_unpack(valel.via.array.ptr[1]);
                     if (valel.via.array.size >= 3) {
                         auto addr_blob = valel.via.array.ptr[2].as<Blob>();
@@ -2430,8 +2441,14 @@ Dht::importValues(const std::vector<ValuesExport>& import)
                         }
                     }
                     if (valel.via.array.size >= 4) {
-                        expiration = time_point {
-                            time_point::duration {valel.via.array.ptr[3].as<time_point::duration::rep>()}};
+                        if (uses_system_time) {
+                            expiration = from_system_time(valel.via.array.ptr[3].as<system_clock::time_point>(),
+                                                          now,
+                                                          system_now);
+                        } else {
+                            expiration = time_point {
+                                time_point::duration {valel.via.array.ptr[3].as<time_point::duration::rep>()}};
+                        }
                     }
                 } catch (const std::exception&) {
                     if (logger_)
