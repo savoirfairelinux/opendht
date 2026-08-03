@@ -24,6 +24,10 @@ class ParsedMessageTester : public CppUnit::TestFixture
     CPPUNIT_TEST(testParseRejectsNonMapPacket);
     CPPUNIT_TEST(testParseRejectsInvalidValueDataPayload);
     CPPUNIT_TEST(testParseRejectsInvalidValuesField);
+    CPPUNIT_TEST(testParseRejectsEmptyFieldSelection);
+    CPPUNIT_TEST(testParseRejectsEmptyErrorArray);
+    CPPUNIT_TEST(testParseRejectsNonMapRequest);
+    CPPUNIT_TEST(testParseErrorOnlyMessageKeepsRequestFieldsEmpty);
     CPPUNIT_TEST(testParseIgnoresIncompleteValueDataEntry);
     CPPUNIT_TEST(testCompleteEmpty);
     CPPUNIT_TEST(testCompleteIncomplete);
@@ -53,6 +57,10 @@ public:
     void testParseRejectsNonMapPacket();
     void testParseRejectsInvalidValueDataPayload();
     void testParseRejectsInvalidValuesField();
+    void testParseRejectsEmptyFieldSelection();
+    void testParseRejectsEmptyErrorArray();
+    void testParseRejectsNonMapRequest();
+    void testParseErrorOnlyMessageKeepsRequestFieldsEmpty();
     void testParseIgnoresIncompleteValueDataEntry();
     void testCompleteEmpty();
     void testCompleteIncomplete();

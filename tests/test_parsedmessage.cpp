@@ -329,6 +329,104 @@ ParsedMessageTester::testParseRejectsInvalidValuesField()
 }
 
 void
+ParsedMessageTester::testParseRejectsEmptyFieldSelection()
+{
+    msgpack::sbuffer buffer;
+    msgpack::packer<msgpack::sbuffer> pk(&buffer);
+
+    pk.pack_map(3);
+    pk.pack(KEY_R);
+    pk.pack_map(1);
+    pk.pack(KEY_REQ_FIELDS);
+    pk.pack_map(2);
+    pk.pack("f");
+    pk.pack_array(0);
+    pk.pack("v");
+    pk.pack_array(0);
+    pk.pack(KEY_TID);
+    pk.pack(1u);
+    pk.pack(KEY_Y);
+    pk.pack(KEY_R);
+
+    auto msg = msgpack::unpack(buffer.data(), buffer.size());
+    ParsedMessage parsed;
+    CPPUNIT_ASSERT_THROW(parsed.msgpack_unpack(msg.get()), msgpack::type_error);
+}
+
+void
+ParsedMessageTester::testParseRejectsEmptyErrorArray()
+{
+    msgpack::sbuffer buffer;
+    msgpack::packer<msgpack::sbuffer> pk(&buffer);
+
+    pk.pack_map(3);
+    pk.pack(KEY_E);
+    pk.pack_array(0);
+    pk.pack(KEY_TID);
+    pk.pack(1u);
+    pk.pack(KEY_Y);
+    pk.pack(KEY_E);
+
+    auto msg = msgpack::unpack(buffer.data(), buffer.size());
+    ParsedMessage parsed;
+    CPPUNIT_ASSERT_THROW(parsed.msgpack_unpack(msg.get()), msgpack::type_error);
+}
+
+void
+ParsedMessageTester::testParseRejectsNonMapRequest()
+{
+    msgpack::sbuffer buffer;
+    msgpack::packer<msgpack::sbuffer> pk(&buffer);
+
+    pk.pack_map(4);
+    pk.pack(KEY_A);
+    pk.pack_array(2);
+    pk.pack(1u);
+    pk.pack(2u);
+    pk.pack(KEY_Q);
+    pk.pack(QUERY_PING);
+    pk.pack(KEY_TID);
+    pk.pack(1u);
+    pk.pack(KEY_Y);
+    pk.pack("q");
+
+    auto msg = msgpack::unpack(buffer.data(), buffer.size());
+    ParsedMessage parsed;
+    CPPUNIT_ASSERT_THROW(parsed.msgpack_unpack(msg.get()), msgpack::type_error);
+}
+
+void
+ParsedMessageTester::testParseErrorOnlyMessageKeepsRequestFieldsEmpty()
+{
+    msgpack::sbuffer buffer;
+    msgpack::packer<msgpack::sbuffer> pk(&buffer);
+
+    // An error message with no request map: the error array must not be walked
+    // as if it were a sequence of key/value pairs.
+    pk.pack_map(3);
+    pk.pack(KEY_E);
+    pk.pack_array(2);
+    pk.pack(401u);
+    pk.pack("unauthorized");
+    pk.pack(KEY_TID);
+    pk.pack(9u);
+    pk.pack(KEY_Y);
+    pk.pack(KEY_E);
+
+    auto msg = msgpack::unpack(buffer.data(), buffer.size());
+    ParsedMessage parsed;
+    parsed.msgpack_unpack(msg.get());
+
+    CPPUNIT_ASSERT(parsed.type == MessageType::Error);
+    CPPUNIT_ASSERT_EQUAL((uint16_t) 401, parsed.error_code);
+    CPPUNIT_ASSERT(not parsed.id);
+    CPPUNIT_ASSERT(parsed.token.empty());
+    CPPUNIT_ASSERT(parsed.values.empty());
+    CPPUNIT_ASSERT(parsed.nodes4_raw.empty());
+    CPPUNIT_ASSERT(parsed.nodes6_raw.empty());
+}
+
+void
 ParsedMessageTester::testParseIgnoresIncompleteValueDataEntry()
 {
     msgpack::sbuffer buffer;
