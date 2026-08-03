@@ -211,6 +211,42 @@ DhtRunnerTester::testImportValuesPreservesRemoteQuota()
 }
 
 void
+DhtRunnerTester::testExportValuesUsesSystemTime()
+{
+    auto key = dht::InfoHash::get("export-system-time");
+    const auto created = dht::clock::now();
+    msgpack::sbuffer importBuffer;
+    msgpack::packer<msgpack::sbuffer> pk(&importBuffer);
+    pk.pack_array(1);
+    pk.pack_array(2);
+    pk.pack(created.time_since_epoch().count());
+    dht::Value {std::string("persisted")}.msgpack_pack(pk);
+    node1.importValues({
+        dht::ValuesExport {key, {importBuffer.data(), importBuffer.data() + importBuffer.size()}}
+    });
+
+    auto exported = node1.exportValues();
+    CPPUNIT_ASSERT_EQUAL(size_t(1), exported.size());
+
+    msgpack::unpacked msg;
+    msgpack::unpack(msg, reinterpret_cast<const char*>(exported.front().second.data()), exported.front().second.size());
+    const auto values = msg.get();
+    CPPUNIT_ASSERT(values.type == msgpack::type::ARRAY);
+    CPPUNIT_ASSERT_EQUAL(uint32_t(1), values.via.array.size);
+    const auto& persistedValue = values.via.array.ptr[0];
+    CPPUNIT_ASSERT_EQUAL(uint32_t(4), persistedValue.via.array.size);
+    CPPUNIT_ASSERT(persistedValue.via.array.ptr[0].type == msgpack::type::EXT);
+    CPPUNIT_ASSERT(persistedValue.via.array.ptr[3].type == msgpack::type::EXT);
+
+    const auto persistedCreated = persistedValue.via.array.ptr[0].as<std::chrono::system_clock::time_point>();
+    const auto persistedExpiration = persistedValue.via.array.ptr[3].as<std::chrono::system_clock::time_point>();
+    const auto delta = std::chrono::system_clock::now() - persistedCreated;
+    CPPUNIT_ASSERT(delta >= std::chrono::system_clock::duration::zero());
+    CPPUNIT_ASSERT(delta < 5s);
+    CPPUNIT_ASSERT(persistedExpiration > persistedCreated);
+}
+
+void
 DhtRunnerTester::testImportValuesPreservesStoredExpiration()
 {
     static const dht::ValueType SHORT_LIVED_TYPE {200, "Short lived", 2s};
