@@ -303,14 +303,25 @@ DhtRunnerTester::testImportValuesPreservesStoredExpiration()
 void
 DhtRunnerTester::testImportPermanentValueExpires()
 {
-    // Simulate importing a value that was originally stored as permanent
-    // (expiration = time_point::max()). After import the permanent flag is lost,
-    // so the value must expire within the type's normal expiration window.
-    static const dht::ValueType SHORT_TYPE {201, "Short perm", 2s};
+    static const dht::ValueType SHORT_TYPE {201, "Short perm", 500ms};
+
+    dht::DhtRunner::Config config;
+    config.dht_config.node_config.max_peer_req_per_sec = -1;
+    config.dht_config.node_config.max_req_per_sec = -1;
+    config.dht_config.node_config.max_store_size = -1;
+    config.dht_config.node_config.max_store_keys = -1;
+    dht::DhtRunner restored;
+    restored.run(0, config);
+    restored.registerInsecureType(SHORT_TYPE);
+
+    // Ensure the runner is waiting on a previously computed scheduler deadline.
+    std::promise<void> loopCompleted;
+    auto loopCompletedFuture = loopCompleted.get_future();
+    restored.getNodeInfo([&loopCompleted](auto) { loopCompleted.set_value(); });
+    getFutureValue(std::move(loopCompletedFuture));
 
     auto key = dht::InfoHash::get("import-permanent-expiration");
     auto now = dht::clock::now();
-
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
     pk.pack_array(1);
@@ -318,63 +329,33 @@ DhtRunnerTester::testImportPermanentValueExpires()
     pk.pack(now.time_since_epoch().count());
     dht::Value {SHORT_TYPE.id, std::string("was-permanent")}.msgpack_pack(pk);
     pk.pack_bin(0);
-    // Permanent values are exported with time_point::max() expiration
     pk.pack(dht::clock::time_point::max().time_since_epoch().count());
-
-    dht::DhtRunner restored;
-    dht::DhtRunner::Config config;
-    config.dht_config.node_config.max_peer_req_per_sec = -1;
-    config.dht_config.node_config.max_req_per_sec = -1;
-    config.dht_config.node_config.max_store_size = -1;
-    config.dht_config.node_config.max_store_keys = -1;
-    restored.run(0, config);
 
     restored.importValues({
         dht::ValuesExport {key, {buffer.data(), buffer.data() + buffer.size()}}
     });
 
-    // Value should be present right after import
-    auto exportedBefore = restored.exportValues();
-    CPPUNIT_ASSERT(!exportedBefore.empty());
-
-    // Wait longer than the default USER_DATA expiration (10 min) is not
-    // practical, but the type is unregistered so the default 10 min expiration
-    // applies.  Instead, register the short type so the cap uses 2 s.
-    // Re-import into a fresh node that knows the short type.
-    dht::DhtRunner restored2;
-    restored2.run(0, config);
-    restored2.registerInsecureType(SHORT_TYPE);
-    restored2.importValues({
-        dht::ValuesExport {key, {buffer.data(), buffer.data() + buffer.size()}}
-    });
-
-    CPPUNIT_ASSERT(!restored2.exportValues().empty());
-
-    // Wait for the short expiration to pass
-    std::this_thread::sleep_for(3s);
-
-    auto restoredValues = restored2.exportValues();
-    bool found = false;
-    for (const auto& ve : restoredValues) {
-        if (ve.first == key) {
+    auto containsValue = [&] {
+        for (const auto& [exportedKey, data] : restored.exportValues()) {
+            if (exportedKey != key)
+                continue;
             msgpack::unpacked msg;
-            msgpack::unpack(msg, (const char*) ve.second.data(), ve.second.size());
+            msgpack::unpack(msg, reinterpret_cast<const char*>(data.data()), data.size());
             auto valarr = msg.get();
             CPPUNIT_ASSERT(valarr.type == msgpack::type::ARRAY);
-            // The value should have expired
-            CPPUNIT_ASSERT_EQUAL(uint32_t(0), valarr.via.array.size);
-            found = true;
+            return valarr.via.array.size != 0;
         }
-    }
-    // Either the key was cleaned up entirely or it was found with 0 values
-    CPPUNIT_ASSERT(found || restoredValues.empty()
-                   || std::none_of(restoredValues.begin(), restoredValues.end(),
-                                   [&](const auto& ve) { return ve.first == key; }));
+        return false;
+    };
+
+    CPPUNIT_ASSERT(containsValue());
+    auto timeout = dht::clock::now() + 2s;
+    while (containsValue() and dht::clock::now() < timeout)
+        std::this_thread::sleep_for(10ms);
+    CPPUNIT_ASSERT(!containsValue());
 
     restored.shutdown();
     restored.join();
-    restored2.shutdown();
-    restored2.join();
 }
 
 void

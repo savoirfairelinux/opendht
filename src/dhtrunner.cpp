@@ -554,8 +554,14 @@ DhtRunner::registerInsecureType(const ValueType& type)
 void
 DhtRunner::importValues(const std::vector<ValuesExport>& values)
 {
-    std::lock_guard lck(dht_mtx);
-    dht_->importValues(values);
+    {
+        std::lock_guard lck(dht_mtx);
+        dht_->importValues(values);
+    }
+    // Recompute the runner wakeup after import schedules value expirations.
+    std::lock_guard lck(storage_mtx);
+    pending_ops_prio.emplace([](SecureDht&) {});
+    cv.notify_all();
 }
 
 unsigned
