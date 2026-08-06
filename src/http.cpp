@@ -308,7 +308,7 @@ issuer_from_chain(STACK_OF(X509) * fullchain)
     if ((issuer_name = X509_get_issuer_name(cert)) == nullptr)
         return nullptr;
 
-    issuer = X509_find_by_subject(fullchain, issuer_name);
+    issuer = X509_find_by_subject(fullchain, const_cast<X509_NAME*>(issuer_name));
     return issuer;
 }
 
