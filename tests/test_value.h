@@ -17,6 +17,8 @@ class ValueTester : public CppUnit::TestFixture
     CPPUNIT_TEST(testPushTypeAbsentAfterUnpack);
     CPPUNIT_TEST(testPushTypePreservedAfterEncrypt);
     CPPUNIT_TEST(testPushTypeJsonRoundTrip);
+    CPPUNIT_TEST(testFieldValueIndexContainedIn);
+    CPPUNIT_TEST(testProjectionSatisfiedBy);
     CPPUNIT_TEST_SUITE_END();
 
 public:
@@ -40,6 +42,14 @@ public:
     void testPushTypeAbsentAfterUnpack();
     void testPushTypePreservedAfterEncrypt();
     void testPushTypeJsonRoundTrip();
+    /**
+     * Test that projected index containment compares field values, not only keys
+     */
+    void testFieldValueIndexContainedIn();
+    /**
+     * Test that a projected query only reuses answers filtered exactly like it
+     */
+    void testProjectionSatisfiedBy();
 };
 
 } // namespace test
