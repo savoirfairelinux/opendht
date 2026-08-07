@@ -1,4 +1,4 @@
-FROM alpine:3.23
+FROM alpine:3.24
 LABEL maintainer="Adrien Béraud <adrien.beraud@savoirfairelinux.com>"
 LABEL org.opencontainers.image.source=https://github.com/savoirfairelinux/opendht
 
