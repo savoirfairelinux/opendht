@@ -502,7 +502,11 @@ list (APPEND opendht_HEADERS
 )
 
 if (OPENDHT_PEER_DISCOVERY)
-    list (APPEND opendht_SOURCES src/peer_discovery.cpp)
+    list (APPEND opendht_SOURCES
+        src/peer_discovery/mdns.cpp
+        src/peer_discovery/dns_sd.cpp
+        src/peer_discovery/mdns_transport.cpp
+        src/peer_discovery/peer_discovery.cpp)
     list (APPEND opendht_HEADERS include/opendht/peer_discovery.h)
     add_definitions(-DOPENDHT_PEER_DISCOVERY)
 endif()
@@ -589,6 +593,7 @@ if (MSVC)
             simdutf::simdutf
             wsock32
             ws2_32
+            iphlpapi
     )
     if (OPENDHT_TOOLS)
         target_link_libraries(opendht PUBLIC unofficial::readline-win32::readline)
@@ -672,7 +677,7 @@ else()
     # System-specific linker pipelines
     if (WIN32 AND MINGW) # MSYS2
         message(STATUS "Build pipeline: Windows/MSYS2-MinGW")
-        target_link_libraries(opendht PUBLIC wsock32 ws2_32)
+        target_link_libraries(opendht PUBLIC wsock32 ws2_32 iphlpapi)
         if(OPENDHT_PROXY_OPENSSL)
             target_link_libraries(opendht PUBLIC Crypt32)
         endif()
@@ -888,6 +893,8 @@ if (BUILD_TESTING)
         endif()
         if (OPENDHT_PEER_DISCOVERY)
             list (APPEND test_FILES
+                tests/test_mdns.h
+                tests/test_mdns.cpp
                 tests/test_peerdiscovery.h
                 tests/test_peerdiscovery.cpp
             )
