@@ -21,6 +21,9 @@ class DhtProxyTester : public CppUnit::TestFixture
     CPPUNIT_TEST(testPutGet40KChars);
     CPPUNIT_TEST(testFuzzy);
     CPPUNIT_TEST(testShutdownStop);
+#ifdef OPENDHT_PUSH_NOTIFICATIONS
+    CPPUNIT_TEST(testPushNotificationPriority);
+#endif
     CPPUNIT_TEST_SUITE_END();
 
 public:
@@ -54,6 +57,15 @@ public:
     void testFuzzy();
 
     void testShutdownStop();
+
+#ifdef OPENDHT_PUSH_NOTIFICATIONS
+    /**
+     * The proxy must only request a high-priority push for real-time call
+     * signaling (audioCall/videoCall at priority 0); everything else stays at
+     * normal priority.
+     */
+    void testPushNotificationPriority();
+#endif
 
 private:
     dht::DhtRunner::Config clientConfig {};
