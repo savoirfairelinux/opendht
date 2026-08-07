@@ -594,8 +594,10 @@ DhtProxyServer::addServerSettings(ServerSettings& settings, const unsigned int m
     settings.logger(logger_);
     settings.protocol(restinio::asio_ns::ip::tcp::v6());
     settings.request_handler(createRestRouter());
-    // time limits                                              // ~ 0.8 month
-    std::chrono::milliseconds timeout_request(std::numeric_limits<int>::max());
+    // time limits
+    // Use 1-hour timeout for idle connections so that dead mobile clients
+    // are cleaned up promptly instead of lingering for ~24 days.
+    constexpr auto timeout_request = std::chrono::hours(1);
     settings.read_next_http_message_timelimit(timeout_request);
     settings.write_http_response_timelimit(60s);
     settings.handle_request_timeout(timeout_request);
@@ -1189,7 +1191,13 @@ DhtProxyServer::handlePushListen(const InfoHash& infoHash,
                        minPriority,
                        values.size());
 
-    sendPushNotification(pushToken, std::move(json), type, !expired and minPriority == 0, topic);
+    // Include priority in the JSON payload so that UnifiedPush clients
+    // (which don't have access to the HTTP Urgency header) can determine
+    // whether a push requires immediate processing or can be deferred.
+    bool highPriority = !expired and minPriority == 0;
+    json["priority"] = highPriority ? "high" : "normal";
+
+    sendPushNotification(pushToken, std::move(json), type, highPriority, topic);
 
     return true;
 }

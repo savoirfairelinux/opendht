@@ -69,3 +69,4 @@ build-*/
 install/
 vcpkg_installed/
 
+jamid.log
