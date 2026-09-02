@@ -19,6 +19,7 @@ class CryptoTester : public CppUnit::TestFixture
     CPPUNIT_TEST(testRevocationListPartitionedNumber);
     CPPUNIT_TEST(testCertificateRequest);
     CPPUNIT_TEST(testCertificateSerialNumber);
+    CPPUNIT_TEST(testEcKeyCurve);
     CPPUNIT_TEST(testOcsp);
     CPPUNIT_TEST(testAesEncryption);
     CPPUNIT_TEST(testAesEncryptionWithMultipleKeySizes);
@@ -68,6 +69,10 @@ public:
      * Test certificate serial number extraction
      */
     void testCertificateSerialNumber();
+    /**
+     * Test EC private key generation with an explicit curve
+     */
+    void testEcKeyCurve();
     /**
      * Test OCSP
      */

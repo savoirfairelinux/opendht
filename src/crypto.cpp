@@ -1294,14 +1294,16 @@ PrivateKey::generate(unsigned key_length, gnutls_pk_algorithm_t algo)
 }
 
 PrivateKey
-PrivateKey::generateEC()
+PrivateKey::generateEC(gnutls_ecc_curve_t curve)
 {
     gnutls_x509_privkey_t key;
     if (gnutls_x509_privkey_init(&key) != GNUTLS_E_SUCCESS)
         throw CryptoException("Unable to initialize private key.");
     int err = gnutls_x509_privkey_generate(key,
                                            GNUTLS_PK_EC,
-                                           gnutls_sec_param_to_pk_bits(GNUTLS_PK_EC, GNUTLS_SEC_PARAM_ULTRA),
+                                           curve == GNUTLS_ECC_CURVE_INVALID
+                                               ? gnutls_sec_param_to_pk_bits(GNUTLS_PK_EC, GNUTLS_SEC_PARAM_ULTRA)
+                                               : GNUTLS_CURVE_TO_BITS(curve),
                                            0);
     if (err != GNUTLS_E_SUCCESS) {
         gnutls_x509_privkey_deinit(key);

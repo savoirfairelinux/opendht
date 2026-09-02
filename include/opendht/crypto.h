@@ -204,7 +204,13 @@ struct OPENDHT_PUBLIC PrivateKey
      * @param algo : the public key algorithm to use, GNUTLS_PK_RSA or GNUTLS_PK_RSA_OAEP
      */
     static PrivateKey generate(unsigned key_length = 4096, gnutls_pk_algorithm_t algo = GNUTLS_PK_RSA);
-    static PrivateKey generateEC();
+
+    /**
+     * Generate a new EC key pair
+     * @param curve : the elliptic curve to use. If GNUTLS_ECC_CURVE_INVALID is provided, the default curve will be used
+     * (currently GNUTLS_ECC_CURVE_SECP384R1).
+     */
+    static PrivateKey generateEC(gnutls_ecc_curve_t curve = GNUTLS_ECC_CURVE_INVALID);
 
     gnutls_privkey_t key {};
     gnutls_x509_privkey_t x509_key {};
@@ -272,7 +278,8 @@ public:
      * and incremented on subsequent ones.
      */
     void sign(const PrivateKey&, const Certificate&, duration validity_period = {}, uint64_t number = 0);
-    void sign(const Identity& id, duration validity_period = {}, uint64_t number = 0) {
+    void sign(const Identity& id, duration validity_period = {}, uint64_t number = 0)
+    {
         sign(*id.first, *id.second, validity_period, number);
     }
 

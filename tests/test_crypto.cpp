@@ -328,6 +328,16 @@ CryptoTester::testCertificateSerialNumber()
 }
 
 void
+CryptoTester::testEcKeyCurve()
+{
+    auto key = dht::crypto::PrivateKey::generateEC(GNUTLS_ECC_CURVE_SECP256R1);
+    unsigned int bits = 0;
+    CPPUNIT_ASSERT_EQUAL(static_cast<int>(GNUTLS_PK_EC),
+                         gnutls_x509_privkey_get_pk_algorithm2(key.x509_key, &bits));
+    CPPUNIT_ASSERT_EQUAL(256u, bits);
+}
+
+void
 CryptoTester::testOcsp()
 {
     auto ca = dht::crypto::generateIdentity("Test CA");
