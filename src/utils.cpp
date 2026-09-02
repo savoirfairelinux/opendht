@@ -245,10 +245,18 @@ from_system_time(system_clock::time_point t, time_point steady_now, system_clock
         return time_point::min();
     if (t == system_clock::time_point::max())
         return time_point::max();
-    auto dt = t - system_now;
-    if (dt > system_clock::duration(0) and steady_now > time_point::max() - dt)
+    // Saturate before the cast: the steady clock duration may hold a narrower range than the system one.
+    constexpr auto max_dt = std::chrono::duration_cast<system_clock::duration>(duration::max());
+    constexpr auto min_dt = std::chrono::duration_cast<system_clock::duration>(duration::min());
+    auto system_dt = t - system_now;
+    if (system_dt >= max_dt)
         return time_point::max();
-    else if (dt < system_clock::duration(0) and steady_now < time_point::min() - dt)
+    if (system_dt <= min_dt)
+        return time_point::min();
+    auto dt = std::chrono::duration_cast<duration>(system_dt);
+    if (dt > duration(0) and steady_now > time_point::max() - dt)
+        return time_point::max();
+    else if (dt < duration(0) and steady_now < time_point::min() - dt)
         return time_point::min();
     return steady_now + dt;
 }
@@ -266,12 +274,13 @@ to_system_time(time_point t, time_point steady_now, system_clock::time_point sys
         return system_clock::time_point::min();
     if (t == time_point::max())
         return system_clock::time_point::max();
-    auto dt = t - steady_now;
-    if (dt > duration(0) and system_now >= system_clock::time_point::max() - dt)
+    // Cast first: mixing clock durations of different periods would overflow the bound computations below.
+    auto dt = std::chrono::duration_cast<system_clock::duration>(t - steady_now);
+    if (dt > system_clock::duration(0) and system_now >= system_clock::time_point::max() - dt)
         return system_clock::time_point::max();
-    else if (dt < duration(0) and system_now <= system_clock::time_point::min() - dt)
+    else if (dt < system_clock::duration(0) and system_now <= system_clock::time_point::min() - dt)
         return system_clock::time_point::min();
-    return system_now + std::chrono::duration_cast<system_clock::duration>(dt);
+    return system_now + dt;
 }
 
 system_clock::time_point
