@@ -1281,6 +1281,22 @@ DhtProxyClient::pushNotificationReceived([[maybe_unused]] const std::map<std::st
         if (sessionId != notification.end() and sessionId->second != pushSessionId_) {
             if (logger_)
                 logger_->debug("[proxy:client] [push] ignoring push for other session");
+            // A mismatch proves the server still has a listener registered under a previous
+            // session: it keeps waking this device for notifications that can only be
+            // discarded, and the values they announce are never fetched. Ask for the
+            // subscriptions to be sent again so the server learns the current session,
+            // instead of waiting for an unrelated event to trigger one.
+            //
+            // restartListeners() is rate limited by its own timer: stale listeners notify in
+            // bursts, and rearming the timer on each one simply coalesces them into a single
+            // pass.
+            {
+                std::lock_guard l(lockCurrentProxyInfos_);
+                pushSubscriptionPending_ = true;
+            }
+            listenerRestartTimer_->expires_at(std::chrono::steady_clock::now());
+            listenerRestartTimer_->async_wait(
+                std::bind(&DhtProxyClient::restartListeners, this, std::placeholders::_1));
             return PushNotificationResult::IgnoredWrongSession;
         }
         std::lock_guard lock(searchLock_);
