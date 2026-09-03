@@ -189,9 +189,8 @@ private:
                 v->second.created = now;
                 v->second.expiration = now + te;
                 v->second.typeExpiration = te;
-                if (*v->second.data != *value) {
-                    // edited value: emit as add so OpValueCache
-                    // updates in place without phantom expiry
+                if (value->seq > v->second.data->seq) {
+                    // edited value (same rule as OpValueCache): emit as add
                     v->second.data = value;
                     nvals.emplace_back(value);
                 }
