@@ -34,20 +34,20 @@ struct DhtProxyClient::Listener
     Sp<OperationState> opstate;
     std::shared_ptr<http::Request> request;
 #ifdef OPENDHT_PUSH_NOTIFICATIONS
-    std::unique_ptr<asio::steady_timer> refreshSubscriberTimer;
+    std::unique_ptr<asio::system_timer> refreshSubscriberTimer;
 #endif
 };
 
 struct PermanentPut
 {
-    PermanentPut(const Sp<Value>& v, std::unique_ptr<asio::steady_timer>&& j, const Sp<std::atomic_bool>& o)
+    PermanentPut(const Sp<Value>& v, std::unique_ptr<asio::system_timer>&& j, const Sp<std::atomic_bool>& o)
         : value(v)
         , refreshPutTimer(std::move(j))
         , ok(o)
     {}
 
     Sp<Value> value;
-    std::unique_ptr<asio::steady_timer> refreshPutTimer;
+    std::unique_ptr<asio::system_timer> refreshPutTimer;
     Sp<std::atomic_bool> ok;
 };
 
@@ -424,7 +424,7 @@ DhtProxyClient::put(const InfoHash& key, Sp<Value> val, DoneCallback cb, time_po
         auto& search = searches_[key];
         if (val->id) {
             auto id = val->id;
-            auto refreshPutTimer = std::make_unique<asio::steady_timer>(httpContext_,
+            auto refreshPutTimer = std::make_unique<asio::system_timer>(httpContext_,
                                                                         proxy::OP_TIMEOUT - proxy::OP_MARGIN);
             refreshPutTimer->async_wait(
                 std::bind(&DhtProxyClient::handleRefreshPut, this, std::placeholders::_1, key, id));
@@ -540,7 +540,7 @@ DhtProxyClient::doPut(const InfoHash& key, Sp<Value> val, DoneCallbackSimple cb,
                             auto it = search.pendingPuts.find(val);
                             if (it != search.pendingPuts.end()) {
                                 auto sok = std::make_shared<std::atomic_bool>(ok);
-                                auto refreshPutTimer = std::make_unique<asio::steady_timer>(httpContext_,
+                                auto refreshPutTimer = std::make_unique<asio::system_timer>(httpContext_,
                                                                                             proxy::OP_TIMEOUT
                                                                                                 - proxy::OP_MARGIN);
                                 refreshPutTimer->async_wait(
@@ -891,8 +891,8 @@ DhtProxyClient::listen(const InfoHash& key, ValueCallback cb, Value::Filter filt
                  * (if the proxy crash for any reason)
                  */
                 if (!l->second.refreshSubscriberTimer)
-                    l->second.refreshSubscriberTimer = std::make_unique<asio::steady_timer>(httpContext_);
-                l->second.refreshSubscriberTimer->expires_at(std::chrono::steady_clock::now() + proxy::OP_TIMEOUT
+                    l->second.refreshSubscriberTimer = std::make_unique<asio::system_timer>(httpContext_);
+                l->second.refreshSubscriberTimer->expires_at(std::chrono::system_clock::now() + proxy::OP_TIMEOUT
                                                              - proxy::OP_MARGIN);
                 l->second.refreshSubscriberTimer->async_wait(
                     std::bind(&DhtProxyClient::handleResubscribe, this, std::placeholders::_1, key, token, opstate));
@@ -1192,9 +1192,9 @@ DhtProxyClient::restartListeners(const asio::error_code& ec)
         for (auto& put : search.second.puts) {
             doPut(key, put.second.value, [ok = put.second.ok](bool result) { *ok = result; }, time_point::max(), true);
             if (!put.second.refreshPutTimer) {
-                put.second.refreshPutTimer = std::make_unique<asio::steady_timer>(httpContext_);
+                put.second.refreshPutTimer = std::make_unique<asio::system_timer>(httpContext_);
             }
-            put.second.refreshPutTimer->expires_at(std::chrono::steady_clock::now() + proxy::OP_TIMEOUT
+            put.second.refreshPutTimer->expires_at(std::chrono::system_clock::now() + proxy::OP_TIMEOUT
                                                    - proxy::OP_MARGIN);
             put.second.refreshPutTimer->async_wait(
                 std::bind(&DhtProxyClient::handleRefreshPut, this, std::placeholders::_1, key, put.first));
@@ -1210,8 +1210,7 @@ DhtProxyClient::restartListeners(const asio::error_code& ec)
         // Connectivity changed, refresh all subscribe
         for (auto& search : searches_)
             for (auto& listener : search.second.listeners)
-                if (!listener.second.opstate->ok)
-                    resubscribe(search.first, listener.first, listener.second);
+                resubscribe(search.first, listener.first, listener.second);
         return;
     }
     if (logger_)
@@ -1275,10 +1274,10 @@ DhtProxyClient::pushNotificationReceived([[maybe_unused]] const std::map<std::st
                 auto vid = std::stoull(vidIt->second);
                 auto& put = search.puts.at(vid);
                 if (!put.refreshPutTimer)
-                    put.refreshPutTimer = std::make_unique<asio::steady_timer>(httpContext_,
-                                                                               std::chrono::steady_clock::now());
+                    put.refreshPutTimer = std::make_unique<asio::system_timer>(httpContext_,
+                                                                               std::chrono::system_clock::now());
                 else
-                    put.refreshPutTimer->expires_at(std::chrono::steady_clock::now());
+                    put.refreshPutTimer->expires_at(std::chrono::system_clock::now());
                 put.refreshPutTimer->async_wait(
                     std::bind(&DhtProxyClient::handleRefreshPut, this, std::placeholders::_1, key, vid));
                 ret = PushNotificationResult::PutRefresh;
@@ -1290,12 +1289,12 @@ DhtProxyClient::pushNotificationReceived([[maybe_unused]] const std::map<std::st
                                                : PushNotificationResult::ListenRefresh;
             }
         } else {
-            auto key = InfoHash(notification.at("key"));
             system_clock::time_point sendTime = system_clock::time_point::min();
             try {
                 sendTime = system_clock::time_point(std::chrono::milliseconds(std::stoull(notification.at("t"))));
             } catch (...) {
             }
+            auto key = InfoHash(notification.at("key"));
             auto& search = searches_.at(key);
             auto expired = notification.find("exp");
             for (auto& list : search.listeners) {
@@ -1378,9 +1377,9 @@ DhtProxyClient::resubscribe([[maybe_unused]] const InfoHash& key,
     header.method(restinio::http_method_subscribe());
     header.request_target("/key/" + key.toString());
     if (!listener.refreshSubscriberTimer) {
-        listener.refreshSubscriberTimer = std::make_unique<asio::steady_timer>(httpContext_);
+        listener.refreshSubscriberTimer = std::make_unique<asio::system_timer>(httpContext_);
     }
-    listener.refreshSubscriberTimer->expires_at(std::chrono::steady_clock::now() + proxy::OP_TIMEOUT - proxy::OP_MARGIN);
+    listener.refreshSubscriberTimer->expires_at(std::chrono::system_clock::now() + proxy::OP_TIMEOUT - proxy::OP_MARGIN);
     listener.refreshSubscriberTimer->async_wait(
         std::bind(&DhtProxyClient::handleResubscribe, this, std::placeholders::_1, key, token, opstate));
     auto vcb = listener.cb;

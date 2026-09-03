@@ -76,7 +76,7 @@ public:
 
     asio::io_context& io_context() const;
 
-    using clock = std::chrono::steady_clock;
+    using clock = std::chrono::system_clock;
     using time_point = clock::time_point;
 
     struct PushStats
@@ -405,8 +405,8 @@ private:
         std::string pushToken;
         std::string clientId;
         std::shared_ptr<PushSessionContext> sessionCtx;
-        std::unique_ptr<asio::steady_timer> expireTimer;
-        std::unique_ptr<asio::steady_timer> expireNotifyTimer;
+        std::unique_ptr<asio::system_timer> expireTimer;
+        std::unique_ptr<asio::system_timer> expireNotifyTimer;
         Sp<Value> value;
         PushType type;
         std::string topic;
@@ -419,7 +419,7 @@ private:
             p.pack("value");
             p.pack(value);
             p.pack("exp");
-            p.pack(to_time_t(expiration));
+            p.pack(std::chrono::system_clock::to_time_t(expiration));
             if (not clientId.empty()) {
                 p.pack("cid");
                 p.pack(clientId);
@@ -464,8 +464,8 @@ private:
         std::string clientId;
         std::shared_ptr<PushSessionContext> sessionCtx;
         std::future<size_t> internalToken;
-        std::unique_ptr<asio::steady_timer> expireTimer;
-        std::unique_ptr<asio::steady_timer> expireNotifyTimer;
+        std::unique_ptr<asio::system_timer> expireTimer;
+        std::unique_ptr<asio::system_timer> expireNotifyTimer;
         PushType type;
         std::string topic;
 
@@ -476,7 +476,7 @@ private:
             p.pack("cid");
             p.pack(clientId);
             p.pack("exp");
-            p.pack(to_time_t(expiration));
+            p.pack(std::chrono::system_clock::to_time_t(expiration));
             if (sessionCtx) {
                 std::lock_guard l(sessionCtx->lock);
                 p.pack("sid");
