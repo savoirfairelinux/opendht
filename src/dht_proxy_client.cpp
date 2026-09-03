@@ -1210,8 +1210,7 @@ DhtProxyClient::restartListeners(const asio::error_code& ec)
         // Connectivity changed, refresh all subscribe
         for (auto& search : searches_)
             for (auto& listener : search.second.listeners)
-                if (!listener.second.opstate->ok)
-                    resubscribe(search.first, listener.first, listener.second);
+                resubscribe(search.first, listener.first, listener.second);
         return;
     }
     if (logger_)
