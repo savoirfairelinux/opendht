@@ -10,6 +10,14 @@ namespace proxy {
 constexpr const std::chrono::hours OP_TIMEOUT {24}; // one day
 constexpr const std::chrono::hours OP_MARGIN {2};   // two hours
 
+/**
+ * Deadline for a subscribe request to complete. Unlike a listen, a subscribe is a short
+ * request: the server answers immediately and the device then relies on push notifications.
+ * Nothing else observes it, so without a deadline a subscribe stalled in name resolution,
+ * connection or TLS handshake would never complete nor fail.
+ */
+constexpr const std::chrono::seconds SUBSCRIBE_TIMEOUT {20};
+
 using ListenToken = uint64_t;
 
 } // namespace proxy

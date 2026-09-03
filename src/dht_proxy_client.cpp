@@ -1075,6 +1075,12 @@ DhtProxyClient::sendListen(const restinio::http_request_header_t& header,
         request->set_body(body);
 #endif
         auto rxBuf = std::make_shared<LineSplit>();
+        // Completion flag shared with the subscribe deadline armed below. The request
+        // callbacks replace each other rather than accumulating, so the flag is raised from
+        // the single on_done callback instead of a dedicated one.
+        std::shared_ptr<std::atomic_bool> subscribeDone;
+        if (method != ListenMethod::LISTEN)
+            subscribeDone = std::make_shared<std::atomic_bool>(false);
         request->add_on_body_callback([this, reqid, opstate, rxBuf, cb](const char* at, size_t length) {
             try {
                 auto& b = *rxBuf;
@@ -1113,7 +1119,9 @@ DhtProxyClient::sendListen(const restinio::http_request_header_t& header,
                 opstate->ok.store(false);
             }
         });
-        request->add_on_done_callback([this, opstate, reqid](const http::Response& response) {
+        request->add_on_done_callback([this, opstate, reqid, subscribeDone](const http::Response& response) {
+            if (subscribeDone)
+                subscribeDone->store(true);
             if (response.status_code != 200) {
                 if (logger_)
                     logger_->error("[proxy:client] [listen] send request #{} failed with code={}",
@@ -1138,6 +1146,29 @@ DhtProxyClient::sendListen(const restinio::http_request_header_t& header,
                 request->get_connection()->set_keepalive(seconds);
             }
         });
+        if (subscribeDone) {
+            // Give the subscribe a deadline. Nothing else would ever release it: the
+            // keepalive above is only armed once the server has answered, and no other
+            // request in this client sets a timeout. A subscribe that never completes
+            // leaves the listener registered locally while the server never learns about
+            // it, so the device stops being notified without anything reporting an error.
+            // Cancelling runs the on_done callback, which clears the request, and failing
+            // the operation lets restartListeners() send the subscription again.
+            std::weak_ptr<http::Request> wreq = request;
+            request->timeout(proxy::SUBSCRIBE_TIMEOUT,
+                             [this, reqid, opstate, subscribeDone, wreq](const asio::error_code& ec) {
+                                 if (ec == asio::error::operation_aborted or subscribeDone->load()
+                                     or isDestroying_)
+                                     return;
+                                 if (logger_)
+                                     logger_->error("[proxy:client] [listen] subscribe request #{} timed out",
+                                                    reqid);
+                                 opstate->ok.store(false);
+                                 if (auto req = wreq.lock())
+                                     req->cancel();
+                                 opFailed();
+                             });
+        }
         request->send();
     } catch (const std::exception& e) {
         if (logger_)
