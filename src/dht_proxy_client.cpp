@@ -652,7 +652,21 @@ DhtProxyClient::getProxyInfos()
     if (logger_)
         logger_->debug("[proxy:client] [status] sending request");
 
-    auto resolver = std::make_shared<http::Resolver>(httpContext_, proxyUrl_, logger_);
+    // Reuse what the previous resolver found: the query still runs, but a
+    // connection can start at once instead of waiting for the system resolver,
+    // which is the slowest step when the device wakes up from sleep.
+    std::vector<asio::ip::tcp::endpoint> knownEndpoints;
+    {
+        std::lock_guard l(resolverLock_);
+        if (resolver_)
+            knownEndpoints = resolver_->get_endpoints();
+    }
+    auto resolver = knownEndpoints.empty()
+                        ? std::make_shared<http::Resolver>(httpContext_, proxyUrl_, logger_)
+                        : std::make_shared<http::Resolver>(httpContext_,
+                                                           proxyUrl_,
+                                                           std::move(knownEndpoints),
+                                                           logger_);
     queryProxyInfo(infoState, resolver, AF_INET);
     queryProxyInfo(infoState, resolver, AF_INET6);
     std::lock_guard l(resolverLock_);
