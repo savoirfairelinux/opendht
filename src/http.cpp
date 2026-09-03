@@ -233,11 +233,32 @@ Connection::Connection(asio::io_context& ctx,
 
 Connection::~Connection()
 {
-    close();
+    // No asynchronous operation can be pending here: their handlers keep
+    // the connection alive (see wrapCallback), so closing synchronously
+    // is safe regardless of the calling thread.
+    doClose();
 }
 
 void
 Connection::close()
+{
+    // asio sockets are not thread-safe. Closing from a thread other than the
+    // one running the io_context races with in-flight operations on the same
+    // socket (e.g. async_connect closing and reopening it to try the next
+    // endpoint), corrupting the reactor's descriptor state.
+    // Always perform the close on the io_context thread.
+    if (ctx_.get_executor().running_in_this_thread()) {
+        doClose();
+        return;
+    }
+    asio::post(ctx_, [w = weak_from_this()] {
+        if (auto sthis = w.lock())
+            sthis->doClose();
+    });
+}
+
+void
+Connection::doClose()
 {
     std::lock_guard lock(mutex_);
     asio::error_code ec;
@@ -631,12 +652,13 @@ Connection::async_handshake(HandlerCb cb)
 {
     std::lock_guard lock(mutex_);
     if (ssl_socket_) {
-        std::weak_ptr<Connection> wthis = shared_from_this();
+        // Keep the connection alive while the handshake is in flight, like
+        // every other asynchronous operation (see wrapCallback).
         ssl_socket_
-            ->async_handshake(asio::ssl::stream<asio::ip::tcp::socket>::client, [wthis, cb](const asio::error_code& ec) {
+            ->async_handshake(asio::ssl::stream<asio::ip::tcp::socket>::client, [sthis = shared_from_this(), cb](const asio::error_code& ec) {
                 if (ec == asio::error::operation_aborted)
                     return;
-                if (auto sthis = wthis.lock()) {
+                {
                     auto& this_ = *sthis;
                     auto verify_ec = SSL_get_verify_result(this_.ssl_socket_->asio_ssl_stream().native_handle());
                     if (this_.logger_) {

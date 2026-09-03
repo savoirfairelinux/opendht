@@ -106,9 +106,16 @@ public:
 
     void timeout(const std::chrono::seconds& timeout, HandlerCb cb = {});
 
+    /**
+     * Close the underlying socket.
+     * Safe to call from any thread: the actual close is dispatched to
+     * the thread running the io_context.
+     */
     void close();
 
 private:
+    void doClose();
+
     template<typename T>
     T wrapCallback(T cb) const
     {
