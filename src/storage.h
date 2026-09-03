@@ -232,6 +232,8 @@ Storage::store(const InfoHash& id, const Sp<Value>& value, time_point created, t
         if (it->data != value) {
             size_t size_old = it->data->size();
             ssize_t size_diff = size_new - (ssize_t) size_old;
+            // Re-storing identical content is a refresh, not an edition
+            size_t edited = (*it->data != *value) ? 1 : 0;
             // DHT_LOG.DEBUG("Updating %s -> %s", id.toString().c_str(), value->toString().c_str());
             //  clear quota for previous value
             if (it->store_bucket)
@@ -243,7 +245,7 @@ Storage::store(const InfoHash& id, const Sp<Value>& value, time_point created, t
                 sb->insert(id, *value, expiration);
             it->data = value;
             total_size += size_diff;
-            return std::make_pair(&(*it), StoreDiff {size_diff, 0, 0, 1});
+            return std::make_pair(&(*it), StoreDiff {size_diff, 0, 0, edited});
         }
     } else {
         // DHT_LOG.DEBUG("Storing %s -> %s", id.toString().c_str(), value->toString().c_str());
