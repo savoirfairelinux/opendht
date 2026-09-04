@@ -292,6 +292,24 @@ if get_option('tests').enabled()
     )
     test('NetworkEngine', test_networkengine)
 
+    test_opcache = executable(
+        'test_opcache',
+        'tests/test_opcache.cpp',
+        'tests/tests_runner.cpp',
+        include_directories: opendht_inc,
+        dependencies: [opendht_dep, cppunit, jsoncpp, fmt, openssl, msgpack],
+    )
+    test('OpCache', test_opcache)
+
+    test_valuecache = executable(
+        'test_valuecache',
+        'tests/test_valuecache.cpp',
+        'tests/tests_runner.cpp',
+        include_directories: opendht_inc,
+        dependencies: [opendht_dep, cppunit, jsoncpp, fmt, openssl, msgpack],
+    )
+    test('ValueCache', test_valuecache)
+
     test_crypto = executable(
         'test_crypto',
         'tests/test_crypto.cpp',
