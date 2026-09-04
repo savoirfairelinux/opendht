@@ -397,7 +397,7 @@ FieldValueIndex::containedIn(const FieldValueIndex& other) const
         return false;
     for (const auto& field : index) {
         auto other_field = other.index.find(field.first);
-        if (other_field == other.index.end())
+        if (other_field == other.index.end() or not (field.second == other_field->second))
             return false;
     }
     return true;
@@ -589,6 +589,14 @@ bool
 Query::isSatisfiedBy(const Query& q) const
 {
     return none or (where.isSatisfiedBy(q.where) and select.isSatisfiedBy(q.select));
+}
+
+bool
+Query::isProjectionSatisfiedBy(const Query& q) const
+{
+    /* A projected answer can not be filtered afterwards, so requiring the
+       filters of both queries to be a subset of each other, that is equal. */
+    return none or (isSatisfiedBy(q) and q.where.isSatisfiedBy(where));
 }
 
 std::ostream&
