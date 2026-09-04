@@ -889,12 +889,31 @@ Resolver::Resolver(asio::io_context& ctx,
     completed_ = true;
 }
 
+Resolver::Resolver(asio::io_context& ctx,
+                   std::string url,
+                   std::vector<asio::ip::tcp::endpoint> endpoints,
+                   std::shared_ptr<dht::Logger> logger)
+    : url_(std::move(url))
+    , resolver_(ctx)
+    , destroyed_(std::make_shared<bool>(false))
+    , endpoints_(std::move(endpoints))
+    , logger_(logger)
+{
+    // Answer from the cached endpoints right away so a connection can start
+    // without waiting for the system resolver, and query anyway so a stale
+    // address is replaced as soon as the answer comes back.
+    completed_ = not endpoints_.empty();
+    resolve(url_.host, url_.service.empty() ? url_.protocol : url_.service);
+}
+
 Resolver::~Resolver()
 {
     decltype(cbs_) cbs;
+    decltype(freshCbs_) freshCbs;
     {
         std::lock_guard lock(mutex_);
         cbs = std::move(cbs_);
+        freshCbs = std::move(freshCbs_);
     }
     while (not cbs.empty()) {
         auto cb = cbs.front();
@@ -902,7 +921,27 @@ Resolver::~Resolver()
             cb(asio::error::operation_aborted, {});
         cbs.pop();
     }
+    while (not freshCbs.empty()) {
+        auto cb = freshCbs.front();
+        if (cb)
+            cb(asio::error::operation_aborted, {});
+        freshCbs.pop();
+    }
     *destroyed_ = true;
+}
+
+std::vector<asio::ip::tcp::endpoint>
+Resolver::get_endpoints() const
+{
+    std::lock_guard lock(mutex_);
+    return endpoints_;
+}
+
+bool
+Resolver::is_resolving() const
+{
+    std::lock_guard lock(mutex_);
+    return resolving_;
 }
 
 void
@@ -927,27 +966,68 @@ filter(const std::vector<asio::ip::tcp::endpoint>& epts, sa_family_t family)
 }
 
 void
-Resolver::add_callback(ResolverCb cb, sa_family_t family)
+Resolver::add_callback(ResolverCb cb, sa_family_t family, bool freshOnly)
 {
     std::lock_guard lock(mutex_);
+    auto wrapped = family == AF_UNSPEC
+                       ? std::move(cb)
+                       : ResolverCb {[cb, family](const asio::error_code& ec,
+                                                  const std::vector<asio::ip::tcp::endpoint>& endpoints) {
+                             if (ec)
+                                 cb(ec, endpoints);
+                             else
+                                 cb(ec, filter(endpoints, family));
+                         }};
     if (!completed_)
-        cbs_.emplace(family == AF_UNSPEC ? std::move(cb)
-                                         : [cb, family](const asio::error_code& ec,
-                                                        const std::vector<asio::ip::tcp::endpoint>& endpoints) {
-                                               if (ec)
-                                                   cb(ec, endpoints);
-                                               else
-                                                   cb(ec, filter(endpoints, family));
-                                           });
+        cbs_.emplace(std::move(wrapped));
+    else if (freshOnly and resolving_)
+        // The cached endpoints already failed this caller, so hold the callback
+        // until the query that is still running has something else to offer.
+        freshCbs_.emplace(std::move(wrapped));
     else {
         // Always dispatch the callback on the io_context thread. Invoking it
         // synchronously would run the caller's continuation (e.g. the whole
         // connect chain of Request::send) on the calling thread, mutating asio
         // objects concurrently with the io thread running the io_context.
         asio::post(resolver_.get_executor(),
-                   [cb = std::move(cb),
-                    ec = ec_,
-                    endpoints = family == AF_UNSPEC ? endpoints_ : filter(endpoints_, family)] { cb(ec, endpoints); });
+                   [cb = std::move(wrapped), ec = ec_, endpoints = endpoints_] { cb(ec, endpoints); });
+    }
+}
+
+void
+Resolver::complete(const asio::error_code& ec, std::vector<asio::ip::tcp::endpoint>&& endpoints)
+{
+    decltype(cbs_) cbs;
+    decltype(freshCbs_) freshCbs;
+    asio::error_code reportedEc;
+    std::vector<asio::ip::tcp::endpoint> reportedEndpoints;
+    {
+        std::lock_guard lock(mutex_);
+        resolving_ = false;
+        if (not ec) {
+            ec_ = ec;
+            endpoints_ = std::move(endpoints);
+        } else if (endpoints_.empty()) {
+            // Nothing cached to fall back on, so the failure has to be reported.
+            ec_ = ec;
+        }
+        completed_ = true;
+        cbs = std::move(cbs_);
+        freshCbs = std::move(freshCbs_);
+        reportedEc = ec_;
+        reportedEndpoints = endpoints_;
+    }
+    while (not cbs.empty()) {
+        auto cb = cbs.front();
+        if (cb)
+            cb(reportedEc, reportedEndpoints);
+        cbs.pop();
+    }
+    while (not freshCbs.empty()) {
+        auto cb = freshCbs.front();
+        if (cb)
+            cb(reportedEc, reportedEndpoints);
+        freshCbs.pop();
     }
 }
 
@@ -965,30 +1045,45 @@ Resolver::resolve(std::string_view host, std::string_view service)
     } else if (service == "https"sv) {
         service = "443"sv;
     }
+
+    {
+        std::lock_guard lock(mutex_);
+        resolving_ = true;
+    }
+
+    if (not timer_)
+        timer_ = std::make_unique<asio::steady_timer>(resolver_.get_executor());
+    timer_->expires_after(RESOLVE_TIMEOUT);
+    timer_->async_wait([this, destroyed = destroyed_](const asio::error_code& ec) {
+        if (ec == asio::error::operation_aborted or *destroyed)
+            return;
+        {
+            std::lock_guard lock(mutex_);
+            if (not resolving_)
+                return;
+            // Claim the completion under the lock so the query answering at the
+            // same moment cannot report a second time.
+            resolving_ = false;
+        }
+        if (logger_)
+            logger_->error("[http:client] [resolver] timed out resolving {:s}", url_.host);
+        resolver_.cancel();
+        complete(asio::error::timed_out, {});
+    });
+
     resolver_.async_resolve(host,
                             service,
                             [this, destroyed = destroyed_](const asio::error_code& ec,
                                                            asio::ip::tcp::resolver::results_type endpoints) {
                                 if (ec == asio::error::operation_aborted or *destroyed)
                                     return;
+                                if (timer_)
+                                    timer_->cancel();
                                 if (logger_) {
                                     logger_->debug("[http:client] [resolver] got result: {:s}", ec.message());
                                 }
-                                decltype(cbs_) cbs;
-                                {
-                                    std::lock_guard lock(mutex_);
-                                    ec_ = ec;
-                                    endpoints_ = std::vector<asio::ip::tcp::endpoint> {endpoints.begin(),
-                                                                                       endpoints.end()};
-                                    completed_ = true;
-                                    cbs = std::move(cbs_);
-                                }
-                                while (not cbs.empty()) {
-                                    auto cb = cbs.front();
-                                    if (cb)
-                                        cb(ec, endpoints_);
-                                    cbs.pop();
-                                }
+                                complete(ec,
+                                         std::vector<asio::ip::tcp::endpoint> {endpoints.begin(), endpoints.end()});
                             });
 }
 
@@ -1466,7 +1561,12 @@ void
 Request::send()
 {
     notify_state_change(State::CREATED);
+    resolve_and_connect(false);
+}
 
+void
+Request::resolve_and_connect(bool freshOnly)
+{
     std::weak_ptr<Request> wthis = shared_from_this();
     resolver_->add_callback(
         [wthis](const asio::error_code& ec, std::vector<asio::ip::tcp::endpoint> endpoints) {
@@ -1480,17 +1580,28 @@ Request::send()
                 } else if (!this_.conn_ or !this_.conn_->is_open()) {
                     this_.connect(std::move(endpoints), [wthis](const asio::error_code& ec) {
                         if (auto sthis = wthis.lock()) {
-                            if (ec)
-                                sthis->terminate(asio::error::not_connected);
-                            else
+                            if (not ec) {
                                 sthis->post();
+                            } else if (sthis->resolver_->is_resolving()) {
+                                // These endpoints came from a cache that no longer
+                                // points anywhere. The query is still running, so
+                                // wait for it rather than fail on a stale address.
+                                if (sthis->logger_)
+                                    sthis->logger_->debug(
+                                        "[http:request:{:d}] cached endpoints unreachable, awaiting resolution",
+                                        sthis->id_);
+                                sthis->resolve_and_connect(true);
+                            } else {
+                                sthis->terminate(asio::error::not_connected);
+                            }
                         }
                     });
                 } else
                     this_.post();
             }
         },
-        family_);
+        family_,
+        freshOnly);
 }
 
 void
