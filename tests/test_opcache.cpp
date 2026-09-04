@@ -570,6 +570,29 @@ OpCacheTester::testSourceDropKeepsValue()
 }
 
 void
+OpCacheTester::testSeqOnlyRefreshNotCounted()
+{
+    // A node re-announcing the same content with a bumped seq must not be
+    // counted as an additional source by the OpValueCache above it, or the
+    // value would survive the node's departure.
+    std::vector<Event> events;
+    dht::OpValueCache parent(recordEvents(events));
+    dht::TypeStore types;
+    auto now = dht::clock::now();
+
+    auto v = makeValue(42, 0, "same");
+    auto vBumped = makeValue(42, 1, "same");
+    {
+        dht::ValueCache node([&](const Values& vals, bool expired) { parent.onValue(vals, expired); });
+        node.onValues({v}, {}, {}, types, now);
+        node.onValues({vBumped}, {}, {}, types, now);
+        CPPUNIT_ASSERT_EQUAL(1u, count(events, false));
+    }
+    CPPUNIT_ASSERT_EQUAL_MESSAGE("Node gone: its value must be expired once", 1u, count(events, true));
+    CPPUNIT_ASSERT_EQUAL((size_t) 0, parent.size());
+}
+
+void
 OpCacheTester::testHighChurnRefCountConsistency()
 {
     dht::OpValueCache cache([](const Values&, bool) { return true; });

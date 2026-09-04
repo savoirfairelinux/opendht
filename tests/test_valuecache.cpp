@@ -354,6 +354,47 @@ ValueCacheTester::testSameSeqEditIgnored()
 }
 
 void
+ValueCacheTester::testSameContentHigherSeqIsRefresh()
+{
+    // Value::operator== ignores seq: identical content with a bumped seq is
+    // the same value re-announced, not an edition. Re-emitting it would make
+    // a source-counting OpValueCache count this node twice.
+    int addCount = 0;
+    dht::ValueCache cache([&](const std::vector<std::shared_ptr<dht::Value>>& vals, bool expired) {
+        if (!expired)
+            addCount += vals.size();
+    });
+    dht::TypeStore types;
+    auto now = std::chrono::steady_clock::now();
+
+    auto v1 = std::make_shared<dht::Value>();
+    v1->id = 1;
+    v1->seq = 0;
+    v1->data = {'A'};
+    cache.onValues({v1}, {}, {}, types, now);
+    CPPUNIT_ASSERT_EQUAL(1, addCount);
+
+    auto sameContent = std::make_shared<dht::Value>();
+    sameContent->id = 1;
+    sameContent->seq = 1;
+    sameContent->data = {'A'};
+    auto later = now + std::chrono::minutes(5);
+    cache.onValues({sameContent}, {}, {}, types, later);
+    CPPUNIT_ASSERT_EQUAL_MESSAGE("Same content with a higher seq is a refresh, not an edit", 1, addCount);
+
+    // The refresh still extends the expiration (default type: 10 minutes)
+    cache.expireValues(now + std::chrono::minutes(11));
+    CPPUNIT_ASSERT_EQUAL((size_t) 1, cache.size());
+
+    auto edited = std::make_shared<dht::Value>();
+    edited->id = 1;
+    edited->seq = 2;
+    edited->data = {'B'};
+    cache.onValues({edited}, {}, {}, types, later);
+    CPPUNIT_ASSERT_EQUAL(2, addCount);
+}
+
+void
 ValueCacheTester::testShortExpirationRefreshLost()
 {
     // Demonstrates that a value with a short expiration type survives

@@ -20,6 +20,7 @@ class ValueCacheTester : public CppUnit::TestFixture
     CPPUNIT_TEST(testMaxValues);
     CPPUNIT_TEST(testUpdateTypeExpiration);
     CPPUNIT_TEST(testSameSeqEditIgnored);
+    CPPUNIT_TEST(testSameContentHigherSeqIsRefresh);
     CPPUNIT_TEST(testShortExpirationRefreshLost);
     CPPUNIT_TEST(testShortExpirationHighChurn);
     CPPUNIT_TEST(testGracePeriodWhileSynced);
@@ -40,6 +41,7 @@ public:
     void testMaxValues();
     void testUpdateTypeExpiration();
     void testSameSeqEditIgnored();
+    void testSameContentHigherSeqIsRefresh();
     void testShortExpirationRefreshLost();
     void testShortExpirationHighChurn();
     void testGracePeriodWhileSynced();

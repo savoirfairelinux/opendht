@@ -27,6 +27,7 @@ class OpCacheTester : public CppUnit::TestFixture
     CPPUNIT_TEST(testGetCallbackReturnsFalse);
     CPPUNIT_TEST(testTimestampOrdering);
     CPPUNIT_TEST(testSourceDropKeepsValue);
+    CPPUNIT_TEST(testSeqOnlyRefreshNotCounted);
     CPPUNIT_TEST(testHighChurnRefCountConsistency);
     CPPUNIT_TEST(testValueUpdateSingleSourcePhantom);
     CPPUNIT_TEST(testExpireAfterUpdate);
@@ -55,6 +56,7 @@ public:
     void testGetCallbackReturnsFalse();
     void testTimestampOrdering();
     void testSourceDropKeepsValue();
+    void testSeqOnlyRefreshNotCounted();
     void testHighChurnRefCountConsistency();
     void testValueUpdateSingleSourcePhantom();
     void testExpireAfterUpdate();
