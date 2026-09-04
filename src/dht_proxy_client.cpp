@@ -25,8 +25,10 @@ struct DhtProxyClient::OperationState
 
 struct DhtProxyClient::Listener
 {
-    Listener(OpValueCache&& c)
-        : cache(std::move(c))
+    // The proxy server is a single logical source that re-delivers values
+    // (push refresh, listen restart): don't count duplicates.
+    Listener(ValueCallback&& cb)
+        : cache(std::move(cb), false)
     {}
 
     OpValueCache cache;
@@ -53,7 +55,7 @@ struct PermanentPut
 
 struct DhtProxyClient::ProxySearch
 {
-    SearchCache ops {};
+    SearchCache ops {false};
     std::unique_ptr<asio::steady_timer> opExpirationTimer;
     std::map<size_t, Listener> listeners {};
     std::map<Value::Id, PermanentPut> puts {};
@@ -1308,13 +1310,25 @@ DhtProxyClient::pushNotificationReceived([[maybe_unused]] const std::map<std::st
                 if (expired == notification.end()) {
                     auto cb = list.second.cb;
                     auto oldValues = list.second.cache.getValues();
+                    auto receivedIds = std::make_shared<std::set<Value::Id>>();
                     get(
                         key,
-                        [cb, sendTime](const std::vector<Sp<Value>>& vals) { return cb(vals, false, sendTime); },
-                        [cb, oldValues, sendTime](bool /*ok*/) {
+                        [cb, sendTime, receivedIds](const std::vector<Sp<Value>>& vals) {
+                            for (const auto& v : vals)
+                                receivedIds->insert(v->id);
+                            return cb(vals, false, sendTime);
+                        },
+                        [cb, oldValues, sendTime, receivedIds](bool ok) {
+                            if (!ok)
+                                return;
                             // Decrement old values refcount to expire values not
                             // present in the new list
-                            cb(oldValues, true, sendTime);
+                            std::vector<Sp<Value>> toExpire;
+                            for (const auto& v : oldValues)
+                                if (receivedIds->find(v->id) == receivedIds->end())
+                                    toExpire.emplace_back(v);
+                            if (!toExpire.empty())
+                                cb(toExpire, true, sendTime);
                         });
                     ret = PushNotificationResult::Values;
                 } else {

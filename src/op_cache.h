@@ -21,19 +21,29 @@ struct OpCacheValueStorage
 class OpValueCache
 {
 public:
-    OpValueCache(ValueCallback&& cb) noexcept
+    /**
+     * @param countSources  When true, a value is kept until every source
+     *                      that reported it has expired it (per-node caches,
+     *                      IPv4/IPv6 searches, local storage). When false,
+     *                      re-deliveries of the same value are not counted
+     *                      and a single expiration removes it (single
+     *                      logical source, e.g. a proxy server).
+     */
+    OpValueCache(ValueCallback&& cb, bool countSources = true) noexcept
         : callback(std::forward<ValueCallback>(cb))
+        , countSources(countSources)
     {}
     explicit OpValueCache(OpValueCache&& o) noexcept
         : values(std::move(o.values))
         , callback(std::move(o.callback))
+        , countSources(o.countSources)
     {
         o.callback = {};
     }
 
-    static ValueCallback cacheCallback(ValueCallback&& cb, std::function<void()>&& onCancel)
+    static ValueCallback cacheCallback(ValueCallback&& cb, std::function<void()>&& onCancel, bool countSources = true)
     {
-        return [cache = std::make_shared<OpValueCache>(std::forward<ValueCallback>(cb)),
+        return [cache = std::make_shared<OpValueCache>(std::forward<ValueCallback>(cb), countSources),
                 onCancel = std::move(onCancel)](const std::vector<Sp<Value>>& vals, bool expired) {
             auto ret = cache->onValue(vals, expired);
             if (not ret)
@@ -89,19 +99,22 @@ private:
     size_t syncedNodes {0};
     std::map<Value::Id, OpCacheValueStorage> values {};
     ValueCallback callback;
+    bool countSources {true};
 };
 
 class OpCache
 {
 public:
-    OpCache()
-        : cache([this](const std::vector<Sp<Value>>& vals, bool expired) {
-            if (expired)
-                onValuesExpired(vals);
-            else
-                onValuesAdded(vals);
-            return true;
-        })
+    explicit OpCache(bool countSources = true)
+        : cache(
+              [this](const std::vector<Sp<Value>>& vals, bool expired) {
+                  if (expired)
+                      onValuesExpired(vals);
+                  else
+                      onValuesAdded(vals);
+                  return true;
+              },
+              countSources)
     {}
 
     bool onValue(const std::vector<Sp<Value>>& vals, bool expired) { return cache.onValue(vals, expired); }
@@ -156,7 +169,9 @@ private:
 class SearchCache
 {
 public:
-    SearchCache() {}
+    explicit SearchCache(bool countSources = true)
+        : countSources_(countSources)
+    {}
     SearchCache(SearchCache&&) = default;
 
     using OnListen = std::function<size_t(Sp<Query>, ValueCallback, SyncCallback)>;
@@ -192,6 +207,7 @@ private:
 
     size_t nextToken_ {1};
     time_point nextExpiration_ {time_point::max()};
+    bool countSources_ {true};
 };
 
 } // namespace dht

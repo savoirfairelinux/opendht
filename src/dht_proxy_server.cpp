@@ -571,6 +571,18 @@ DhtProxyServer::~DhtProxyServer()
     ioContext_->stop();
     if (serverThread_.joinable())
         serverThread_.join();
+    {
+        // ~Request notifies DONE and its handler erases from requests_:
+        // detach pending push requests so nothing calls back into this object.
+        decltype(requests_) pending;
+        {
+            std::lock_guard l(requestLock_);
+            pending = std::move(requests_);
+        }
+        for (auto& r : pending)
+            r.second->add_on_state_change_callback({});
+        pending.clear();
+    }
     if (logger_)
         logger_->debug("[proxy:server] http server closed");
 }

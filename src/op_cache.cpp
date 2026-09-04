@@ -12,18 +12,20 @@ OpValueCache::onValuesAdded(const std::vector<Sp<Value>>& vals, const system_clo
     std::vector<Sp<Value>> newValues;
     for (const auto& v : vals) {
         auto viop = values.emplace(v->id, v);
+        auto& stored = viop.first->second;
         if (viop.second) {
             newValues.emplace_back(v);
-        } else if (*viop.first->second.data != *v) {
-            // Special case for edition
-            if (v->seq > viop.first->second.data->seq) {
-                viop.first->second.data = v;
-                newValues.emplace_back(v);
-            }
-        } else {
-            viop.first->second.refCount++;
+        } else if (*stored.data != *v) {
+            if (v->seq <= stored.data->seq)
+                continue; // older version from a lagging source
+            // Edited: only the reporting source is known to hold this version
+            stored.data = v;
+            stored.refCount = 1;
+            newValues.emplace_back(v);
+        } else if (countSources) {
+            stored.refCount++;
         }
-        viop.first->second.updated = t;
+        stored.updated = t;
     }
     return newValues.empty() ? true : callback(newValues, false);
 }
@@ -37,6 +39,8 @@ OpValueCache::onValuesExpired(const std::vector<Sp<Value>>& vals, const system_c
         if (vit != values.end()) {
             if (vit->second.updated > t)
                 continue;
+            if (v->seq < vit->second.data->seq)
+                continue; // source held an older version, not counted
 
             vit->second.updated = t;
             vit->second.refCount--;
@@ -174,7 +178,7 @@ SearchCache::listen(const ValueCallback& get_cb, const Sp<Query>& q, Value::Filt
     auto op = getOp(q);
     if (op == ops.end()) {
         // New query
-        op = ops.emplace(q, std::make_unique<OpCache>()).first;
+        op = ops.emplace(q, std::make_unique<OpCache>(countSources_)).first;
         auto& cache = *op->second;
         cache.searchToken = onListen(
             q,
@@ -240,15 +244,17 @@ SearchCache::expire(const time_point& now, const std::function<void(size_t)>& on
 bool
 SearchCache::get(const Value::Filter& f, const Sp<Query>& q, const GetCallback& gcb, const DoneCallback& dcb) const
 {
+    if (not gcb)
+        return false;
     auto op = getOp(q);
-    if (op != ops.end()) {
-        auto vals = op->second->get(f);
-        if ((not vals.empty() and not gcb(vals)) or op->second->isSynced()) {
-            dcb(true, {});
-            return true;
-        }
-    }
-    return false;
+    if (op == ops.end() or not op->second->isSynced())
+        return false;
+    auto vals = op->second->get(f);
+    if (not vals.empty())
+        gcb(vals); // a consumer stopping early is not a failure
+    if (dcb)
+        dcb(true, {});
+    return true;
 }
 
 std::vector<Sp<Value>>
