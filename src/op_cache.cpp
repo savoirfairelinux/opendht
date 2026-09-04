@@ -39,8 +39,10 @@ OpValueCache::onValuesExpired(const std::vector<Sp<Value>>& vals, const system_c
         if (vit != values.end()) {
             if (vit->second.updated > t)
                 continue;
-            if (v->seq < vit->second.data->seq)
-                continue; // source held an older version, not counted
+            // Mirror onValuesAdded: a version that was never counted (different
+            // content, not a newer seq) must not decrement the refcount
+            if (*v != *vit->second.data and v->seq <= vit->second.data->seq)
+                continue;
 
             vit->second.updated = t;
             vit->second.refCount--;
