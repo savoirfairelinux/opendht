@@ -211,6 +211,32 @@ OpCacheTester::testStaleExpireIgnored()
 }
 
 void
+OpCacheTester::testSameSeqConflictExpireIgnored()
+{
+    // A different payload with the same seq (e.g. the same signed content
+    // re-signed with a randomized signature) is ignored on add and not
+    // counted: its expiration must be ignored too.
+    std::vector<Event> events;
+    dht::OpValueCache cache(recordEvents(events));
+
+    auto x = makeValue(60, 0, "x");
+    auto y = makeValue(60, 0, "y");
+
+    cache.onValuesAdded({x}); // A
+    cache.onValuesAdded({y}); // B: same seq, different content
+    CPPUNIT_ASSERT_EQUAL(1u, count(events, false));
+    CPPUNIT_ASSERT(cache.get(60)->data == x->data);
+
+    cache.onValuesExpired({y}); // B
+    CPPUNIT_ASSERT_EQUAL_MESSAGE("An uncounted version must not expire the value", (size_t) 1, cache.size());
+    CPPUNIT_ASSERT_EQUAL(0u, count(events, true));
+
+    cache.onValuesExpired({x}); // A
+    CPPUNIT_ASSERT_EQUAL((size_t) 0, cache.size());
+    CPPUNIT_ASSERT_EQUAL(1u, count(events, true));
+}
+
+void
 OpCacheTester::testCallbacks()
 {
     std::vector<Event> events;

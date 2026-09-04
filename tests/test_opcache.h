@@ -16,6 +16,7 @@ class OpCacheTester : public CppUnit::TestFixture
     CPPUNIT_TEST(testEditChainMultiSource);
     CPPUNIT_TEST(testStaleAddIgnored);
     CPPUNIT_TEST(testStaleExpireIgnored);
+    CPPUNIT_TEST(testSameSeqConflictExpireIgnored);
     CPPUNIT_TEST(testCallbacks);
     CPPUNIT_TEST(testFilters);
     CPPUNIT_TEST(testSyncStatus);
@@ -43,6 +44,7 @@ public:
     void testEditChainMultiSource();
     void testStaleAddIgnored();
     void testStaleExpireIgnored();
+    void testSameSeqConflictExpireIgnored();
     void testCallbacks();
     void testFilters();
     void testSyncStatus();
