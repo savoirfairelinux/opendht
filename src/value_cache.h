@@ -189,7 +189,7 @@ private:
                 v->second.created = now;
                 v->second.expiration = now + te;
                 v->second.typeExpiration = te;
-                if (value->seq > v->second.data->seq) {
+                if (*value != *v->second.data and value->seq > v->second.data->seq) {
                     // edited value (same rule as OpValueCache): emit as add
                     v->second.data = value;
                     nvals.emplace_back(value);
