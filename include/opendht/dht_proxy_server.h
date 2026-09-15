@@ -19,7 +19,9 @@
 #include <mutex>
 
 namespace dht {
-enum class PushType { None = 0, Android, iOS, UnifiedPush };
+// Appended only: the values are serialized as integers by MSGPACK_ADD_ENUM,
+// so reordering would break compatibility with deployed proxies.
+enum class PushType { None = 0, Android, iOS, UnifiedPush, Huawei };
 }
 MSGPACK_ADD_ENUM(dht::PushType)
 
@@ -132,6 +134,7 @@ public:
         PushStats androidPush;
         PushStats iosPush;
         PushStats unifiedPush;
+        PushStats huaweiPush;
 
         /** Average requests per second */
         double requestRate {0};
@@ -398,6 +401,7 @@ private:
     PushStats androidPush_;
     PushStats iosPush_;
     PushStats unifiedPush_;
+    PushStats huaweiPush_;
 
     // Thread-safe access to listeners map.
     std::mutex lockListener_;
