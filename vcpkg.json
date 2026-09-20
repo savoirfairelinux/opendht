@@ -16,7 +16,7 @@
     },
     "fmt",
     "nettle",
-    "shiftmedia-libgnutls",
+    "libgnutls",
     "msgpack",
     "jsoncpp",
     "asio",
