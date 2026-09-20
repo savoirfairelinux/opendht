@@ -4,7 +4,7 @@ vcpkg_from_github(
     OUT_SOURCE_PATH SOURCE_PATH
     REPO savoirfairelinux/gnutls
     REF 64b213e92997c0fb81a2a5852c8e3f9d86ab0d69
-    SHA512 40df6b5a42b1f38c784965de781e896e6ff6f88ac7d6bcbc43fd11c3d25fd8748a2dfd7ba37bc807033d31704921d8bc7312a886662fa54ac7bec516772b8c1f
+    SHA512 d01adeeec0d8f3da29814e4815e2a97735c63317a517275d34367e09128228a045273abbcb2233b1297b2746d556083269dd2ae356c75a4fdbb8e7f06cbc0a13
     HEAD_REF master
     PATCHES
         external-libtasn1.patch
