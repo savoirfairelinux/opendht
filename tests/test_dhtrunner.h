@@ -10,6 +10,22 @@
 
 namespace test {
 
+class DhtRunnerPushTester : public CppUnit::TestFixture
+{
+    CPPUNIT_TEST_SUITE(DhtRunnerPushTester);
+    CPPUNIT_TEST(testPushBeforeRun);
+    CPPUNIT_TEST(testPushAfterJoin);
+    CPPUNIT_TEST(testPushBurstAfterJoin);
+    CPPUNIT_TEST(testPushWhileRunning);
+    CPPUNIT_TEST_SUITE_END();
+
+public:
+    void testPushBeforeRun();
+    void testPushAfterJoin();
+    void testPushBurstAfterJoin();
+    void testPushWhileRunning();
+};
+
 class DhtRunnerTester : public CppUnit::TestFixture
 {
     CPPUNIT_TEST_SUITE(DhtRunnerTester);

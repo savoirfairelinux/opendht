@@ -16,6 +16,58 @@ using namespace std::literals;
 
 namespace test {
 CPPUNIT_TEST_SUITE_REGISTRATION(DhtRunnerTester);
+CPPUNIT_TEST_SUITE_REGISTRATION(DhtRunnerPushTester);
+
+namespace {
+#if defined(OPENDHT_PROXY_CLIENT) && defined(OPENDHT_PUSH_NOTIFICATIONS)
+constexpr auto stoppedPushResult = dht::PushNotificationResult::IgnoredStopped;
+#else
+constexpr auto stoppedPushResult = dht::PushNotificationResult::IgnoredDisabled;
+#endif
+}
+
+void
+DhtRunnerPushTester::testPushBeforeRun()
+{
+    dht::DhtRunner node;
+    auto result = node.pushNotificationReceived({});
+    CPPUNIT_ASSERT(result.wait_for(0s) == std::future_status::ready);
+    CPPUNIT_ASSERT(result.get() == stoppedPushResult);
+}
+
+void
+DhtRunnerPushTester::testPushAfterJoin()
+{
+    dht::DhtRunner node;
+    node.run(0);
+    node.join();
+    auto result = node.pushNotificationReceived({});
+    CPPUNIT_ASSERT(result.wait_for(0s) == std::future_status::ready);
+    CPPUNIT_ASSERT(result.get() == stoppedPushResult);
+}
+
+void
+DhtRunnerPushTester::testPushBurstAfterJoin()
+{
+    dht::DhtRunner node;
+    node.run(0);
+    node.join();
+    for (unsigned i = 0; i < 32; ++i) {
+        auto result = node.pushNotificationReceived({});
+        CPPUNIT_ASSERT(result.wait_for(0s) == std::future_status::ready);
+        CPPUNIT_ASSERT(result.get() == stoppedPushResult);
+    }
+}
+
+void
+DhtRunnerPushTester::testPushWhileRunning()
+{
+    dht::DhtRunner node;
+    node.run(0);
+    auto result = node.pushNotificationReceived({});
+    CPPUNIT_ASSERT(result.wait_for(5s) == std::future_status::ready);
+    CPPUNIT_ASSERT(result.get() != dht::PushNotificationResult::IgnoredStopped);
+}
 
 template<typename T>
 T
