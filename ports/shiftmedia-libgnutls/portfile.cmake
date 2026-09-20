@@ -15,10 +15,9 @@ file(REMOVE_RECURSE "${SOURCE_PATH}/devel/perlasm")
 
 vcpkg_download_distfile(
     GNULIB_SNAPSHOT
-    URLS "https://gitweb.git.savannah.gnu.org/gitweb/?p=gnulib.git;a=snapshot;h=${GNULIB_REF};sf=tgz"
-         "https://git.savannah.gnu.org/gitweb/?p=gnulib.git;a=snapshot;h=${GNULIB_REF};sf=tgz"
-    FILENAME "gnulib-${GNULIB_REF}.tar.gz"
-    SHA512 dafabcfa4ba19f992efa07c7b9fbd4f600f0945f2a019bb219cf76ba151af9c7205018991a4c5e637ffb2b238833c311e9a870f1f1f7b69057c1d85d3417fd66
+    URLS "https://gitlab.com/libidn/gnulib-mirror/-/archive/${GNULIB_REF}/gnulib-mirror-${GNULIB_REF}.tar.gz"
+    FILENAME "gnulib-mirror-${GNULIB_REF}.tar.gz"
+    SHA512 340539bd7b8e30b1e0f81a15fb207960e9ae3c4ef515f39f1d1bdb43ed52ad94a29c6a6ce8bbca3484ba5392e1dae7447c2f6b58124209614e884345e13914f5
 )
 
 vcpkg_extract_source_archive(
