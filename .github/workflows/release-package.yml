@@ -309,7 +309,6 @@ jobs:
     name: Build Windows MSI Installer
     runs-on: windows-latest
     env:
-      VCPKG_VERSION: "2026-07-27"
       VCPKG_INSTALLATION_ROOT: "C:\\vcpkg"
       VCPKG_DISABLE_METRICS: "1"
       VCPKG_DEFAULT_TRIPLET: x64-windows
@@ -339,7 +338,10 @@ jobs:
           path: |
             ${{ env.VCPKG_INSTALLED_DIR }}
             ${{ env.VCPKG_DEFAULT_BINARY_CACHE }}
-          key: ${{ runner.os }}-vcpkg-${{ env.VCPKG_VERSION }}-x64-shared-${{ hashFiles('**/vcpkg.json', '**/vcpkg-configuration.json') }}-${{ hashFiles('.github/workflows/windows-build.yml') }}
+          key: ${{ runner.os }}-vcpkg-x64-shared-${{ hashFiles('**/vcpkg.json', '**/vcpkg-configuration.json') }}-${{ hashFiles('.github/workflows/release-package.yml') }}
+          restore-keys: |
+            ${{ runner.os }}-vcpkg-x64-shared-${{ hashFiles('**/vcpkg.json', '**/vcpkg-configuration.json') }}
+            ${{ runner.os }}-vcpkg-x64-shared-
 
       - name: Setup vcpkg and install dependencies
         if: steps.cache-vcpkg.outputs.cache-hit != 'true'
@@ -413,7 +415,6 @@ jobs:
     name: Build Windows dhtnode
     runs-on: windows-latest
     env:
-      VCPKG_VERSION: "2026-07-27"
       VCPKG_INSTALLATION_ROOT: "C:\\vcpkg"
       VCPKG_DISABLE_METRICS: "1"
       VCPKG_DEFAULT_TRIPLET: x64-windows-static-release
@@ -437,10 +438,10 @@ jobs:
           path: |
             ${{ env.VCPKG_INSTALLED_DIR }}
             ${{ env.VCPKG_DEFAULT_BINARY_CACHE }}
-          key: ${{ runner.os }}-vcpkg-${{ env.VCPKG_VERSION }}-x64-static-${{ hashFiles('**/vcpkg.json', '**/vcpkg-configuration.json') }}-${{ hashFiles('.github/workflows/windows-build.yml') }}
+          key: ${{ runner.os }}-vcpkg-x64-static-${{ hashFiles('**/vcpkg.json', '**/vcpkg-configuration.json') }}-${{ hashFiles('.github/workflows/release-package.yml') }}
           restore-keys: |
-            ${{ runner.os }}-vcpkg-${{ env.VCPKG_VERSION }}-x64-static-${{ hashFiles('**/vcpkg.json', '**/vcpkg-configuration.json') }}
-            ${{ runner.os }}-vcpkg-${{ env.VCPKG_VERSION }}-x64-static-
+            ${{ runner.os }}-vcpkg-x64-static-${{ hashFiles('**/vcpkg.json', '**/vcpkg-configuration.json') }}
+            ${{ runner.os }}-vcpkg-x64-static-
 
       - name: Setup vcpkg and install static dependencies
         if: steps.cache-vcpkg-static.outputs.cache-hit != 'true'
