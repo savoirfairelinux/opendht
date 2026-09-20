@@ -1,0 +1,23 @@
+{
+  "name": "shiftmedia-libgnutls",
+  "version": "3.8.13",
+  "port-version": 0,
+  "description": "GnuTLS fork maintained by Savoir-faire Linux with native Visual Studio project build tools.",
+  "homepage": "https://github.com/savoirfairelinux/gnutls",
+  "license": "LGPL-2.1-only",
+  "supports": "windows & !arm & !mingw & !xbox",
+  "dependencies": [
+    "gmp",
+    "libtasn1",
+    "nettle",
+    {
+      "name": "vs-yasm",
+      "host": true
+    },
+    {
+      "name": "yasm-tool-helper",
+      "host": true
+    },
+    "zlib"
+  ]
+}

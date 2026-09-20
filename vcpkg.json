@@ -16,7 +16,14 @@
     },
     "fmt",
     "nettle",
-    "libgnutls",
+    {
+      "name": "shiftmedia-libgnutls",
+      "platform": "windows & !mingw"
+    },
+    {
+      "name": "libgnutls",
+      "platform": "!windows | mingw"
+    },
     "msgpack",
     "jsoncpp",
     "asio",
