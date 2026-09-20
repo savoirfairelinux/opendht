@@ -36,7 +36,6 @@ jobs:
     name: Build wheels on Windows
     runs-on: windows-latest
     env:
-      VCPKG_VERSION: "2026-07-27"
       VCPKG_INSTALLATION_ROOT: "C:\\vcpkg"
       VCPKG_DISABLE_METRICS: "1"
       VCPKG_DEFAULT_TRIPLET: x64-windows-release
@@ -53,7 +52,10 @@ jobs:
           path: |
             ${{ env.VCPKG_INSTALLED_DIR }}
             ${{ env.VCPKG_DEFAULT_BINARY_CACHE }}
-          key: ${{ runner.os }}-vcpkg-${{ env.VCPKG_VERSION }}-${{ env.VCPKG_DEFAULT_TRIPLET }}-${{ hashFiles('**/vcpkg.json', '**/vcpkg-configuration.json') }}-${{ hashFiles('.github/workflows/windows-build.yml') }}
+          key: ${{ runner.os }}-vcpkg-${{ env.VCPKG_DEFAULT_TRIPLET }}-${{ hashFiles('**/vcpkg.json', '**/vcpkg-configuration.json') }}-${{ hashFiles('.github/workflows/python-wheels.yml') }}
+          restore-keys: |
+            ${{ runner.os }}-vcpkg-${{ env.VCPKG_DEFAULT_TRIPLET }}-${{ hashFiles('**/vcpkg.json', '**/vcpkg-configuration.json') }}
+            ${{ runner.os }}-vcpkg-${{ env.VCPKG_DEFAULT_TRIPLET }}-
 
       - name: Setup vcpkg and install dependencies
         if: steps.cache-vcpkg.outputs.cache-hit != 'true'

@@ -9,7 +9,6 @@ on:
     branches: [ main, master ]
 
 env:
-  VCPKG_VERSION: "2026-07-27"
   VCPKG_INSTALLATION_ROOT: "C:\\vcpkg"
   VCPKG_DISABLE_METRICS: "1"
   VCPKG_INSTALLED_DIR: ${{ github.workspace }}\vcpkg_installed
@@ -36,7 +35,7 @@ jobs:
         id: generate_cache_key
         shell: pwsh
         run: |
-          $key_value = "${{ runner.os }}-vcpkg-${{ env.VCPKG_VERSION }}-${{ matrix.arch }}-shared-${{ hashFiles('**/vcpkg.json', '**/vcpkg-configuration.json') }}-${{ hashFiles('.github/workflows/windows-build.yml') }}"
+          $key_value = "${{ runner.os }}-vcpkg-${{ matrix.arch }}-shared-${{ hashFiles('**/vcpkg.json', '**/vcpkg-configuration.json') }}-${{ hashFiles('.github/workflows/windows-build.yml') }}"
           echo "key=$key_value" >> $env:GITHUB_OUTPUT
 
       - name: Cache vcpkg installed packages
@@ -48,8 +47,8 @@ jobs:
             ${{ env.VCPKG_DEFAULT_BINARY_CACHE }}
           key: ${{ steps.generate_cache_key.outputs.key }}
           restore-keys: |
-            ${{ runner.os }}-vcpkg-${{ env.VCPKG_VERSION }}-${{ matrix.arch }}-shared-${{ hashFiles('**/vcpkg.json', '**/vcpkg-configuration.json') }}
-            ${{ runner.os }}-vcpkg-${{ env.VCPKG_VERSION }}-${{ matrix.arch }}-shared-
+            ${{ runner.os }}-vcpkg-${{ matrix.arch }}-shared-${{ hashFiles('**/vcpkg.json', '**/vcpkg-configuration.json') }}
+            ${{ runner.os }}-vcpkg-${{ matrix.arch }}-shared-
 
       - name: Setup vcpkg and install dependencies
         if: steps.cache-vcpkg.outputs.cache-hit != 'true'
@@ -84,7 +83,7 @@ jobs:
         id: generate_static_cache_key
         shell: pwsh
         run: |
-          $key_value = "${{ runner.os }}-vcpkg-${{ env.VCPKG_VERSION }}-${{ matrix.arch }}-static-${{ hashFiles('**/vcpkg.json', '**/vcpkg-configuration.json') }}-${{ hashFiles('.github/workflows/windows-build.yml') }}"
+          $key_value = "${{ runner.os }}-vcpkg-${{ matrix.arch }}-static-${{ hashFiles('**/vcpkg.json', '**/vcpkg-configuration.json') }}-${{ hashFiles('.github/workflows/windows-build.yml') }}"
           echo "key=$key_value" >> $env:GITHUB_OUTPUT
 
       - name: Cache vcpkg static installed packages
@@ -96,8 +95,8 @@ jobs:
             ${{ env.VCPKG_DEFAULT_BINARY_CACHE }}
           key: ${{ steps.generate_static_cache_key.outputs.key }}
           restore-keys: |
-            ${{ runner.os }}-vcpkg-${{ env.VCPKG_VERSION }}-${{ matrix.arch }}-static-${{ hashFiles('**/vcpkg.json', '**/vcpkg-configuration.json') }}
-            ${{ runner.os }}-vcpkg-${{ env.VCPKG_VERSION }}-${{ matrix.arch }}-static-
+            ${{ runner.os }}-vcpkg-${{ matrix.arch }}-static-${{ hashFiles('**/vcpkg.json', '**/vcpkg-configuration.json') }}
+            ${{ runner.os }}-vcpkg-${{ matrix.arch }}-static-
 
       - name: Setup vcpkg and install static dependencies
         if: steps.cache-vcpkg-static.outputs.cache-hit != 'true'
@@ -139,8 +138,8 @@ jobs:
             ${{ env.VCPKG_DEFAULT_BINARY_CACHE }}
           key: ${{ needs.prepare-dependencies.outputs.vcpkg_cache_key }}
           restore-keys: |
-            ${{ runner.os }}-vcpkg-${{ env.VCPKG_VERSION }}-${{ matrix.arch }}-shared-${{ hashFiles('**/vcpkg.json', '**/vcpkg-configuration.json') }}
-            ${{ runner.os }}-vcpkg-${{ env.VCPKG_VERSION }}-${{ matrix.arch }}-shared-
+            ${{ runner.os }}-vcpkg-${{ matrix.arch }}-shared-${{ hashFiles('**/vcpkg.json', '**/vcpkg-configuration.json') }}
+            ${{ runner.os }}-vcpkg-${{ matrix.arch }}-shared-
 
       - name: Configure CMake
         shell: pwsh
@@ -216,8 +215,8 @@ jobs:
             ${{ env.VCPKG_DEFAULT_BINARY_CACHE }}
           key: ${{ needs.prepare-static-dependencies.outputs.vcpkg_static_cache_key }}
           restore-keys: |
-            ${{ runner.os }}-vcpkg-${{ env.VCPKG_VERSION }}-${{ matrix.arch }}-static-${{ hashFiles('**/vcpkg.json', '**/vcpkg-configuration.json') }}
-            ${{ runner.os }}-vcpkg-${{ env.VCPKG_VERSION }}-${{ matrix.arch }}-static-
+            ${{ runner.os }}-vcpkg-${{ matrix.arch }}-static-${{ hashFiles('**/vcpkg.json', '**/vcpkg-configuration.json') }}
+            ${{ runner.os }}-vcpkg-${{ matrix.arch }}-static-
       
       - name: Configure CMake for Static Build
         shell: pwsh
