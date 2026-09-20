@@ -18,7 +18,7 @@ vcpkg_download_distfile(
     URLS "https://gitweb.git.savannah.gnu.org/gitweb/?p=gnulib.git;a=snapshot;h=${GNULIB_REF};sf=tgz"
          "https://git.savannah.gnu.org/gitweb/?p=gnulib.git;a=snapshot;h=${GNULIB_REF};sf=tgz"
     FILENAME "gnulib-${GNULIB_REF}.tar.gz"
-    SHA512 4e416a3b4ef58c841ee4770d9990948a32a5273c0c4a855bba34f4de6941ccdb58a34cd74f6ed3a4ad7f6c4754c86a8afa094b83a11331e00798d97e75255f5a
+    SHA512 dafabcfa4ba19f992efa07c7b9fbd4f600f0945f2a019bb219cf76ba151af9c7205018991a4c5e637ffb2b238833c311e9a870f1f1f7b69057c1d85d3417fd66
 )
 
 vcpkg_extract_source_archive(
