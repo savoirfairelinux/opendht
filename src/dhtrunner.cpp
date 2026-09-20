@@ -1239,6 +1239,10 @@ DhtRunner::pushNotificationReceived([[maybe_unused]] const std::map<std::string,
     auto ret_token = std::make_shared<std::promise<PushNotificationResult>>();
     auto future = ret_token->get_future();
     std::lock_guard lck(storage_mtx);
+    if (running == State::Idle) {
+        ret_token->set_value(PushNotificationResult::IgnoredStopped);
+        return future;
+    }
     pending_ops_prio.emplace([ret_token, this, data](SecureDht&) {
         if (dht_)
             ret_token->set_value(dht_->pushNotificationReceived(data));
