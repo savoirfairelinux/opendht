@@ -532,6 +532,8 @@ public:
 
     /**
      * Insert a push notification to process for OpenDHT
+     * Returns an immediately ready future with IgnoredStopped if the runner is idle,
+     * or IgnoredDisabled if push notification support is disabled at build time.
      */
     std::future<PushNotificationResult> pushNotificationReceived(const std::map<std::string, std::string>& data);
 
