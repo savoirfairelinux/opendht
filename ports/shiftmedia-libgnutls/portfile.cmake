@@ -139,7 +139,7 @@ vcpkg_replace_string(
 vcpkg_replace_string(
     "${VCXPROJ}"
     [=[</DisableSpecificWarnings>]=]
-    [=[</DisableSpecificWarnings><RuntimeLibrary>$(RuntimeLibrary)</RuntimeLibrary>]=]
+    [=[</DisableSpecificWarnings><LanguageStandard_C>stdc11</LanguageStandard_C><RuntimeLibrary>$(RuntimeLibrary)</RuntimeLibrary>]=]
 )
 endforeach()
 
