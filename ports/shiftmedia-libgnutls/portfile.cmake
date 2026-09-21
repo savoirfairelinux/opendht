@@ -3,8 +3,8 @@ set(GNULIB_REF "1cc0125a28cba4e8503d853bf99b854fe4dd454c")
 vcpkg_from_github(
     OUT_SOURCE_PATH SOURCE_PATH
     REPO savoirfairelinux/gnutls
-    REF 37840cfa523b5fcf3f4ca354741ea0190e613a98
-    SHA512 afc3b374e3d528ecfb87bdb8ddcc799061e47022a5df1262afa70ed7c77059cd4aa656387c655ee84b9e2ce2515fc203d631b034ed79102b4e8f69df571cd725
+    REF 9ebeb826d64fe96bd3e154c4b63638b722b45f46
+    SHA512 7b7eebc0639f188b40ef6c248b90340345b39ab3827efabdf9ccbb2e24c7ebce025e22f79e593467457a6e0ce87828b11965e5eb22d3433381e3c509898d32be
     HEAD_REF fix/ci-msvc
     PATCHES
         external-libtasn1.patch
