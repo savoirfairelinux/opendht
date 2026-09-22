@@ -3,8 +3,8 @@ set(GNULIB_REF "1cc0125a28cba4e8503d853bf99b854fe4dd454c")
 vcpkg_from_github(
     OUT_SOURCE_PATH SOURCE_PATH
     REPO savoirfairelinux/gnutls
-    REF 9ebeb826d64fe96bd3e154c4b63638b722b45f46
-    SHA512 7b7eebc0639f188b40ef6c248b90340345b39ab3827efabdf9ccbb2e24c7ebce025e22f79e593467457a6e0ce87828b11965e5eb22d3433381e3c509898d32be
+    REF 3a87151a96fe1585a0c10e2c8a1bf0d0ef42e882
+    SHA512 56bec16b31dd2e20572b9dae8d144c30af371155140749253397f3f73d7a192c019a7e281921f1767e57f95f9e44492ce825ab75ae61e12c1953e389c3e14c4c
     HEAD_REF fix/ci-msvc
     PATCHES
         external-libtasn1.patch
@@ -139,7 +139,7 @@ vcpkg_replace_string(
 vcpkg_replace_string(
     "${VCXPROJ}"
     [=[</DisableSpecificWarnings>]=]
-    [=[</DisableSpecificWarnings><LanguageStandard_C>stdc11</LanguageStandard_C><RuntimeLibrary>$(RuntimeLibrary)</RuntimeLibrary>]=]
+    [=[</DisableSpecificWarnings><ForcedIncludeFiles>gnutls_msvc_fixes.h;%(ForcedIncludeFiles)</ForcedIncludeFiles><RuntimeLibrary>$(RuntimeLibrary)</RuntimeLibrary>]=]
 )
 endforeach()
 
