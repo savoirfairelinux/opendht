@@ -1659,22 +1659,11 @@ OcspResponse::toString(const bool compact) const
 gnutls_ocsp_cert_status_t
 OcspResponse::getCertificateStatus() const
 {
-    int ret;
-    gnutls_ocsp_cert_status_t status;
-    ret = gnutls_ocsp_resp_get_single(response,
-                                      0,
-                                      NULL,
-                                      NULL,
-                                      NULL,
-                                      NULL,
-                                      &status,
-                                      NULL,
-                                      NULL,
-                                      NULL,
-                                      NULL);
+    unsigned int status;
+    int ret = gnutls_ocsp_resp_get_single(response, 0, NULL, NULL, NULL, NULL, &status, NULL, NULL, NULL, NULL);
     if (ret < 0)
         throw CryptoException(gnutls_strerror(ret));
-    return status;
+    return (gnutls_ocsp_cert_status_t) status;
 }
 
 gnutls_ocsp_cert_status_t
@@ -1729,21 +1718,11 @@ OcspResponse::verifyDirect(const Certificate& crt, const Blob& nonce)
         throw CryptoException(gnutls_strerror(ret));
 
     // Check certificate revocation status
-    gnutls_ocsp_cert_status_t status_ocsp;
-    ret = gnutls_ocsp_resp_get_single(response,
-                                      0,
-                                      NULL,
-                                      NULL,
-                                      NULL,
-                                      NULL,
-                                      &status_ocsp,
-                                      NULL,
-                                      NULL,
-                                      NULL,
-                                      NULL);
+    unsigned int status_ocsp;
+    ret = gnutls_ocsp_resp_get_single(response, 0, NULL, NULL, NULL, NULL, &status_ocsp, NULL, NULL, NULL, NULL);
     if (ret < 0)
         throw CryptoException(gnutls_strerror(ret));
-    return status_ocsp;
+    return (gnutls_ocsp_cert_status_t) status_ocsp;
 }
 
 // RevocationList
