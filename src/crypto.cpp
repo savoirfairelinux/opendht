@@ -1660,26 +1660,21 @@ gnutls_ocsp_cert_status_t
 OcspResponse::getCertificateStatus() const
 {
     int ret;
-    unsigned int status;
-    // MSVC/vcpkg GnuTLS cast workaround
-#if _WIN32 && (GNUTLS_VERSION_NUMBER == 0x030807)
+    gnutls_ocsp_cert_status_t status;
     ret = gnutls_ocsp_resp_get_single(response,
                                       0,
                                       NULL,
                                       NULL,
                                       NULL,
                                       NULL,
-                                      reinterpret_cast<gnutls_ocsp_cert_status_t*>(&status),
+                                      &status,
                                       NULL,
                                       NULL,
                                       NULL,
                                       NULL);
-#else
-    ret = gnutls_ocsp_resp_get_single(response, 0, NULL, NULL, NULL, NULL, &status, NULL, NULL, NULL, NULL);
-#endif
     if (ret < 0)
         throw CryptoException(gnutls_strerror(ret));
-    return (gnutls_ocsp_cert_status_t) status;
+    return status;
 }
 
 gnutls_ocsp_cert_status_t
@@ -1734,26 +1729,21 @@ OcspResponse::verifyDirect(const Certificate& crt, const Blob& nonce)
         throw CryptoException(gnutls_strerror(ret));
 
     // Check certificate revocation status
-    unsigned int status_ocsp;
-    // MSVC/vcpkg GnuTLS cast workaround
-#if _WIN32 && (GNUTLS_VERSION_NUMBER == 0x030807)
+    gnutls_ocsp_cert_status_t status_ocsp;
     ret = gnutls_ocsp_resp_get_single(response,
                                       0,
                                       NULL,
                                       NULL,
                                       NULL,
                                       NULL,
-                                      reinterpret_cast<gnutls_ocsp_cert_status_t*>(&status_ocsp),
+                                      &status_ocsp,
                                       NULL,
                                       NULL,
                                       NULL,
                                       NULL);
-#else
-    ret = gnutls_ocsp_resp_get_single(response, 0, NULL, NULL, NULL, NULL, &status_ocsp, NULL, NULL, NULL, NULL);
-#endif
     if (ret < 0)
         throw CryptoException(gnutls_strerror(ret));
-    return (gnutls_ocsp_cert_status_t) status_ocsp;
+    return status_ocsp;
 }
 
 // RevocationList
