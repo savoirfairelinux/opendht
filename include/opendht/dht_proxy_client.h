@@ -294,6 +294,10 @@ public:
     void connectivityChanged(sa_family_t) override { getProxyInfos(); }
     void connectivityChanged() override
     {
+        // The network path may have changed (e.g. VPN toggled): current listen
+        // connections can be silently dead even if the proxy is still reachable,
+        // so force listeners to restart once the proxy is (re)confirmed.
+        launchConnectedCbs_ = true;
         getProxyInfos();
         loopSignal_();
     }
