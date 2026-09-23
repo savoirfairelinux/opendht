@@ -169,11 +169,34 @@ public:
              const bool ssl = false,
              std::shared_ptr<log::Logger> logger = {});
 
+    /**
+     * Start from previously resolved endpoints while querying the url anyway.
+     * Callbacks are answered from the cached endpoints without waiting, and the
+     * query replaces them as soon as it returns, so an address that went stale
+     * costs a connection attempt rather than a resolution delay.
+     */
+    Resolver(asio::io_context& ctx,
+             std::string url,
+             std::vector<asio::ip::tcp::endpoint> endpoints,
+             std::shared_ptr<log::Logger> logger = {});
+
     ~Resolver();
 
     inline const Url& get_url() const { return url_; }
 
-    void add_callback(ResolverCb cb, sa_family_t family = AF_UNSPEC);
+    /** Endpoints known so far, either cached or resolved. May be empty. */
+    std::vector<asio::ip::tcp::endpoint> get_endpoints() const;
+
+    /** Whether a query is still running, so a different answer may still come. */
+    bool is_resolving() const;
+
+    /**
+     * Register a callback for the resolved endpoints.
+     * When freshOnly is set, a cached answer is not enough: the callback waits
+     * for the pending query, so a caller that failed to reach a cached address
+     * can retry against whatever the system resolver returns.
+     */
+    void add_callback(ResolverCb cb, sa_family_t family = AF_UNSPEC, bool freshOnly = false);
 
     std::shared_ptr<log::Logger> getLogger() const { return logger_; }
 
@@ -181,17 +204,27 @@ public:
 
 private:
     void resolve(std::string_view host, std::string_view service);
+    void complete(const asio::error_code& ec, std::vector<asio::ip::tcp::endpoint>&& endpoints);
+
+    /**
+     * A stuck system resolver would otherwise hold every pending request for
+     * good: Request only arms its own timeout once resolution has answered.
+     */
+    static constexpr std::chrono::seconds RESOLVE_TIMEOUT {15};
 
     mutable std::mutex mutex_;
 
     Url url_;
     asio::error_code ec_;
     asio::ip::tcp::resolver resolver_;
+    std::unique_ptr<asio::steady_timer> timer_;
     std::shared_ptr<bool> destroyed_;
     std::vector<asio::ip::tcp::endpoint> endpoints_;
 
     bool completed_ {false};
+    bool resolving_ {false};
     std::queue<ResolverCb> cbs_;
+    std::queue<ResolverCb> freshCbs_;
 
     std::shared_ptr<log::Logger> logger_;
 };
@@ -323,6 +356,12 @@ private:
     void init_parser();
 
     void connect(std::vector<asio::ip::tcp::endpoint>&& endpoints, HandlerCb cb = {});
+
+    /**
+     * Resolve then connect. Retried once with freshOnly set when the endpoints
+     * that were handed out came from a cache and turned out to be unreachable.
+     */
+    void resolve_and_connect(bool freshOnly);
 
     void post();
 
