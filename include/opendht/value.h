@@ -1032,8 +1032,22 @@ struct OPENDHT_PUBLIC Query
 
     /**
      * Tell if the query is satisfied by another query.
+     *
+     * The answer to `q` contains every value this query asks for, but it may
+     * contain more: the caller is responsible for applying this query's own
+     * filters to the values it receives.
      */
     bool isSatisfiedBy(const Query& q) const;
+
+    /**
+     * Tell if the projected answer to another query can be reported for this
+     * query without any further filtering.
+     *
+     * A field-projected answer only carries the fields selected by `q`, so a
+     * narrower filter can no longer be evaluated on it. Both queries must
+     * therefore apply exactly the same filters.
+     */
+    bool isProjectionSatisfiedBy(const Query& q) const;
 
     template<typename Packer>
     void msgpack_pack(Packer& pk) const

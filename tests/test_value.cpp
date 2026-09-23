@@ -59,6 +59,60 @@ ValueTester::testFilter()
 }
 
 void
+ValueTester::testFieldValueIndexContainedIn()
+{
+    dht::Value first {(const uint8_t*) "a", 1};
+    first.id = 1;
+    dht::Value second {(const uint8_t*) "b", 1};
+    second.id = 2;
+
+    const dht::Select select {dht::Select {}.field(dht::Value::Field::Id)};
+    dht::FieldValueIndex first_index {first, select};
+    dht::FieldValueIndex second_index {second, select};
+
+    // Same projected field, different values: neither index contains the other.
+    CPPUNIT_ASSERT(not first_index.containedIn(second_index));
+    CPPUNIT_ASSERT(not second_index.containedIn(first_index));
+
+    // An index is always contained in an equal one.
+    dht::FieldValueIndex first_copy {first, select};
+    CPPUNIT_ASSERT(first_index.containedIn(first_copy));
+    CPPUNIT_ASSERT(first_copy.containedIn(first_index));
+
+    // A narrower projection with a matching value stays contained in a wider one.
+    const dht::Select wider {dht::Select {}.field(dht::Value::Field::Id).field(dht::Value::Field::ValueType)};
+    dht::FieldValueIndex first_wide {first, wider};
+    CPPUNIT_ASSERT(first_index.containedIn(first_wide));
+    CPPUNIT_ASSERT(not second_index.containedIn(first_wide));
+}
+
+void
+ValueTester::testProjectionSatisfiedBy()
+{
+    const dht::Query broad {dht::Select {}.field(dht::Value::Field::Id)};
+    const dht::Query filtered {dht::Select {}.field(dht::Value::Field::Id),
+                               dht::Where {}.valueType(1)};
+
+    // The unfiltered answer contains every value the filtered query asks for,
+    // so it satisfies it, but it also contains values it must not report.
+    CPPUNIT_ASSERT(filtered.isSatisfiedBy(broad));
+    CPPUNIT_ASSERT(not filtered.isProjectionSatisfiedBy(broad));
+
+    // The filtered answer is incomplete for the broad query either way.
+    CPPUNIT_ASSERT(not broad.isSatisfiedBy(filtered));
+    CPPUNIT_ASSERT(not broad.isProjectionSatisfiedBy(filtered));
+
+    // Identical filters stay reusable, including for a wider projection.
+    const dht::Query same {dht::Select {}.field(dht::Value::Field::Id),
+                           dht::Where {}.valueType(1)};
+    const dht::Query wider {dht::Select {}.field(dht::Value::Field::Id).field(dht::Value::Field::ValueType),
+                            dht::Where {}.valueType(1)};
+    CPPUNIT_ASSERT(filtered.isProjectionSatisfiedBy(same));
+    CPPUNIT_ASSERT(filtered.isProjectionSatisfiedBy(wider));
+    CPPUNIT_ASSERT(not wider.isProjectionSatisfiedBy(filtered));
+}
+
+void
 ValueTester::tearDown()
 {}
 
