@@ -276,6 +276,12 @@ public:
 
     std::vector<ValuesExport> exportValues() const override;
     void importValues(const std::vector<ValuesExport>&) override;
+    /**
+     * Imports values whose timestamps were taken from another run of the
+     * steady clock, shifting them by @p offset so that they mean the same
+     * instant here.
+     */
+    void importValues(const std::vector<ValuesExport>&, clock::duration offset);
 
     void saveState(const std::string& path) const;
     void loadState(const std::string& path);

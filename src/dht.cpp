@@ -2397,6 +2397,12 @@ Dht::exportValues() const
 void
 Dht::importValues(const std::vector<ValuesExport>& import)
 {
+    importValues(import, clock::duration::zero());
+}
+
+void
+Dht::importValues(const std::vector<ValuesExport>& import, clock::duration offset)
+{
     const auto& now = scheduler.time();
     const auto system_now = system_clock::now();
 
@@ -2456,7 +2462,9 @@ Dht::importValues(const std::vector<ValuesExport>& import)
                     ignored++;
                     continue;
                 }
-                val_time = std::min(val_time, now);
+                val_time = std::min(val_time + offset, now);
+                if (expiration != time_point::min())
+                    expiration += offset;
                 auto val_size = tmp_val.size();
                 if (storageStore(value.first,
                                  std::make_shared<Value>(std::move(tmp_val)),
@@ -2906,9 +2914,42 @@ struct DhtState
     InfoHash id;
     std::vector<NodeExport> nodes;
     std::vector<ValuesExport> values;
+    /* Value timestamps are steady_clock counts, which are only meaningful for
+       as long as the machine keeps running. Recording when the state was saved,
+       on both clocks, is what lets the next run translate them: the wall clock
+       says how much time really went by, and the steady count says what the
+       timestamps in the file were relative to. Both default to zero, so a state
+       written by an older version is still read the way it used to be. */
+    int64_t saved_steady {0};
+    int64_t saved_wall {0};
 
-    MSGPACK_DEFINE_MAP(v, id, nodes, values)
+    MSGPACK_DEFINE_MAP(v, id, nodes, values, saved_steady, saved_wall)
 };
+
+/**
+ * Returns how much to shift the timestamps of a saved state.
+ *
+ * They were counted on a steady clock, which restarts from zero whenever the
+ * machine does: read back as they are, a value saved before a reboot looks
+ * hours younger than it is and outlives its expiration by exactly the uptime
+ * the machine had reached. The wall clock says how much time really went by
+ * while the node was down, and the difference between the two answers is the
+ * correction to apply.
+ */
+static clock::duration
+savedStateOffset(int64_t savedSteady, int64_t savedWall)
+{
+    if (savedSteady == 0 or savedWall == 0)
+        return clock::duration::zero(); /* saved by a version that did not record them */
+    const auto wallNow = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                             std::chrono::system_clock::now().time_since_epoch())
+                             .count();
+    /* A wall clock that went backwards must not be read as time regained. */
+    const auto elapsed = std::chrono::nanoseconds(std::max<int64_t>(wallNow - savedWall, 0));
+    return clock::now().time_since_epoch()
+           - clock::duration(savedSteady)
+           - std::chrono::duration_cast<clock::duration>(elapsed);
+}
 
 void
 Dht::saveState(const std::string& path) const
@@ -2917,6 +2958,10 @@ Dht::saveState(const std::string& path) const
     state.id = myid;
     state.nodes = exportNodes();
     state.values = exportValues();
+    state.saved_steady = clock::now().time_since_epoch().count();
+    state.saved_wall = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                           std::chrono::system_clock::now().time_since_epoch())
+                           .count();
     std::ofstream file(path);
     msgpack::pack(file, state);
 }
@@ -2953,7 +2998,7 @@ Dht::loadState(const std::string& path)
             tmpNodes.reserve(state.nodes.size());
             for (const auto& node : state.nodes)
                 tmpNodes.emplace_back(network_engine.insertNode(node.id, node.addr));
-            importValues(state.values);
+            importValues(state.values, savedStateOffset(state.saved_steady, state.saved_wall));
         }
     } catch (const std::exception& e) {
         if (logger_)
