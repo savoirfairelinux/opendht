@@ -97,7 +97,7 @@ std::string
 DhtProxyServer::ServerStats::toString() const
 {
     auto ret = fmt::format("Listens: {}, Puts: {}, PushListeners: {}\n"
-                           "Push requests in the last {}: [Android: {}], [iOS: {}], [Unified: {}]\n"
+                           "Push requests in the last {}: [Android: {}], [iOS: {}], [Unified: {}], [Huawei: {}]\n"
                            "Requests: {} per second.",
                            listenCount,
                            putCount,
@@ -106,6 +106,7 @@ DhtProxyServer::ServerStats::toString() const
                            androidPush.toString(),
                            iosPush.toString(),
                            unifiedPush.toString(),
+                           huaweiPush.toString(),
                            requestRate);
     if (nodeInfo) {
         auto& ipv4 = nodeInfo->ipv4;
@@ -131,6 +132,7 @@ DhtProxyServer::ServerStats::toJson() const
     result["androidPush"] = androidPush.toJson();
     result["iosPush"] = iosPush.toJson();
     result["unifiedPush"] = unifiedPush.toJson();
+    result["huaweiPush"] = huaweiPush.toJson();
     result["requestRate"] = requestRate;
     if (nodeInfo)
         result["nodeInfo"] = nodeInfo->toJson();
@@ -636,6 +638,7 @@ DhtProxyServer::updateStats(std::shared_ptr<NodeInfo> info) const
         stats.androidPush = androidPush_;
         stats.iosPush = iosPush_;
         stats.unifiedPush = unifiedPush_;
+        stats.huaweiPush = huaweiPush_;
     }
 #endif
     stats.serverStartTime = serverStartTime_;
@@ -861,6 +864,8 @@ DhtProxyServer::getTypeFromString(const std::string& type)
         return PushType::iOS;
     else if (type == "unifiedpush")
         return PushType::UnifiedPush;
+    else if (type == "huawei")
+        return PushType::Huawei;
     return PushType::None;
 }
 
@@ -1273,15 +1278,25 @@ DhtProxyServer::sendPushNotification(
             Json::Value tokens(Json::arrayValue);
             tokens[0] = token;
             notification["tokens"] = std::move(tokens);
-            notification["platform"] = type == PushType::Android ? 2 : 1;
-            notification["data"] = std::move(json);
+            // gorush platform codes: 1 = iOS (APNs), 2 = Android (FCM), 3 = Huawei (HMS)
+            notification["platform"] = type == PushType::Android  ? 2
+                                       : type == PushType::Huawei ? 3
+                                                                  : 1;
             auto priority = highPriority ? "high" : "normal";
-            if (type == PushType::Android) {
+            if (type == PushType::Huawei) {
+                // HMS carries the payload as a serialized JSON string in its own field:
+                // the generic "data" object is ignored for this platform by gorush.
+                notification["huawei_data"] = Json::writeString(jsonBuilder_, json);
+                notification["huawei_ttl"] = "86400s"; // time to live = 24 hours
+                notification["priority"] = priority;
+            } else if (type == PushType::Android) {
+                notification["data"] = std::move(json);
                 Json::Value androidConfig(Json::objectValue);
                 androidConfig["priority"] = priority;
                 androidConfig["ttl"] = "86400s"; // time to live = 24 hours
                 notification["android"] = std::move(androidConfig);
             } else {
+                notification["data"] = std::move(json);
                 notification["priority"] = priority;
                 const auto expiration = std::chrono::system_clock::now() + std::chrono::hours(24);
                 uint32_t exp = std::chrono::duration_cast<std::chrono::seconds>(expiration.time_since_epoch()).count();
@@ -1333,6 +1348,9 @@ DhtProxyServer::sendPushNotification(
             break;
         case PushType::UnifiedPush:
             unifiedPush_.increment(highPriority);
+            break;
+        case PushType::Huawei:
+            huaweiPush_.increment(highPriority);
             break;
         default:
             break;
