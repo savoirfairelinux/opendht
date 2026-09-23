@@ -46,6 +46,7 @@ public:
     static const constexpr uint16_t NON_AUTHORITATIVE_INFORMATION {203}; /* incomplete request packet. */
     static const constexpr uint16_t UNAUTHORIZED {401};                  /* incorrect tokens. */
     static const constexpr uint16_t NOT_FOUND {404};                     /* storage not found */
+    static const constexpr uint16_t TOO_MANY_REQUESTS {429};             /* resource quota reached. */
     // for internal use (custom).
     static const constexpr uint16_t INVALID_TID_SIZE {421};        /* id was truncated. */
     static const constexpr uint16_t UNKNOWN_TID {422};             /* unknown tid */
@@ -54,6 +55,7 @@ public:
     static const std::string GET_NO_INFOHASH;    /* received "get" request with no infohash */
     static const std::string LISTEN_NO_INFOHASH; /* got "listen" request without infohash */
     static const std::string LISTEN_WRONG_TOKEN; /* incorrect token in "listen" request */
+    static const std::string LISTEN_TOO_MANY;    /* too many listeners registered by the node */
     static const std::string PUT_NO_INFOHASH;    /* no infohash in "put" request */
     static const std::string PUT_WRONG_TOKEN;    /* got "put" request with incorrect token */
     static const std::string STORAGE_NOT_FOUND;  /* got access request for an unknown storage */

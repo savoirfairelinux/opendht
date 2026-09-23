@@ -96,6 +96,28 @@ struct Storage
     /* The maximum number of values we store for a given hash. */
     static constexpr unsigned MAX_VALUES {64 * 1024};
 
+    /* The maximum number of listening sockets a remote node may register for a given hash. */
+    static constexpr unsigned MAX_LISTENERS_PER_NODE {32};
+
+    /* The maximum number of remote nodes listening to a given hash. */
+    static constexpr unsigned MAX_LISTENING_NODES {512};
+
+    /**
+     * Tells whether a new listening socket may be registered for this node.
+     *
+     * Remote listeners are entirely attacker-controlled: a peer picks its own
+     * socket identifiers, and may claim any number of node identifiers from a
+     * single address. Without a quota, the retained subscriptions and the
+     * queries they carry grow without bound.
+     */
+    bool canAddListener(const Sp<Node>& node) const
+    {
+        auto nl = listeners.find(node);
+        if (nl == listeners.end())
+            return listeners.size() < MAX_LISTENING_NODES;
+        return nl->second.size() < MAX_LISTENERS_PER_NODE;
+    }
+
     /**
      * Changes caused by an operation on the storage.
      */
