@@ -5,6 +5,7 @@
 
 #include <any>
 #include <mutex>
+#include <thread>
 
 #if defined(__clang__)
 #pragma clang diagnostic push
@@ -129,6 +130,63 @@ DhtProxyClientTester::testRestartListenersFetchesValuesAfterFailedSubscribe()
     CPPUNIT_ASSERT(failed.request->body_.find("\"refresh\"") == std::string::npos);
 
     CPPUNIT_ASSERT(!healthy.request);
+#else
+    CPPUNIT_ASSERT(true);
+#endif
+}
+
+void
+DhtProxyClientTester::testStalePushResubscribesAndFetchesValues()
+{
+#ifdef OPENDHT_PUSH_NOTIFICATIONS
+    // A proxy that accepts connections but never answers: the request built by the client
+    // stays in place, and no failure triggers another resubscription.
+    asio::io_context silentContext;
+    asio::ip::tcp::acceptor silentProxy(silentContext, {asio::ip::make_address("127.0.0.1"), 0});
+    auto proxyUrl = "http://127.0.0.1:" + std::to_string(silentProxy.local_endpoint().port());
+    DhtProxyClient client({}, {}, [] {}, proxyUrl, "OpenDHT-Test", "client-id", "push-token");
+
+    auto key = InfoHash::get("proxy-client-stale-push");
+    DhtProxyClient::Listener* listener {nullptr};
+    {
+        std::lock_guard lock(client.searchLock_);
+        auto& search = client.searches_[key];
+        auto [it, inserted] = search.listeners.emplace(std::piecewise_construct,
+                                                       std::forward_as_tuple(1),
+                                                       std::forward_as_tuple(ValueCallback(
+                                                           [](const std::vector<Sp<Value>>&, bool) { return true; })));
+        CPPUNIT_ASSERT(inserted);
+        listener = &it->second;
+        listener->opstate = std::make_shared<DhtProxyClient::OperationState>();
+        listener->cb = [](const std::vector<Sp<Value>>&, bool, system_clock::time_point) {
+            return true;
+        };
+    }
+
+    // The server still notifies with the session of a previous client (e.g. the account was
+    // restarted): the value it announces, typically an incoming call, is dropped.
+    auto result = client.pushNotificationReceived({
+        {"s",   "previous-session"},
+        {"to",  "client-id"       },
+        {"key", key.toString()    }
+    });
+    CPPUNIT_ASSERT(result == PushNotificationResult::IgnoredWrongSession);
+
+    // The client resubscribes asynchronously, and must ask for the values the server stores.
+    std::string body;
+    for (int i = 0; i < 500 && body.empty(); ++i) {
+        {
+            std::lock_guard lock(client.searchLock_);
+            if (listener->request)
+                body = listener->request->body_;
+        }
+        if (body.empty())
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    CPPUNIT_ASSERT(!body.empty());
+    CPPUNIT_ASSERT(body.find("push-token") != std::string::npos);
+    CPPUNIT_ASSERT(body.find(client.pushSessionId_) != std::string::npos);
+    CPPUNIT_ASSERT(body.find("\"refresh\"") == std::string::npos);
 #else
     CPPUNIT_ASSERT(true);
 #endif
