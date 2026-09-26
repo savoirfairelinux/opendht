@@ -1207,6 +1207,27 @@ DhtProxyClient::restartListeners(const asio::error_code& ec)
         }
     }
     if (not deviceKey_.empty()) {
+        bool pending = false;
+        {
+            std::lock_guard l(lockCurrentProxyInfos_);
+            pending = pushSubscriptionPending_;
+            pushSubscriptionPending_ = false;
+        }
+        if (pending) {
+            // setPushNotificationToken() could not send the subscriptions
+            // because the proxy connection was not established yet. Send them
+            // now, so the server learns the session id of this run: healthy
+            // listeners are skipped by the loop below, and would otherwise
+            // never be subscribed for push at all.
+            // Also set after a push of a stale session was dropped: ask for the
+            // stored values too, or the value that push announced is lost.
+            if (logger_)
+                logger_->debug("[proxy:client] [listeners] sending deferred push subscriptions");
+            for (auto& search : searches_)
+                for (auto& listener : search.second.listeners)
+                    resubscribe(search.first, listener.first, listener.second, true);
+            return;
+        }
         if (logger_)
             logger_->debug("[proxy:client] [listeners] resubscribe due to a connectivity change");
         // Connectivity changed, refresh all subscribe
@@ -1266,6 +1287,23 @@ DhtProxyClient::pushNotificationReceived([[maybe_unused]] const std::map<std::st
         if (sessionId != notification.end() and sessionId->second != pushSessionId_) {
             if (logger_)
                 logger_->debug("[proxy:client] [push] ignoring push for other session");
+            // A mismatch proves the server still has a listener registered under a previous
+            // session: it keeps waking this device for notifications that can only be
+            // discarded, and the values they announce are never fetched. Ask for the
+            // subscriptions to be sent again, with the values the server stores, so the server
+            // learns the current session and the value announced by this push is not lost,
+            // instead of waiting for an unrelated event to trigger one.
+            //
+            // restartListeners() is rate limited by its own timer: stale listeners notify in
+            // bursts, and rearming the timer on each one simply coalesces them into a single
+            // pass.
+            {
+                std::lock_guard l(lockCurrentProxyInfos_);
+                pushSubscriptionPending_ = true;
+            }
+            listenerRestartTimer_->expires_at(std::chrono::steady_clock::now());
+            listenerRestartTimer_->async_wait(
+                std::bind(&DhtProxyClient::restartListeners, this, std::placeholders::_1));
             return PushNotificationResult::IgnoredWrongSession;
         }
         std::lock_guard lock(searchLock_);
@@ -1444,18 +1482,36 @@ DhtProxyClient::setPushNotificationToken([[maybe_unused]] const std::string& tok
         if (deviceKey_ == token)
             return;
         deviceKey_ = token;
-        if (!(statusIpv4_ == NodeStatus::Connected || statusIpv6_ == NodeStatus::Connected))
+        if (!(statusIpv4_ == NodeStatus::Connected || statusIpv6_ == NodeStatus::Connected)) {
+            // The proxy connection is not up yet, so the subscriptions can't be
+            // sent now. Remember that they are owed: clients typically set the
+            // token while the account starts, before the first proxy reply has
+            // been received, and nothing else would ever push the current
+            // session id to the server. The server would then keep notifying
+            // this device with the session of a previous run, and every push
+            // would be discarded as PushNotificationResult::IgnoredWrongSession.
+            pushSubscriptionPending_ = true;
             return;
+        }
+        pushSubscriptionPending_ = false;
     }
+    resubscribeAll();
+#endif
+}
+
+#ifdef OPENDHT_PUSH_NOTIFICATIONS
+void
+DhtProxyClient::resubscribeAll()
+{
     if (logger_)
-        logger_->debug("[proxy:client] [push] token changed, resubscribing");
+        logger_->debug("[proxy:client] [push] resubscribing every listener");
     std::lock_guard lock(searchLock_);
     for (auto& search : searches_) {
         for (auto& listener : search.second.listeners) {
             resubscribe(search.first, listener.first, listener.second);
         }
     }
-#endif
 }
+#endif
 
 } // namespace dht

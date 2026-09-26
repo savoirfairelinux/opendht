@@ -368,6 +368,14 @@ private:
     std::string pushClientId_;
     std::string pushSessionId_;
 
+    /**
+     * Set when setPushNotificationToken() could not send the subscriptions
+     * because the proxy connection was not established yet. Consumed by
+     * restartListeners() once the connection comes up.
+     * Guarded by lockCurrentProxyInfos_.
+     */
+    bool pushSubscriptionPending_ {false};
+
     mutable std::mutex lockCurrentProxyInfos_;
     NodeStatus statusIpv4_ {NodeStatus::Disconnected};
     NodeStatus statusIpv6_ {NodeStatus::Disconnected};
@@ -441,6 +449,13 @@ private:
      * that may have missed some (its previous subscription failed).
      */
     void resubscribe(const InfoHash& key, const size_t token, Listener& listener, bool fetchValues = false);
+
+#ifdef OPENDHT_PUSH_NOTIFICATIONS
+    /**
+     * Resubscribe every listener so the server learns the current push session.
+     */
+    void resubscribeAll();
+#endif
 
     /**
      * If we want to use push notifications by default.
