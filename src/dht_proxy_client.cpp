@@ -1219,11 +1219,13 @@ DhtProxyClient::restartListeners(const asio::error_code& ec)
             // now, so the server learns the session id of this run: healthy
             // listeners are skipped by the loop below, and would otherwise
             // never be subscribed for push at all.
+            // Also set after a push of a stale session was dropped: ask for the
+            // stored values too, or the value that push announced is lost.
             if (logger_)
                 logger_->debug("[proxy:client] [listeners] sending deferred push subscriptions");
             for (auto& search : searches_)
                 for (auto& listener : search.second.listeners)
-                    resubscribe(search.first, listener.first, listener.second);
+                    resubscribe(search.first, listener.first, listener.second, true);
             return;
         }
         if (logger_)
@@ -1288,7 +1290,8 @@ DhtProxyClient::pushNotificationReceived([[maybe_unused]] const std::map<std::st
             // A mismatch proves the server still has a listener registered under a previous
             // session: it keeps waking this device for notifications that can only be
             // discarded, and the values they announce are never fetched. Ask for the
-            // subscriptions to be sent again so the server learns the current session,
+            // subscriptions to be sent again, with the values the server stores, so the server
+            // learns the current session and the value announced by this push is not lost,
             // instead of waiting for an unrelated event to trigger one.
             //
             // restartListeners() is rate limited by its own timer: stale listeners notify in
