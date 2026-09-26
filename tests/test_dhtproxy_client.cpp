@@ -90,4 +90,48 @@ DhtProxyClientTester::testSetPushNotificationTokenResubscribesWithNewToken()
 #endif
 }
 
+void
+DhtProxyClientTester::testRestartListenersFetchesValuesAfterFailedSubscribe()
+{
+#ifdef OPENDHT_PUSH_NOTIFICATIONS
+    DhtProxyClient client({}, {}, [] {}, "http://127.0.0.1:8080", "OpenDHT-Test", "client-id", "push-token");
+
+    auto addListener = [&](const InfoHash& key, bool ok) -> DhtProxyClient::Listener& {
+        auto& search = client.searches_[key];
+        auto [it, inserted] = search.listeners.emplace(std::piecewise_construct,
+                                                       std::forward_as_tuple(1),
+                                                       std::forward_as_tuple(ValueCallback(
+                                                           [](const std::vector<Sp<Value>>&, bool) { return true; })));
+        CPPUNIT_ASSERT(inserted);
+        auto& listener = it->second;
+        listener.opstate = std::make_shared<DhtProxyClient::OperationState>();
+        listener.opstate->ok = ok;
+        listener.cb = [](const std::vector<Sp<Value>>&, bool, system_clock::time_point) {
+            return true;
+        };
+        return listener;
+    };
+
+    // The subscription of this listener failed (e.g. no network): values stored on the
+    // key since then were never received.
+    auto failedKey = InfoHash::get("proxy-client-failed-subscribe");
+    auto& failed = addListener(failedKey, false);
+    auto healthyKey = InfoHash::get("proxy-client-healthy-subscribe");
+    auto& healthy = addListener(healthyKey, true);
+
+    client.restartListeners({});
+
+    CPPUNIT_ASSERT(failed.request);
+    CPPUNIT_ASSERT_EQUAL(std::string("/key/") + failedKey.toString(),
+                         std::string(failed.request->header_.request_target()));
+    CPPUNIT_ASSERT(failed.request->body_.find("push-token") != std::string::npos);
+    // Without "refresh", the server answers with the values it stores for the key.
+    CPPUNIT_ASSERT(failed.request->body_.find("\"refresh\"") == std::string::npos);
+
+    CPPUNIT_ASSERT(!healthy.request);
+#else
+    CPPUNIT_ASSERT(true);
+#endif
+}
+
 } // namespace test
