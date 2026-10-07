@@ -24,7 +24,7 @@ constexpr auto stoppedPushResult = dht::PushNotificationResult::IgnoredStopped;
 #else
 constexpr auto stoppedPushResult = dht::PushNotificationResult::IgnoredDisabled;
 #endif
-}
+} // namespace
 
 void
 DhtRunnerPushTester::testPushBeforeRun()
@@ -91,12 +91,17 @@ DhtRunnerTester::testListenReadiness()
     bool received = false;
     std::promise<bool> ready;
     auto readyFuture = ready.get_future();
-    auto token = node1.listen(key, [&](const std::vector<dht::Sp<dht::Value>>& values, bool expired) {
-        if (!expired)
-            for (const auto& current : values)
-                received = received || current->id == 42;
-        return true;
-    }, {}, {}, [&](bool ok) { ready.set_value(ok && received); });
+    auto token = node1.listen(
+        key,
+        [&](const std::vector<dht::Sp<dht::Value>>& values, bool expired) {
+            if (!expired)
+                for (const auto& current : values)
+                    received = received || current->id == 42;
+            return true;
+        },
+        {},
+        {},
+        [&](bool ok) { ready.set_value(ok && received); });
     CPPUNIT_ASSERT(readyFuture.wait_for(10s) == std::future_status::ready);
     CPPUNIT_ASSERT(readyFuture.get());
     node1.cancelListen(key, token.get());
@@ -105,12 +110,117 @@ DhtRunnerTester::testListenReadiness()
     isolated.run(0);
     std::promise<bool> emptyReady;
     auto emptyFuture = emptyReady.get_future();
-    auto emptyToken = isolated.listen(key, [](const std::vector<dht::Sp<dht::Value>>&, bool) { return true; },
-                                      {}, {}, [&](bool ok) { emptyReady.set_value(ok); });
+    auto emptyToken = isolated.listen(
+        key,
+        [](const std::vector<dht::Sp<dht::Value>>&, bool) { return true; },
+        {},
+        {},
+        [&](bool ok) { emptyReady.set_value(ok); });
     CPPUNIT_ASSERT(emptyFuture.wait_for(5s) == std::future_status::ready);
     CPPUNIT_ASSERT(emptyFuture.get());
     isolated.cancelListen(key, emptyToken.get());
     isolated.join();
+}
+
+void
+DhtRunnerTester::testListenReadinessStopped()
+{
+    dht::DhtRunner stopped;
+    auto key = dht::InfoHash::get("stopped-listen-readiness");
+    std::vector<bool> results;
+    unsigned deliveries = 0;
+    auto listen = [&] {
+        auto token = stopped.listen(
+            key,
+            [&](const std::vector<dht::Sp<dht::Value>>&, bool) {
+                ++deliveries;
+                return true;
+            },
+            {},
+            {},
+            [&](bool ok) { results.push_back(ok); });
+        CPPUNIT_ASSERT(token.wait_for(0s) == std::future_status::ready);
+        CPPUNIT_ASSERT_EQUAL(size_t(0), token.get());
+    };
+    listen();
+    CPPUNIT_ASSERT(results == std::vector<bool>({false}));
+    stopped.run(0);
+    stopped.join();
+    listen();
+    CPPUNIT_ASSERT(results == std::vector<bool>({false, false}));
+    CPPUNIT_ASSERT_EQUAL(0u, deliveries);
+}
+
+void
+DhtRunnerTester::testListenReadinessInvalidKey()
+{
+    auto ready = std::make_shared<std::promise<bool>>();
+    auto future = ready->get_future();
+    auto deliveries = std::make_shared<std::atomic<unsigned>>(0);
+    auto token = node1.listen(
+        dht::InfoHash {},
+        [deliveries](const std::vector<dht::Sp<dht::Value>>&, bool) {
+            ++*deliveries;
+            return true;
+        },
+        {},
+        {},
+        [ready](bool ok) { ready->set_value(ok); });
+    CPPUNIT_ASSERT_EQUAL(size_t(0), getFutureValue(std::move(token), 5s));
+    CPPUNIT_ASSERT(!getFutureValue(std::move(future), 5s));
+    CPPUNIT_ASSERT_EQUAL(0u, deliveries->load());
+}
+
+void
+DhtRunnerTester::testListenReadinessFilteredSignedValues()
+{
+    dht::DhtRunner source;
+    dht::DhtRunner::Config config;
+    config.dht_config.id = dht::crypto::generateIdentity();
+    source.run(0, config);
+    auto bound = node1.getBound();
+    if (bound.isUnspecified())
+        bound.setLoopback();
+    source.bootstrap(bound);
+    auto key = dht::InfoHash::get("signed-listen-readiness");
+    auto initial = std::make_shared<dht::Value>("initial-signed-value");
+    initial->id = 42;
+    auto stored = std::make_shared<std::promise<bool>>();
+    auto storedFuture = stored->get_future();
+    source.putSigned(key, initial, [stored](bool ok) { stored->set_value(ok); });
+    CPPUNIT_ASSERT(getFutureValue(std::move(storedFuture), 10s));
+
+    auto ignored = std::make_shared<dht::Value>("filtered-value");
+    ignored->id = 43;
+    auto ignoredStored = std::make_shared<std::promise<bool>>();
+    auto ignoredFuture = ignoredStored->get_future();
+    source.put(key, ignored, [ignoredStored](bool ok) { ignoredStored->set_value(ok); });
+    CPPUNIT_ASSERT(getFutureValue(std::move(ignoredFuture), 10s));
+
+    struct InitialValues
+    {
+        unsigned count {0};
+        bool valid {true};
+        std::promise<bool> ready;
+    };
+    auto state = std::make_shared<InitialValues>();
+    auto future = state->ready.get_future();
+    auto token = source.listen(
+        key,
+        [state](const std::vector<dht::Sp<dht::Value>>& values, bool expired) {
+            if (!expired)
+                for (const auto& value : values) {
+                    ++state->count;
+                    state->valid = state->valid && value->id == 42 && value->isSigned() && value->checkSignature();
+                }
+            return true;
+        },
+        [](const dht::Value& value) { return value.id == 42; },
+        {},
+        [state](bool ok) { state->ready.set_value(ok && state->valid && state->count == 1); });
+    CPPUNIT_ASSERT(getFutureValue(std::move(future), 10s));
+    source.cancelListen(key, getFutureValue(std::move(token), 5s));
+    source.join();
 }
 
 void

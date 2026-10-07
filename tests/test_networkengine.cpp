@@ -94,8 +94,8 @@ public:
         return 0;
     }
 
-    bool hasIPv4() const override { return true; }
-    bool hasIPv6() const override { return false; }
+    bool hasIPv4() const override { return ipv4; }
+    bool hasIPv6() const override { return ipv6; }
     const SockAddr& getBoundRef(sa_family_t family = AF_UNSPEC) const override
     {
         (void) family;
@@ -112,6 +112,8 @@ public:
 
     SockAddr bound_;
     std::vector<SentPacket> sends {};
+    bool ipv4 {true};
+    bool ipv6 {false};
 };
 
 static Blob
@@ -553,6 +555,193 @@ NetworkEngineTester::testListenConfirmationUpdatesSearchNodeToken()
        so that periodic find_node requests still refresh the search table. */
     CPPUNIT_ASSERT(searchNodePtr->last_get_reply == time_point::min());
     CPPUNIT_ASSERT(!searchNodePtr->isSynced(localDht.scheduler.time()));
+}
+
+void
+NetworkEngineTester::testListenReadinessWaitsForInitialUpdate()
+{
+    Config config {};
+    config.max_req_per_sec = -1;
+    config.max_peer_req_per_sec = -1;
+    auto clientSocket = std::make_unique<TestDatagramSocket>();
+    auto* clientPackets = clientSocket.get();
+    auto clientAddr = clientPackets->bound_;
+    Dht client(std::move(clientSocket), config, {}, std::make_unique<std::mt19937_64>(20));
+    auto serverSocket = std::make_unique<TestDatagramSocket>();
+    auto* serverPackets = serverSocket.get();
+    serverPackets->bound_.setPort(5020);
+    auto serverAddr = serverPackets->bound_;
+    Dht server(std::move(serverSocket), config, {}, std::make_unique<std::mt19937_64>(21));
+    auto key = InfoHash::get("readiness-reordered-update");
+    auto value = std::make_shared<Value>("initial-value");
+    value->id = 42;
+    CPPUNIT_ASSERT(server.storageStore(key, value, server.scheduler.time()));
+
+    std::vector<Value::Id> received;
+    std::vector<size_t> snapshots;
+    auto token = client.listen(
+        key,
+        [&](const std::vector<Sp<Value>>& values, bool expired) {
+            if (!expired)
+                for (const auto& current : values)
+                    received.emplace_back(current->id);
+            return true;
+        },
+        {},
+        {},
+        [&](bool ok) {
+            CPPUNIT_ASSERT(ok);
+            snapshots.emplace_back(received.size());
+        });
+    CPPUNIT_ASSERT(token != 0);
+    auto search = client.searches(AF_INET).at(key);
+    auto node = client.network_engine.insertNode(server.getNodeId(), serverAddr);
+    auto* searchNode = search->getNode(node);
+    CPPUNIT_ASSERT(searchNode);
+    searchNode->token = server.makeToken(clientAddr, false);
+    searchNode->last_get_reply = client.scheduler.time();
+    CPPUNIT_ASSERT(search->isSynced(client.scheduler.time()));
+    client.searchStep(search);
+    CPPUNIT_ASSERT(snapshots.empty());
+
+    auto listen = std::find_if(clientPackets->sends.begin(), clientPackets->sends.end(), [](const auto& packet) {
+        ParsedMessage message;
+        message.msgpack_unpack(msgpack::unpack((const char*) packet.data.data(), packet.data.size()).get());
+        return message.type == MessageType::Listen;
+    });
+    CPPUNIT_ASSERT(listen != clientPackets->sends.end());
+    server.network_engine.processMessage(listen->data.data(), listen->data.size(), clientAddr);
+    CPPUNIT_ASSERT(serverPackets->sends.size() >= 2);
+
+    std::vector<TestDatagramSocket::SentPacket> updates;
+    std::vector<TestDatagramSocket::SentPacket> confirmations;
+    for (const auto& packet : serverPackets->sends) {
+        ParsedMessage message;
+        message.msgpack_unpack(msgpack::unpack((const char*) packet.data.data(), packet.data.size()).get());
+        if (message.type == MessageType::Reply)
+            confirmations.emplace_back(packet);
+        else if (message.type == MessageType::UpdateValue)
+            updates.emplace_back(packet);
+    }
+    CPPUNIT_ASSERT_EQUAL(size_t(1), confirmations.size());
+    CPPUNIT_ASSERT(!updates.empty());
+    for (const auto& packet : confirmations)
+        client.network_engine.processMessage(packet.data.data(), packet.data.size(), serverAddr);
+    for (const auto& packet : updates)
+        client.network_engine.processMessage(packet.data.data(), packet.data.size(), serverAddr);
+    CPPUNIT_ASSERT(client.cancelListen(key, token));
+    CPPUNIT_ASSERT(received == std::vector<Value::Id>({42}));
+    CPPUNIT_ASSERT_EQUAL(size_t(1), snapshots.size());
+    CPPUNIT_ASSERT_EQUAL(size_t(1), snapshots.front());
+}
+
+void
+NetworkEngineTester::testListenReadinessAddressFamilies()
+{
+    auto key = InfoHash::get("readiness-address-families");
+    for (unsigned families = 1; families <= 3; ++families) {
+        auto socket = std::make_unique<TestDatagramSocket>();
+        socket->ipv4 = families & 1;
+        socket->ipv6 = families & 2;
+        Dht localDht(std::move(socket), Config {}, {}, std::make_unique<std::mt19937_64>(families));
+        std::vector<bool> results;
+        auto token = localDht.listen(
+            key,
+            [](const std::vector<Sp<Value>>&, bool) { return true; },
+            {},
+            {},
+            [&](bool ok) { results.push_back(ok); });
+        CPPUNIT_ASSERT(token != 0);
+        CPPUNIT_ASSERT(results.empty());
+        if (families & 1) {
+            localDht.searchStep(localDht.searches(AF_INET).at(key));
+            if (families & 2)
+                CPPUNIT_ASSERT(results.empty());
+        }
+        if (families & 2)
+            localDht.searchStep(localDht.searches(AF_INET6).at(key));
+        CPPUNIT_ASSERT(results == std::vector<bool>({true}));
+        CPPUNIT_ASSERT(localDht.cancelListen(key, token));
+
+        results.clear();
+        CPPUNIT_ASSERT_EQUAL(size_t(0),
+                             localDht.listen(
+                                 InfoHash {},
+                                 [](const std::vector<Sp<Value>>&, bool) { return true; },
+                                 {},
+                                 {},
+                                 [&](bool ok) { results.push_back(ok); }));
+        CPPUNIT_ASSERT(results == std::vector<bool>({false}));
+    }
+}
+
+void
+NetworkEngineTester::testListenReadinessFailedSearch()
+{
+    Dht localDht(std::make_unique<TestDatagramSocket>(), Config {}, {}, std::make_unique<std::mt19937_64>(22));
+    auto key = InfoHash::get("readiness-failed-search");
+    std::vector<bool> results;
+    auto token = localDht.listen(
+        key, [](const std::vector<Sp<Value>>&, bool) { return true; }, {}, {}, [&](bool ok) { results.push_back(ok); });
+    auto search = localDht.searches(AF_INET).at(key);
+    auto node = std::make_shared<Node>(InfoHash::getRandom(localDht.rd),
+                                       makeIPv4("127.0.0.2", 5022),
+                                       localDht.rd,
+                                       false);
+    node->setExpired();
+    search->nodes.emplace_back(std::make_unique<Dht::SearchNode>(node));
+    localDht.searchStep(search);
+    CPPUNIT_ASSERT(search->expired);
+    CPPUNIT_ASSERT(results == std::vector<bool>({false}));
+    search->cache.onReady();
+    CPPUNIT_ASSERT_EQUAL(size_t(1), results.size());
+    CPPUNIT_ASSERT(localDht.cancelListen(key, token));
+}
+
+void
+NetworkEngineTester::testListenReadinessReusesExpiredSearch()
+{
+    Dht localDht(std::make_unique<TestDatagramSocket>(), Config {}, {}, std::make_unique<std::mt19937_64>(23));
+    auto key = InfoHash::get("readiness-reused-search");
+    auto values = [](const std::vector<Sp<Value>>&, bool) {
+        return true;
+    };
+    std::vector<bool> results;
+    auto ready = [&](bool ok) {
+        results.push_back(ok);
+    };
+    auto first = localDht.listen(key, values, {}, {}, ready);
+    auto search = localDht.searches(AF_INET).at(key);
+    search->expire();
+    CPPUNIT_ASSERT(results == std::vector<bool>({false}));
+    CPPUNIT_ASSERT(localDht.cancelListen(key, first));
+    auto second = localDht.listen(key, values, {}, {}, ready);
+    CPPUNIT_ASSERT(second != 0);
+    CPPUNIT_ASSERT(search == localDht.searches(AF_INET).at(key));
+    CPPUNIT_ASSERT(!search->expired);
+    CPPUNIT_ASSERT(!search->done);
+    CPPUNIT_ASSERT(localDht.scheduler.time() == search->nextSearchStep->t_);
+    localDht.searchStep(search);
+    CPPUNIT_ASSERT(results == std::vector<bool>({false, true}));
+    CPPUNIT_ASSERT(localDht.cancelListen(key, second));
+}
+
+void
+NetworkEngineTester::testListenReadinessShutdown()
+{
+    Dht localDht(std::make_unique<TestDatagramSocket>(), Config {}, {}, std::make_unique<std::mt19937_64>(24));
+    std::vector<bool> results;
+    CPPUNIT_ASSERT(localDht.listen(
+                       InfoHash::get("readiness-shutdown"),
+                       [](const std::vector<Sp<Value>>&, bool) { return true; },
+                       {},
+                       {},
+                       [&](bool ok) { results.push_back(ok); })
+                   != 0);
+    CPPUNIT_ASSERT(results.empty());
+    localDht.shutdown({}, true);
+    CPPUNIT_ASSERT_EQUAL(size_t(1), results.size());
+    CPPUNIT_ASSERT(!results.front());
 }
 
 void

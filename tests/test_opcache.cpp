@@ -92,6 +92,172 @@ OpCacheTester::testInitialListenerReadiness()
 }
 
 void
+OpCacheTester::testInitialReadinessCancellation()
+{
+    dht::OpCache cache(true, true);
+    auto query = std::make_shared<dht::Query>();
+    auto values = [](const Values&, bool) {
+        return true;
+    };
+    unsigned calls = 0;
+    auto ready = [&](bool) {
+        ++calls;
+    };
+    CPPUNIT_ASSERT(cache.addListener(1, values, query, {}, ready));
+    CPPUNIT_ASSERT(cache.removeListener(1, dht::clock::now()));
+    cache.onReady();
+    CPPUNIT_ASSERT_EQUAL(0u, calls);
+
+    dht::OpCache cleared(true, true);
+    CPPUNIT_ASSERT(cleared.addListener(1, values, query, {}, ready));
+    cleared.removeAll();
+    cleared.onReady(false);
+    CPPUNIT_ASSERT_EQUAL(0u, calls);
+
+    dht::OpCache reentrant(true, true);
+    CPPUNIT_ASSERT(reentrant.addListener(1, values, query, {}, [&](bool ok) {
+        CPPUNIT_ASSERT(ok);
+        CPPUNIT_ASSERT(reentrant.removeListener(2, dht::clock::now()));
+    }));
+    CPPUNIT_ASSERT(reentrant.addListener(2, values, query, {}, ready));
+    reentrant.onReady();
+    CPPUNIT_ASSERT_EQUAL(0u, calls);
+}
+
+void
+OpCacheTester::testInitialReadinessFailure()
+{
+    dht::OpCache cache(true, true);
+    auto query = std::make_shared<dht::Query>();
+    auto values = [](const Values&, bool) {
+        return true;
+    };
+    std::vector<bool> results;
+    auto ready = [&](bool ok) {
+        results.push_back(ok);
+    };
+    CPPUNIT_ASSERT(cache.addListener(1, values, query, {}, ready));
+    CPPUNIT_ASSERT(cache.addListener(2, values, query, {}, ready));
+    cache.onReady(false);
+    CPPUNIT_ASSERT(results == std::vector<bool>({false, false}));
+    cache.onReady();
+    CPPUNIT_ASSERT_EQUAL(size_t(2), results.size());
+
+    cache.onReady(false);
+    CPPUNIT_ASSERT(cache.addListener(3, values, query, {}, ready));
+    CPPUNIT_ASSERT_EQUAL(size_t(2), results.size());
+    cache.onNodeChanged(dht::ListenSyncStatus::ADDED);
+    cache.onNodeChanged(dht::ListenSyncStatus::SYNCED);
+    CPPUNIT_ASSERT_EQUAL(size_t(2), results.size());
+    cache.onSearchReady();
+    CPPUNIT_ASSERT(results == std::vector<bool>({false, false, true}));
+}
+
+void
+OpCacheTester::testInitialReadinessMultipleSources()
+{
+    dht::OpCache cache(true, true);
+    auto query = std::make_shared<dht::Query>();
+    unsigned calls = 0;
+    CPPUNIT_ASSERT(cache.addListener(
+        1,
+        [](const Values&, bool) { return true; },
+        query,
+        {},
+        [&](bool ok) {
+            CPPUNIT_ASSERT(ok);
+            ++calls;
+        }));
+    cache.onSearchReady();
+    CPPUNIT_ASSERT_EQUAL(0u, calls);
+    cache.onNodeChanged(dht::ListenSyncStatus::ADDED);
+    cache.onNodeChanged(dht::ListenSyncStatus::ADDED);
+    cache.onNodeChanged(dht::ListenSyncStatus::SYNCED);
+    CPPUNIT_ASSERT_EQUAL(0u, calls);
+    cache.onNodeChanged(dht::ListenSyncStatus::SYNCED);
+    CPPUNIT_ASSERT_EQUAL(1u, calls);
+    cache.onSearchReady();
+    cache.onNodeChanged(dht::ListenSyncStatus::UNSYNCED);
+    cache.onNodeChanged(dht::ListenSyncStatus::SYNCED);
+    CPPUNIT_ASSERT_EQUAL(1u, calls);
+}
+
+void
+OpCacheTester::testInitialReadinessCachedValues()
+{
+    dht::OpCache cache(true, true);
+    auto query = std::make_shared<dht::Query>();
+    auto value = makeValue(42, 0, "initial");
+    cache.onNodeChanged(dht::ListenSyncStatus::ADDED);
+    cache.onValue({value, makeValue(43, 0, "filtered")}, false);
+    cache.onNodeChanged(dht::ListenSyncStatus::SYNCED);
+    cache.onSearchReady();
+    std::vector<std::string> events;
+    CPPUNIT_ASSERT(cache.addListener(
+        1,
+        [&](const Values& values, bool expired) {
+            CPPUNIT_ASSERT(!expired);
+            CPPUNIT_ASSERT_EQUAL(size_t(1), values.size());
+            CPPUNIT_ASSERT_EQUAL(value->id, values.front()->id);
+            events.emplace_back("value");
+            return true;
+        },
+        query,
+        [](const dht::Value& current) { return current.id == 42; },
+        [&](bool ok) {
+            CPPUNIT_ASSERT(ok);
+            events.emplace_back("ready");
+        }));
+    CPPUNIT_ASSERT(events == std::vector<std::string>({"value", "ready"}));
+
+    unsigned calls = 0;
+    CPPUNIT_ASSERT(!cache.addListener(2, [](const Values&, bool) { return false; }, query, {}, [&](bool) { ++calls; }));
+    cache.onReady();
+    CPPUNIT_ASSERT_EQUAL(0u, calls);
+}
+
+void
+OpCacheTester::testInitialReadinessReusedOperation()
+{
+    dht::SearchCache cache(true, true);
+    auto query = std::make_shared<dht::Query>();
+    dht::SyncCallback source;
+    unsigned operations = 0;
+    unsigned calls = 0;
+    auto onListen = [&](dht::Sp<dht::Query>, dht::ValueCallback values, dht::SyncCallback sync) {
+        ++operations;
+        source = std::move(sync);
+        source(dht::ListenSyncStatus::ADDED);
+        values({makeValue(42, 0, "cached")}, false);
+        source(dht::ListenSyncStatus::SYNCED);
+        return size_t(1);
+    };
+    auto values = [](const Values&, bool) {
+        return true;
+    };
+    auto ready = [&](bool ok) {
+        CPPUNIT_ASSERT(ok);
+        ++calls;
+    };
+    auto first = cache.listen(values, query, {}, onListen, ready);
+    CPPUNIT_ASSERT(first != 0);
+    CPPUNIT_ASSERT_EQUAL(0u, calls);
+    cache.onSearchReady();
+    CPPUNIT_ASSERT_EQUAL(1u, calls);
+    CPPUNIT_ASSERT(cache.cancelListen(first, dht::clock::now()));
+
+    auto second = cache.listen(values, std::make_shared<dht::Query>(), {}, onListen, ready);
+    CPPUNIT_ASSERT(second != 0);
+    CPPUNIT_ASSERT_EQUAL(1u, operations);
+    CPPUNIT_ASSERT_EQUAL(2u, calls);
+    source(dht::ListenSyncStatus::UNSYNCED);
+    CPPUNIT_ASSERT(cache.listen(values, query, {}, onListen, ready) != 0);
+    CPPUNIT_ASSERT_EQUAL(2u, calls);
+    source(dht::ListenSyncStatus::SYNCED);
+    CPPUNIT_ASSERT_EQUAL(3u, calls);
+}
+
+void
 OpCacheTester::tearDown()
 {}
 

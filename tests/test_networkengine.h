@@ -22,6 +22,11 @@ class NetworkEngineTester : public CppUnit::TestFixture
     CPPUNIT_TEST(testSeparatesPartialSessionsBySource);
     CPPUNIT_TEST(testListenConfirmationCarriesToken);
     CPPUNIT_TEST(testListenConfirmationUpdatesSearchNodeToken);
+    CPPUNIT_TEST(testListenReadinessWaitsForInitialUpdate);
+    CPPUNIT_TEST(testListenReadinessAddressFamilies);
+    CPPUNIT_TEST(testListenReadinessFailedSearch);
+    CPPUNIT_TEST(testListenReadinessReusesExpiredSearch);
+    CPPUNIT_TEST(testListenReadinessShutdown);
     CPPUNIT_TEST(testListenReopensSocketAfterNodeExpiration);
     CPPUNIT_TEST(testUnauthorizedListenFlushClearsListenState);
 #endif
@@ -43,6 +48,11 @@ public:
     void testSeparatesPartialSessionsBySource();
     void testListenConfirmationCarriesToken();
     void testListenConfirmationUpdatesSearchNodeToken();
+    void testListenReadinessWaitsForInitialUpdate();
+    void testListenReadinessAddressFamilies();
+    void testListenReadinessFailedSearch();
+    void testListenReadinessReusesExpiredSearch();
+    void testListenReadinessShutdown();
     void testListenReopensSocketAfterNodeExpiration();
     void testUnauthorizedListenFlushClearsListenState();
 #endif
