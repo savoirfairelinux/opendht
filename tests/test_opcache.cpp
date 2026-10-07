@@ -157,6 +157,27 @@ OpCacheTester::testInitialReadinessFailure()
     CPPUNIT_ASSERT_EQUAL(size_t(2), results.size());
     cache.onSearchReady();
     CPPUNIT_ASSERT(results == std::vector<bool>({false, false, true}));
+
+    dht::SearchCache searches(true, true);
+    auto first = std::make_shared<dht::Query>(dht::Select {}, dht::Where {}.id(42));
+    auto second = std::make_shared<dht::Query>(dht::Select {}, dht::Where {}.id(43));
+    dht::SyncCallback secondSource;
+    auto onListen = [&](dht::Sp<dht::Query> query, dht::ValueCallback, dht::SyncCallback source) {
+        source(dht::ListenSyncStatus::ADDED);
+        if (query == second)
+            secondSource = std::move(source);
+        return size_t(1);
+    };
+    std::vector<bool> firstResults;
+    std::vector<bool> secondResults;
+    CPPUNIT_ASSERT(searches.listen(values, first, {}, onListen, [&](bool ok) { firstResults.push_back(ok); }) != 0);
+    CPPUNIT_ASSERT(searches.listen(values, second, {}, onListen, [&](bool ok) { secondResults.push_back(ok); }) != 0);
+    searches.onReady(first, false);
+    CPPUNIT_ASSERT(firstResults == std::vector<bool>({false}));
+    CPPUNIT_ASSERT(secondResults.empty());
+    secondSource(dht::ListenSyncStatus::SYNCED);
+    searches.onSearchReady();
+    CPPUNIT_ASSERT(secondResults == std::vector<bool>({true}));
 }
 
 void

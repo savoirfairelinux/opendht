@@ -23,6 +23,12 @@ class NetworkEngineTester : public CppUnit::TestFixture
     CPPUNIT_TEST(testListenConfirmationCarriesToken);
     CPPUNIT_TEST(testListenConfirmationUpdatesSearchNodeToken);
     CPPUNIT_TEST(testListenReadinessWaitsForInitialUpdate);
+    CPPUNIT_TEST(testListenReadinessSnapshotVariants);
+    CPPUNIT_TEST(testListenReadinessSnapshotLegacy);
+    CPPUNIT_TEST(testListenReadinessSnapshotFailure);
+    CPPUNIT_TEST(testListenReadinessSnapshotCancellation);
+    CPPUNIT_TEST(testListenReadinessSnapshotReplacement);
+    CPPUNIT_TEST(testListenReadinessSnapshotRenewal);
     CPPUNIT_TEST(testListenReadinessAddressFamilies);
     CPPUNIT_TEST(testListenReadinessFailedSearch);
     CPPUNIT_TEST(testListenReadinessReusesExpiredSearch);
@@ -49,6 +55,12 @@ public:
     void testListenConfirmationCarriesToken();
     void testListenConfirmationUpdatesSearchNodeToken();
     void testListenReadinessWaitsForInitialUpdate();
+    void testListenReadinessSnapshotVariants();
+    void testListenReadinessSnapshotLegacy();
+    void testListenReadinessSnapshotFailure();
+    void testListenReadinessSnapshotCancellation();
+    void testListenReadinessSnapshotReplacement();
+    void testListenReadinessSnapshotRenewal();
     void testListenReadinessAddressFamilies();
     void testListenReadinessFailedSearch();
     void testListenReadinessReusesExpiredSearch();

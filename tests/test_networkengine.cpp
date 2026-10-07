@@ -254,6 +254,151 @@ addPendingGetRequest(net::NetworkEngine& engine, const InfoHash& id, const SockA
     return node;
 }
 
+struct ListenSnapshotTransport
+{
+    InfoHash key {InfoHash::get("initial-listen-snapshot")};
+    std::vector<Value::Id> received;
+    std::vector<bool> results;
+    std::vector<size_t> snapshots;
+    std::vector<TestDatagramSocket::SentPacket> delayedUpdates;
+    TestDatagramSocket* clientPackets;
+    TestDatagramSocket* serverPackets;
+    SockAddr clientAddr;
+    SockAddr serverAddr;
+    std::unique_ptr<Dht> client;
+    std::unique_ptr<Dht> server;
+    size_t token {0};
+
+    ListenSnapshotTransport()
+    {
+        Config config {};
+        config.max_req_per_sec = -1;
+        config.max_peer_req_per_sec = -1;
+        auto clientSocket = std::make_unique<TestDatagramSocket>();
+        clientPackets = clientSocket.get();
+        clientAddr = clientPackets->bound_;
+        client = std::make_unique<Dht>(std::move(clientSocket),
+                                       config,
+                                       Sp<Logger> {},
+                                       std::make_unique<std::mt19937_64>(30));
+        auto serverSocket = std::make_unique<TestDatagramSocket>();
+        serverPackets = serverSocket.get();
+        serverPackets->bound_.setPort(5031);
+        serverAddr = serverPackets->bound_;
+        server = std::make_unique<Dht>(std::move(serverSocket),
+                                       config,
+                                       Sp<Logger> {},
+                                       std::make_unique<std::mt19937_64>(31));
+    }
+
+    ~ListenSnapshotTransport()
+    {
+        if (token)
+            client->cancelListen(key, token);
+    }
+
+    static ParsedMessage parse(const TestDatagramSocket::SentPacket& packet)
+    {
+        ParsedMessage message;
+        message.msgpack_unpack(msgpack::unpack((const char*) packet.data.data(), packet.data.size()).get());
+        return message;
+    }
+
+    void store(size_t count, size_t payloadSize = 20)
+    {
+        for (size_t index = 0; index < count; ++index) {
+            auto value = std::make_shared<Value>(std::string(payloadSize, 'x'));
+            value->id = index + 1;
+            CPPUNIT_ASSERT(server->storageStore(key, value, server->scheduler.time()));
+        }
+    }
+
+    void listen()
+    {
+        token = client->listen(
+            key,
+            [this](const std::vector<Sp<Value>>& values, bool expired) {
+                if (!expired)
+                    for (const auto& value : values)
+                        received.emplace_back(value->id);
+                return true;
+            },
+            {},
+            {},
+            [this](bool ok) {
+                results.push_back(ok);
+                snapshots.emplace_back(received.size());
+            });
+        CPPUNIT_ASSERT(token != 0);
+    }
+
+    void start()
+    {
+        listen();
+        auto search = client->searches(AF_INET).at(key);
+        auto node = client->network_engine.insertNode(server->getNodeId(), serverAddr);
+        auto* searchNode = search->getNode(node);
+        CPPUNIT_ASSERT(searchNode);
+        searchNode->token = server->makeToken(clientAddr, false);
+        searchNode->last_get_reply = client->scheduler.time();
+        client->searchStep(search);
+        acknowledge();
+    }
+
+    void acknowledge()
+    {
+        auto requests = std::move(clientPackets->sends);
+        clientPackets->sends.clear();
+        unsigned registrations = 0;
+        for (const auto& packet : requests) {
+            if (parse(packet).type == MessageType::Listen) {
+                ++registrations;
+                server->network_engine.processMessage(packet.data.data(), packet.data.size(), clientAddr);
+            }
+        }
+        CPPUNIT_ASSERT_EQUAL(1u, registrations);
+        auto replies = std::move(serverPackets->sends);
+        serverPackets->sends.clear();
+        for (const auto& packet : replies) {
+            if (parse(packet).type == MessageType::Reply)
+                client->network_engine.processMessage(packet.data.data(), packet.data.size(), serverAddr);
+            else
+                delayedUpdates.emplace_back(packet);
+        }
+    }
+
+    void getRound(bool reversed = false)
+    {
+        auto requests = std::move(clientPackets->sends);
+        clientPackets->sends.clear();
+        for (const auto& packet : requests)
+            if (parse(packet).type == MessageType::GetValues)
+                server->network_engine.processMessage(packet.data.data(), packet.data.size(), clientAddr);
+        auto replies = std::move(serverPackets->sends);
+        serverPackets->sends.clear();
+        if (reversed)
+            std::reverse(replies.begin(), replies.end());
+        for (const auto& packet : replies)
+            client->network_engine.processMessage(packet.data.data(), packet.data.size(), serverAddr);
+    }
+
+    void deliverUpdates()
+    {
+        for (const auto& packet : delayedUpdates)
+            client->network_engine.processMessage(packet.data.data(), packet.data.size(), serverAddr);
+        delayedUpdates.clear();
+    }
+
+    Sp<net::Request> initialRequest() const
+    {
+        auto search = client->searches(AF_INET).at(key);
+        auto& status = search->nodes.front()->listenStatus.begin()->second;
+        CPPUNIT_ASSERT(status.initialSnapshot);
+        CPPUNIT_ASSERT(!status.initialSnapshot->requests.empty());
+        return status.initialSnapshot->requests.front();
+    }
+};
+
 void
 NetworkEngineTester::setUp()
 {}
@@ -654,6 +799,143 @@ NetworkEngineTester::testListenReadinessWaitsForInitialUpdate()
 }
 
 void
+NetworkEngineTester::testListenReadinessSnapshotVariants()
+{
+    for (size_t count : {size_t(0), size_t(3)}) {
+        ListenSnapshotTransport transport;
+        transport.store(count, 6000);
+        transport.start();
+        CPPUNIT_ASSERT(transport.results.empty());
+        transport.getRound(true);
+        if (count != 0) {
+            CPPUNIT_ASSERT(transport.results.empty());
+            transport.getRound(true);
+        }
+        CPPUNIT_ASSERT(transport.results == std::vector<bool>({true}));
+        CPPUNIT_ASSERT(transport.snapshots == std::vector<size_t>({count}));
+        transport.deliverUpdates();
+        CPPUNIT_ASSERT_EQUAL(count, transport.received.size());
+        CPPUNIT_ASSERT_EQUAL(size_t(1), transport.results.size());
+    }
+}
+
+void
+NetworkEngineTester::testListenReadinessSnapshotLegacy()
+{
+    for (size_t count : {size_t(0), size_t(3)}) {
+        ListenSnapshotTransport transport;
+        transport.store(count);
+        transport.start();
+        auto request = transport.initialRequest();
+        ParsedMessage answer;
+        answer.type = MessageType::Reply;
+        answer.token = transport.server->makeToken(transport.clientAddr, false);
+        answer.values = transport.server->getLocal(transport.key);
+        request->setDone(std::move(answer));
+        CPPUNIT_ASSERT(transport.results == std::vector<bool>({true}));
+        CPPUNIT_ASSERT(transport.snapshots == std::vector<size_t>({count}));
+        transport.deliverUpdates();
+        CPPUNIT_ASSERT_EQUAL(count, transport.received.size());
+    }
+}
+
+void
+NetworkEngineTester::testListenReadinessSnapshotFailure()
+{
+    for (unsigned failure = 0; failure < 4; ++failure) {
+        ListenSnapshotTransport transport;
+        transport.store(1);
+        transport.start();
+        auto request = transport.initialRequest();
+        if (failure == 0) {
+            request->setExpired();
+        } else if (failure == 3) {
+            transport.getRound();
+            CPPUNIT_ASSERT(transport.results.empty());
+            auto search = transport.client->searches(AF_INET).at(transport.key);
+            auto snapshot = search->nodes.front()->listenStatus.begin()->second.initialSnapshot;
+            CPPUNIT_ASSERT_EQUAL(size_t(2), snapshot->requests.size());
+            snapshot->requests.back()->setExpired();
+        } else {
+            ParsedMessage answer;
+            answer.type = MessageType::Reply;
+            if (failure == 2) {
+                answer.token = transport.server->makeToken(transport.clientAddr, false);
+                answer.fields.emplace_back(std::make_shared<FieldValueIndex>());
+            }
+            request->setDone(std::move(answer));
+        }
+        CPPUNIT_ASSERT(transport.results == std::vector<bool>({false}));
+        transport.deliverUpdates();
+        CPPUNIT_ASSERT_EQUAL(size_t(1), transport.results.size());
+    }
+}
+
+void
+NetworkEngineTester::testListenReadinessSnapshotCancellation()
+{
+    ListenSnapshotTransport transport;
+    transport.store(1);
+    transport.start();
+    CPPUNIT_ASSERT(transport.client->cancelListen(transport.key, transport.token));
+    transport.token = 0;
+    transport.getRound();
+    transport.getRound();
+    CPPUNIT_ASSERT(transport.results.empty());
+    transport.listen();
+    CPPUNIT_ASSERT(transport.results == std::vector<bool>({true}));
+    CPPUNIT_ASSERT(transport.snapshots == std::vector<size_t>({1}));
+}
+
+void
+NetworkEngineTester::testListenReadinessSnapshotReplacement()
+{
+    ListenSnapshotTransport transport;
+    transport.store(1);
+    transport.start();
+    auto previous = transport.initialRequest();
+    auto search = transport.client->searches(AF_INET).at(transport.key);
+    auto* node = search->nodes.front().get();
+    node->listenStatus.clear();
+    CPPUNIT_ASSERT(previous->cancelled());
+    transport.clientPackets->sends.clear();
+    transport.client->searchSynchedNodeListen(search, *node);
+    transport.acknowledge();
+    CPPUNIT_ASSERT(transport.results.empty());
+    ParsedMessage answer;
+    answer.token = transport.server->makeToken(transport.clientAddr, false);
+    answer.values = transport.server->getLocal(transport.key);
+    previous->setDone(std::move(answer));
+    CPPUNIT_ASSERT(transport.results.empty());
+    transport.getRound();
+    transport.getRound();
+    CPPUNIT_ASSERT(transport.results == std::vector<bool>({true}));
+    CPPUNIT_ASSERT(transport.snapshots == std::vector<size_t>({1}));
+}
+
+void
+NetworkEngineTester::testListenReadinessSnapshotRenewal()
+{
+    ListenSnapshotTransport transport;
+    transport.store(1);
+    transport.start();
+    transport.getRound();
+    transport.getRound();
+    CPPUNIT_ASSERT(transport.results == std::vector<bool>({true}));
+    transport.deliverUpdates();
+    transport.clientPackets->sends.clear();
+    auto search = transport.client->searches(AF_INET).at(transport.key);
+    auto* node = search->nodes.front().get();
+    node->listenStatus.begin()->second.req->reply_time = transport.client->scheduler.time()
+                                                         - transport.client->getListenExpiration();
+    transport.client->searchSynchedNodeListen(search, *node);
+    transport.acknowledge();
+    for (const auto& packet : transport.clientPackets->sends)
+        CPPUNIT_ASSERT(ListenSnapshotTransport::parse(packet).type != MessageType::GetValues);
+    CPPUNIT_ASSERT_EQUAL(size_t(1), transport.results.size());
+}
+
+void
 NetworkEngineTester::testListenReadinessAddressFamilies()
 {
     auto key = InfoHash::get("readiness-address-families");
@@ -749,8 +1031,10 @@ NetworkEngineTester::testListenReadinessShutdown()
 {
     for (bool stop : {false, true}) {
         std::vector<bool> results;
-        auto localDht = std::make_unique<Dht>(std::make_unique<TestDatagramSocket>(), Config {},
-                                            Sp<Logger> {}, std::make_unique<std::mt19937_64>(24));
+        auto localDht = std::make_unique<Dht>(std::make_unique<TestDatagramSocket>(),
+                                              Config {},
+                                              Sp<Logger> {},
+                                              std::make_unique<std::mt19937_64>(24));
         CPPUNIT_ASSERT(localDht->listen(
                            InfoHash::get("readiness-shutdown"),
                            [](const std::vector<Sp<Value>>&, bool) { return true; },
