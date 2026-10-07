@@ -1527,9 +1527,8 @@ Request::terminate(const asio::error_code& ec)
         return;
 
     response_.aborted = ec == asio::error::operation_aborted;
-    if (ec == asio::error::basic_errors::broken_pipe)
-        response_.status_code
-            = 0U; // Avoid to give a successful answer (happen with a broken pipe, takes the last status)
+    if (ec and ec != asio::error::eof)
+        response_.status_code = 0U;
 
     if (logger_) {
         if (ec and ec != asio::error::eof and !response_.aborted)
@@ -1576,7 +1575,12 @@ Request::handle_response(const asio::error_code& ec, size_t /* n_bytes */)
         terminate(ec);
         return;
     }
-    auto request = (ec == asio::error::eof) ? std::string {} : conn_->read_bytes();
+    if (ec == asio::error::eof) {
+        if (!parser_ || llhttp_finish(parser_.get()) != HPE_OK || state_ != State::DONE)
+            terminate(asio::error::broken_pipe);
+        return;
+    }
+    auto request = conn_->read_bytes();
     enum llhttp_errno ret = llhttp_execute(parser_.get(), request.c_str(), request.size());
     if (ret != HPE_OK && ret != HPE_PAUSED) {
         if (logger_)
