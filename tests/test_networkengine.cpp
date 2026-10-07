@@ -627,6 +627,24 @@ NetworkEngineTester::testListenReadinessWaitsForInitialUpdate()
     CPPUNIT_ASSERT(!updates.empty());
     for (const auto& packet : confirmations)
         client.network_engine.processMessage(packet.data.data(), packet.data.size(), serverAddr);
+    CPPUNIT_ASSERT(snapshots.empty());
+    serverPackets->sends.clear();
+    for (unsigned round = 0; round < 3 && snapshots.empty(); ++round) {
+        auto requests = std::move(clientPackets->sends);
+        clientPackets->sends.clear();
+        for (const auto& packet : requests) {
+            ParsedMessage message;
+            message.msgpack_unpack(msgpack::unpack((const char*) packet.data.data(), packet.data.size()).get());
+            if (message.type == MessageType::GetValues)
+                server.network_engine.processMessage(packet.data.data(), packet.data.size(), clientAddr);
+        }
+        auto replies = std::move(serverPackets->sends);
+        serverPackets->sends.clear();
+        for (const auto& packet : replies)
+            client.network_engine.processMessage(packet.data.data(), packet.data.size(), serverAddr);
+    }
+    CPPUNIT_ASSERT_EQUAL(size_t(1), snapshots.size());
+    CPPUNIT_ASSERT_EQUAL(size_t(1), snapshots.front());
     for (const auto& packet : updates)
         client.network_engine.processMessage(packet.data.data(), packet.data.size(), serverAddr);
     CPPUNIT_ASSERT(client.cancelListen(key, token));
@@ -729,19 +747,27 @@ NetworkEngineTester::testListenReadinessReusesExpiredSearch()
 void
 NetworkEngineTester::testListenReadinessShutdown()
 {
-    Dht localDht(std::make_unique<TestDatagramSocket>(), Config {}, {}, std::make_unique<std::mt19937_64>(24));
-    std::vector<bool> results;
-    CPPUNIT_ASSERT(localDht.listen(
-                       InfoHash::get("readiness-shutdown"),
-                       [](const std::vector<Sp<Value>>&, bool) { return true; },
-                       {},
-                       {},
-                       [&](bool ok) { results.push_back(ok); })
-                   != 0);
-    CPPUNIT_ASSERT(results.empty());
-    localDht.shutdown({}, true);
-    CPPUNIT_ASSERT_EQUAL(size_t(1), results.size());
-    CPPUNIT_ASSERT(!results.front());
+    for (bool stop : {false, true}) {
+        std::vector<bool> results;
+        auto localDht = std::make_unique<Dht>(std::make_unique<TestDatagramSocket>(), Config {},
+                                            Sp<Logger> {}, std::make_unique<std::mt19937_64>(24));
+        CPPUNIT_ASSERT(localDht->listen(
+                           InfoHash::get("readiness-shutdown"),
+                           [](const std::vector<Sp<Value>>&, bool) { return true; },
+                           {},
+                           {},
+                           [&](bool ok) { results.push_back(ok); })
+                       != 0);
+        CPPUNIT_ASSERT(results.empty());
+        if (stop) {
+            localDht->shutdown({}, true);
+            CPPUNIT_ASSERT_EQUAL(size_t(1), results.size());
+            CPPUNIT_ASSERT(!results.front());
+        }
+        localDht.reset();
+        CPPUNIT_ASSERT_EQUAL(size_t(1), results.size());
+        CPPUNIT_ASSERT(!results.front());
+    }
 }
 
 void

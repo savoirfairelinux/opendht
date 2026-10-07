@@ -122,6 +122,12 @@ OpCacheTester::testInitialReadinessCancellation()
     CPPUNIT_ASSERT(reentrant.addListener(2, values, query, {}, ready));
     reentrant.onReady();
     CPPUNIT_ASSERT_EQUAL(0u, calls);
+
+    dht::OpCache clearing(true, true);
+    CPPUNIT_ASSERT(clearing.addListener(1, values, query, {}, [&](bool) { clearing.removeAll(); }));
+    CPPUNIT_ASSERT(clearing.addListener(2, values, query, {}, ready));
+    clearing.onReady();
+    CPPUNIT_ASSERT_EQUAL(0u, calls);
 }
 
 void
