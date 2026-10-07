@@ -174,13 +174,17 @@ SearchCache::getOp(const Sp<Query>& q) const
 }
 
 size_t
-SearchCache::listen(const ValueCallback& get_cb, const Sp<Query>& q, Value::Filter&& filter, const OnListen& onListen)
+SearchCache::listen(const ValueCallback& get_cb,
+                    const Sp<Query>& q,
+                    Value::Filter&& filter,
+                    const OnListen& onListen,
+                    DoneCallbackSimple ready)
 {
     // find exact match
     auto op = getOp(q);
     if (op == ops.end()) {
         // New query
-        op = ops.emplace(q, std::make_unique<OpCache>(countSources_)).first;
+        op = ops.emplace(q, std::make_unique<OpCache>(countSources_, waitForSearch_)).first;
         auto& cache = *op->second;
         cache.searchToken = onListen(
             q,
@@ -190,7 +194,7 @@ SearchCache::listen(const ValueCallback& get_cb, const Sp<Query>& q, Value::Filt
     auto token = nextToken_++;
     if (nextToken_ == 0)
         nextToken_++;
-    return op->second->addListener(token, get_cb, q, std::move(filter)) ? token : 0;
+    return op->second->addListener(token, get_cb, q, std::move(filter), std::move(ready)) ? token : 0;
 }
 
 bool

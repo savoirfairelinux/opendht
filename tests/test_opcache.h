@@ -20,6 +20,7 @@ class OpCacheTester : public CppUnit::TestFixture
     CPPUNIT_TEST(testCallbacks);
     CPPUNIT_TEST(testFilters);
     CPPUNIT_TEST(testSyncStatus);
+    CPPUNIT_TEST(testInitialListenerReadiness);
     CPPUNIT_TEST(testGetWhileSynced);
     CPPUNIT_TEST(testGetWhileNotSynced);
     CPPUNIT_TEST(testGetEmptySynced);
@@ -49,6 +50,7 @@ public:
     void testCallbacks();
     void testFilters();
     void testSyncStatus();
+    void testInitialListenerReadiness();
     void testGetWhileSynced();
     void testGetWhileNotSynced();
     void testGetEmptySynced();

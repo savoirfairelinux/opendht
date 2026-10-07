@@ -820,15 +820,23 @@ DhtRunner::query(const InfoHash& hash, QueryCallback cb, DoneCallback done_cb, Q
 std::future<size_t>
 DhtRunner::listen(InfoHash hash, ValueCallback vcb, Value::Filter f, Where w)
 {
+    return listen(hash, std::move(vcb), std::move(f), std::move(w), {});
+}
+
+std::future<size_t>
+DhtRunner::listen(InfoHash hash, ValueCallback vcb, Value::Filter f, Where w, DoneCallbackSimple ready)
+{
     auto ret_token = std::make_shared<std::promise<size_t>>();
     std::unique_lock lck(storage_mtx);
     if (running != State::Running) {
         lck.unlock();
         ret_token->set_value(0);
+        if (ready)
+            ready(false);
         return ret_token->get_future();
     }
     pending_ops.emplace([=](SecureDht& dht) mutable {
-        ret_token->set_value(dht.listen(hash, std::move(vcb), std::move(f), std::move(w)));
+        ret_token->set_value(dht.listen(hash, std::move(vcb), std::move(f), std::move(w), std::move(ready)));
     });
     cv.notify_all();
     return ret_token->get_future();

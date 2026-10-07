@@ -156,6 +156,7 @@ public:
     }
 
     std::future<size_t> listen(InfoHash key, ValueCallback vcb, Value::Filter f = {}, Where w = {});
+    std::future<size_t> listen(InfoHash key, ValueCallback vcb, Value::Filter f, Where w, DoneCallbackSimple ready);
 
     std::future<size_t> listen(InfoHash key, GetCallback cb, Value::Filter f = {}, Where w = {})
     {

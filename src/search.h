@@ -467,7 +467,7 @@ struct Dht::Search
     size_t listener_token = 1;
 
     /* Cache */
-    SearchCache cache;
+    SearchCache cache {true, true};
     Sp<Scheduler::Job> opExpirationJob;
 
     ~Search()
@@ -596,16 +596,25 @@ struct Dht::Search
         }
     }
 
-    size_t listen(const ValueCallback& cb, Value::Filter&& f, const Sp<Query>& q, Scheduler& scheduler)
+    size_t listen(const ValueCallback& cb,
+                  Value::Filter&& f,
+                  const Sp<Query>& q,
+                  Scheduler& scheduler,
+                  DoneCallbackSimple ready = {})
     {
         // DHT_LOG.e(id, "[search %s IPv%c] listen", id.toString().c_str(), (af == AF_INET) ? '4' : '6');
-        return cache.listen(cb, q, std::move(f), [&](const Sp<Query>& q, ValueCallback vcb, SyncCallback scb) {
-            done = false;
-            auto token = ++listener_token;
-            listeners.emplace(token, SearchListener {q, vcb, scb});
-            scheduler.edit(nextSearchStep, scheduler.time());
-            return token;
-        });
+        return cache.listen(
+            cb,
+            q,
+            std::move(f),
+            [&](const Sp<Query>& q, ValueCallback vcb, SyncCallback scb) {
+                done = false;
+                auto token = ++listener_token;
+                listeners.emplace(token, SearchListener {q, vcb, scb});
+                scheduler.edit(nextSearchStep, scheduler.time());
+                return token;
+            },
+            std::move(ready));
     }
 
     void cancelListen(size_t token, Scheduler& scheduler)
@@ -769,6 +778,7 @@ struct Dht::Search
     {
         // no nodes or all expired nodes. This is most likely a connectivity change event.
         expired = true;
+        cache.onReady(false);
 
         nodes.clear();
         if (announce.empty() && listeners.empty())

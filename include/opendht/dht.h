@@ -236,6 +236,7 @@ public:
      * @return a token to cancel the listener later.
      */
     size_t listen(const InfoHash&, ValueCallback, Value::Filter = {}, Where = {}) override;
+    size_t listen(const InfoHash&, ValueCallback, Value::Filter, Where, DoneCallbackSimple ready) override;
 
     size_t listen(const InfoHash& key, GetCallback cb, Value::Filter f = {}, Where w = {}) override
     {
@@ -535,7 +536,12 @@ private:
                   DoneCallback callback,
                   time_point created = time_point::max(),
                   bool permanent = false);
-    size_t listenTo(const InfoHash& id, sa_family_t af, ValueCallback cb, Value::Filter f = {}, const Sp<Query>& q = {});
+    size_t listenTo(const InfoHash& id,
+                    sa_family_t af,
+                    ValueCallback cb,
+                    Value::Filter f = {},
+                    const Sp<Query>& q = {},
+                    DoneCallbackSimple ready = {});
 
     /**
      * Refill the search with good nodes if possible.

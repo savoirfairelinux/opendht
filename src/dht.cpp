@@ -751,6 +751,9 @@ Dht::searchStep(std::weak_ptr<Search> ws)
     if (sr->refill_time + Node::NODE_EXPIRE_TIME < now and sr->nodes.size() - sr->getNumberOfBadNodes() < SEARCH_NODES)
         refill(*sr);
 
+    if (sr->nodes.empty())
+        sr->cache.onReady();
+
     /* Check if the first TARGET_NODES (8) live nodes have replied. */
     if (sr->isSynced(now)) {
         if (not(sr->callbacks.empty() and sr->announce.empty())) {
@@ -798,6 +801,7 @@ Dht::searchStep(std::weak_ptr<Search> ws)
 
         // Announce requests
         searchSendAnnounceValue(sr);
+        sr->cache.onSearchReady();
 
         if (sr->callbacks.empty() && sr->announce.empty() && sr->listeners.empty())
             sr->setDone();
@@ -954,30 +958,44 @@ Dht::announce(
 }
 
 size_t
-Dht::listenTo(const InfoHash& id, sa_family_t af, ValueCallback cb, Value::Filter f, const Sp<Query>& q)
+Dht::listenTo(
+    const InfoHash& id, sa_family_t af, ValueCallback cb, Value::Filter f, const Sp<Query>& q, DoneCallbackSimple ready)
 {
-    if (!isRunning(af))
+    if (!isRunning(af)) {
+        if (ready)
+            ready(true);
         return 0;
+    }
     // logger__ERR("[search %s IPv%c] Search_time is now in %lfs", sr->id.toString().c_str(), (sr->af == AF_INET) ? '4'
     // : '6', print_duration(tm-clock::now()));
 
     // logger__WARN("listenTo %s", id.toString().c_str());
     auto& srs = searches(af);
     auto srp = srs.find(id);
-    Sp<Search> sr = (srp == srs.end()) ? search(id, af) : srp->second;
+    Sp<Search> sr = (srp == srs.end() || srp->second->expired) ? search(id, af) : srp->second;
     if (!sr)
         throw DhtException("Unable to create search");
     if (logger_)
         logger_->warn("[search {} IPv{}] Listen", id.to_view(), (af == AF_INET) ? '4' : '6');
-    return sr->listen(cb, std::move(f), q, scheduler);
+    sr->done = false;
+    scheduler.edit(sr->nextSearchStep, scheduler.time());
+    return sr->listen(cb, std::move(f), q, scheduler, std::move(ready));
 }
 
 size_t
 Dht::listen(const InfoHash& id, ValueCallback cb, Value::Filter f, Where where)
 {
+    return listen(id, std::move(cb), std::move(f), std::move(where), {});
+}
+
+size_t
+Dht::listen(const InfoHash& id, ValueCallback cb, Value::Filter f, Where where, DoneCallbackSimple ready)
+{
     if (not id) {
         if (logger_)
             logger_->warn("Listen called with invalid key");
+        if (ready)
+            ready(false);
         return 0;
     }
     scheduler.syncTime();
@@ -994,18 +1012,51 @@ Dht::listen(const InfoHash& id, ValueCallback cb, Value::Filter f, Where where)
     size_t tokenlocal = 0;
     if (st != store.end()) {
         tokenlocal = st->second.listen(gcb, filter, query);
-        if (tokenlocal == 0)
+        if (tokenlocal == 0) {
+            if (ready)
+                ready(false);
             return 0;
+        }
     }
 
-    auto token4 = Dht::listenTo(id, AF_INET, gcb, filter, query);
-    auto token6 = token4 == 0 ? 0 : Dht::listenTo(id, AF_INET6, gcb, filter, query);
-    if (token6 == 0 && st != store.end()) {
-        st->second.cancelListen(tokenlocal);
+    struct InitialReadiness
+    {
+        DoneCallbackSimple callback;
+        unsigned remaining {2};
+        bool registered {false};
+        bool failed {false};
+        void notify(bool ok)
+        {
+            failed = failed || !ok;
+            if (remaining)
+                --remaining;
+            finish();
+        }
+        void finish()
+        {
+            if (registered && (failed || remaining == 0) && callback) {
+                auto ready = std::move(callback);
+                ready(!failed);
+            }
+        }
+    };
+    auto initial = std::make_shared<InitialReadiness>();
+    initial->callback = std::move(ready);
+    auto onReady = [initial](bool ok) {
+        initial->notify(ok);
+    };
+    auto token4 = Dht::listenTo(id, AF_INET, gcb, filter, query, onReady);
+    auto token6 = token4 == 0 && isRunning(AF_INET) ? 0 : Dht::listenTo(id, AF_INET6, gcb, filter, query, onReady);
+    initial->registered = true;
+    if ((isRunning(AF_INET) && token4 == 0) || (isRunning(AF_INET6) && token6 == 0)) {
+        if (st != store.end())
+            st->second.cancelListen(tokenlocal);
+        initial->notify(false);
         return 0;
     }
 
     listeners.emplace(token, std::make_tuple(tokenlocal, token4, token6));
+    initial->finish();
     return token;
 }
 

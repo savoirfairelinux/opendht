@@ -105,7 +105,7 @@ private:
 class OpCache
 {
 public:
-    explicit OpCache(bool countSources = true)
+    explicit OpCache(bool countSources = true, bool waitForSearch = false)
         : cache(
               [this](const std::vector<Sp<Value>>& vals, bool expired) {
                   if (expired)
@@ -115,31 +115,71 @@ public:
                   return true;
               },
               countSources)
+        , searchReady(!waitForSearch)
     {}
 
     bool onValue(const std::vector<Sp<Value>>& vals, bool expired) { return cache.onValue(vals, expired); }
-    void onNodeChanged(ListenSyncStatus status) { cache.onNodeChanged(status); }
+    void onNodeChanged(ListenSyncStatus status)
+    {
+        cache.onNodeChanged(status);
+        if (searchReady && cache.isSynced())
+            onReady();
+        else
+            initialReady = false;
+    }
+
+    void onReady(bool ok = true)
+    {
+        initialReady = ok;
+        searchReady = ok;
+        auto callbacks = std::move(readyCallbacks);
+        readyCallbacks.clear();
+        for (auto& callback : callbacks)
+            callback.second(ok);
+    }
+
+    void onSearchReady()
+    {
+        searchReady = true;
+        if (cache.isSynced())
+            onReady();
+    }
 
     void onValuesAdded(const std::vector<Sp<Value>>& vals);
     void onValuesExpired(const std::vector<Sp<Value>>& vals);
 
-    bool addListener(size_t token, const ValueCallback& cb, const Sp<Query>& q, Value::Filter&& filter)
+    bool addListener(size_t token,
+                     const ValueCallback& cb,
+                     const Sp<Query>& q,
+                     Value::Filter&& filter,
+                     DoneCallbackSimple ready = {})
     {
         auto cached = cache.get(filter);
         if (not cached.empty() and not cb(cached, false)) {
             return false;
         }
         listeners.emplace(token, LocalListener {q, std::move(filter), cb});
+        if (ready) {
+            if (initialReady || (searchReady && cache.isSynced()))
+                ready(true);
+            else
+                readyCallbacks.emplace(token, std::move(ready));
+        }
         return true;
     }
 
     bool removeListener(size_t token, const time_point& now)
     {
         lastRemoved = now;
+        readyCallbacks.erase(token);
         return listeners.erase(token) > 0;
     }
 
-    void removeAll() { listeners.clear(); }
+    void removeAll()
+    {
+        listeners.clear();
+        readyCallbacks.clear();
+    }
 
     bool isDone() { return listeners.empty(); }
 
@@ -163,19 +203,39 @@ private:
 
     OpValueCache cache;
     std::map<size_t, LocalListener> listeners;
+    std::map<size_t, DoneCallbackSimple> readyCallbacks;
+    bool initialReady {false};
+    bool searchReady {true};
     time_point lastRemoved {clock::now()};
 };
 
 class SearchCache
 {
 public:
-    explicit SearchCache(bool countSources = true)
+    explicit SearchCache(bool countSources = true, bool waitForSearch = false)
         : countSources_(countSources)
+        , waitForSearch_(waitForSearch)
     {}
     SearchCache(SearchCache&&) = default;
 
     using OnListen = std::function<size_t(Sp<Query>, ValueCallback, SyncCallback)>;
-    size_t listen(const ValueCallback& get_cb, const Sp<Query>& q, Value::Filter&& filter, const OnListen& onListen);
+    size_t listen(const ValueCallback& get_cb,
+                  const Sp<Query>& q,
+                  Value::Filter&& filter,
+                  const OnListen& onListen,
+                  DoneCallbackSimple ready = {});
+
+    void onReady(bool ok = true)
+    {
+        for (auto& operation : ops)
+            operation.second->onReady(ok);
+    }
+
+    void onSearchReady()
+    {
+        for (auto& operation : ops)
+            operation.second->onSearchReady();
+    }
 
     bool cancelListen(size_t gtoken, const time_point& now);
     void cancelAll(const std::function<void(size_t)>& onCancel);
@@ -208,6 +268,7 @@ private:
     size_t nextToken_ {1};
     time_point nextExpiration_ {time_point::max()};
     bool countSources_ {true};
+    bool waitForSearch_ {false};
 };
 
 } // namespace dht

@@ -79,8 +79,7 @@ public:
 
     virtual time_point periodic(const uint8_t* buf, size_t buflen, SockAddr, const time_point& now) = 0;
     virtual time_point periodic(
-        const uint8_t* buf, size_t buflen, const sockaddr* from, socklen_t fromlen, const time_point& now)
-        = 0;
+        const uint8_t* buf, size_t buflen, const sockaddr* from, socklen_t fromlen, const time_point& now) = 0;
 
     /**
      * Get a value by searching on all available protocols (IPv4, IPv6),
@@ -93,17 +92,22 @@ public:
      * @param f a filter function used to prefilter values.
      */
     virtual void get(
-        const InfoHash& key, GetCallback cb, DoneCallback donecb = {}, Value::Filter&& f = {}, Where&& w = {})
-        = 0;
-    virtual void get(
-        const InfoHash& key, GetCallback cb, DoneCallbackSimple donecb = {}, Value::Filter&& f = {}, Where&& w = {})
-        = 0;
-    virtual void get(
-        const InfoHash& key, GetCallbackSimple cb, DoneCallback donecb = {}, Value::Filter&& f = {}, Where&& w = {})
-        = 0;
-    virtual void get(
-        const InfoHash& key, GetCallbackSimple cb, DoneCallbackSimple donecb, Value::Filter&& f = {}, Where&& w = {})
-        = 0;
+        const InfoHash& key, GetCallback cb, DoneCallback donecb = {}, Value::Filter&& f = {}, Where&& w = {}) = 0;
+    virtual void get(const InfoHash& key,
+                     GetCallback cb,
+                     DoneCallbackSimple donecb = {},
+                     Value::Filter&& f = {},
+                     Where&& w = {}) = 0;
+    virtual void get(const InfoHash& key,
+                     GetCallbackSimple cb,
+                     DoneCallback donecb = {},
+                     Value::Filter&& f = {},
+                     Where&& w = {}) = 0;
+    virtual void get(const InfoHash& key,
+                     GetCallbackSimple cb,
+                     DoneCallbackSimple donecb,
+                     Value::Filter&& f = {},
+                     Where&& w = {}) = 0;
 
     /**
       * Similar to Dht::get, but sends a Query to filter data remotely.
@@ -138,26 +142,22 @@ public:
                      Sp<Value>,
                      DoneCallback cb = nullptr,
                      time_point created = time_point::max(),
-                     bool permanent = false)
-        = 0;
+                     bool permanent = false) = 0;
     virtual void put(const InfoHash& key,
                      const Sp<Value>& v,
                      DoneCallbackSimple cb,
                      time_point created = time_point::max(),
-                     bool permanent = false)
-        = 0;
+                     bool permanent = false) = 0;
     virtual void put(const InfoHash& key,
                      Value&& v,
                      DoneCallback cb = nullptr,
                      time_point created = time_point::max(),
-                     bool permanent = false)
-        = 0;
+                     bool permanent = false) = 0;
     virtual void put(const InfoHash& key,
                      Value&& v,
                      DoneCallbackSimple cb,
                      time_point created = time_point::max(),
-                     bool permanent = false)
-        = 0;
+                     bool permanent = false) = 0;
 
     /**
      * Get data currently being put at the given hash.
@@ -260,6 +260,23 @@ public:
      * @param notification to process
      */
     virtual PushNotificationResult pushNotificationReceived(const std::map<std::string, std::string>& data) = 0;
+
+    /**
+     * Listen with a one-shot notification after initial values are delivered and
+     * synchronization completes on all enabled address families.
+     * @param ready called with false on initialization failure or shutdown.
+     *        Canceling the listener suppresses a pending readiness notification.
+     *        The callback may run before listen returns. Implementations that do
+     *        not support readiness report false while preserving the listener.
+     */
+    virtual size_t listen(
+        const InfoHash& key, ValueCallback cb, Value::Filter filter, Where where, DoneCallbackSimple ready)
+    {
+        auto token = listen(key, std::move(cb), std::move(filter), std::move(where));
+        if (ready)
+            ready(false);
+        return token;
+    }
 
 protected:
     std::shared_ptr<Logger> logger_ {};

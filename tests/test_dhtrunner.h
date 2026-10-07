@@ -34,6 +34,7 @@ class DhtRunnerTester : public CppUnit::TestFixture
     CPPUNIT_TEST(testPutDuplicate);
     CPPUNIT_TEST(testPutOverride);
     CPPUNIT_TEST(testListen);
+    CPPUNIT_TEST(testListenReadiness);
     CPPUNIT_TEST(testListenValueEdit);
     CPPUNIT_TEST(testListenLotOfBytes);
     CPPUNIT_TEST(testStoreEmptyValue);
@@ -86,6 +87,7 @@ public:
      * Test listen method
      */
     void testListen();
+    void testListenReadiness();
     /**
      * Test methods requiring a node identity
      */

@@ -57,6 +57,41 @@ OpCacheTester::setUp()
 {}
 
 void
+OpCacheTester::testInitialListenerReadiness()
+{
+    dht::OpCache cache;
+    auto query = std::make_shared<dht::Query>();
+    unsigned calls = 0;
+    auto callback = [&](bool ok) {
+        CPPUNIT_ASSERT(ok);
+        ++calls;
+    };
+    CPPUNIT_ASSERT(cache.addListener(1, [](const Values&, bool) { return true; }, query, {}, callback));
+    CPPUNIT_ASSERT_EQUAL(0u, calls);
+    cache.onNodeChanged(dht::ListenSyncStatus::ADDED);
+    cache.onNodeChanged(dht::ListenSyncStatus::SYNCED);
+    CPPUNIT_ASSERT_EQUAL(1u, calls);
+    cache.onNodeChanged(dht::ListenSyncStatus::UNSYNCED);
+    CPPUNIT_ASSERT(cache.addListener(4, [](const Values&, bool) { return true; }, query, {}, callback));
+    CPPUNIT_ASSERT_EQUAL(1u, calls);
+    cache.onNodeChanged(dht::ListenSyncStatus::SYNCED);
+    CPPUNIT_ASSERT_EQUAL(2u, calls);
+    CPPUNIT_ASSERT(cache.addListener(2, [](const Values&, bool) { return true; }, query, {}, callback));
+    CPPUNIT_ASSERT_EQUAL(3u, calls);
+    dht::OpCache isolated;
+    CPPUNIT_ASSERT(isolated.addListener(3, [](const Values&, bool) { return true; }, query, {}, callback));
+    isolated.onReady();
+    CPPUNIT_ASSERT_EQUAL(4u, calls);
+    dht::OpCache searching(true, true);
+    CPPUNIT_ASSERT(searching.addListener(5, [](const Values&, bool) { return true; }, query, {}, callback));
+    searching.onNodeChanged(dht::ListenSyncStatus::ADDED);
+    searching.onNodeChanged(dht::ListenSyncStatus::SYNCED);
+    CPPUNIT_ASSERT_EQUAL(4u, calls);
+    searching.onSearchReady();
+    CPPUNIT_ASSERT_EQUAL(5u, calls);
+}
+
+void
 OpCacheTester::tearDown()
 {}
 

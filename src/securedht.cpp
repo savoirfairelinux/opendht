@@ -333,7 +333,17 @@ SecureDht::get(const InfoHash& id, GetCallback cb, DoneCallback donecb, Value::F
 size_t
 SecureDht::listen(const InfoHash& id, ValueCallback cb, Value::Filter f, Where w)
 {
-    return dht_->listen(id, getCallbackFilter(cb, std::forward<Value::Filter>(f)), {}, std::forward<Where>(w));
+    return listen(id, std::move(cb), std::move(f), std::move(w), {});
+}
+
+size_t
+SecureDht::listen(const InfoHash& id, ValueCallback cb, Value::Filter f, Where w, DoneCallbackSimple ready)
+{
+    return dht_->listen(id,
+                        getCallbackFilter(cb, std::forward<Value::Filter>(f)),
+                        {},
+                        std::forward<Where>(w),
+                        std::move(ready));
 }
 
 size_t

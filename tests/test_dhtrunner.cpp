@@ -78,6 +78,42 @@ getFutureValue(std::future<T> future, std::chrono::steady_clock::duration timeou
 }
 
 void
+DhtRunnerTester::testListenReadiness()
+{
+    auto key = dht::InfoHash::get("native-listen-readiness");
+    auto value = std::make_shared<dht::Value>("initial-value");
+    value->id = 42;
+    std::promise<bool> stored;
+    auto storedFuture = stored.get_future();
+    node2.put(key, value, [&](bool ok) { stored.set_value(ok); });
+    CPPUNIT_ASSERT(storedFuture.wait_for(10s) == std::future_status::ready);
+    CPPUNIT_ASSERT(storedFuture.get());
+    bool received = false;
+    std::promise<bool> ready;
+    auto readyFuture = ready.get_future();
+    auto token = node1.listen(key, [&](const std::vector<dht::Sp<dht::Value>>& values, bool expired) {
+        if (!expired)
+            for (const auto& current : values)
+                received = received || current->id == 42;
+        return true;
+    }, {}, {}, [&](bool ok) { ready.set_value(ok && received); });
+    CPPUNIT_ASSERT(readyFuture.wait_for(10s) == std::future_status::ready);
+    CPPUNIT_ASSERT(readyFuture.get());
+    node1.cancelListen(key, token.get());
+
+    dht::DhtRunner isolated;
+    isolated.run(0);
+    std::promise<bool> emptyReady;
+    auto emptyFuture = emptyReady.get_future();
+    auto emptyToken = isolated.listen(key, [](const std::vector<dht::Sp<dht::Value>>&, bool) { return true; },
+                                      {}, {}, [&](bool ok) { emptyReady.set_value(ok); });
+    CPPUNIT_ASSERT(emptyFuture.wait_for(5s) == std::future_status::ready);
+    CPPUNIT_ASSERT(emptyFuture.get());
+    isolated.cancelListen(key, emptyToken.get());
+    isolated.join();
+}
+
+void
 DhtRunnerTester::setUp()
 {
     dht::DhtRunner::Config config;

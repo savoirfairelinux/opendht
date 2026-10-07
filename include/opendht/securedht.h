@@ -272,6 +272,7 @@ public:
     bool cancelPut(const InfoHash& h, const Value::Id& vid) override { return dht_->cancelPut(h, vid); }
 
     size_t listen(const InfoHash& key, ValueCallback, Value::Filter = {}, Where = {}) override;
+    size_t listen(const InfoHash& key, ValueCallback, Value::Filter, Where, DoneCallbackSimple ready) override;
     size_t listen(const InfoHash& key, GetCallback cb, Value::Filter = {}, Where w = {}) override;
     size_t listen(const InfoHash& key, GetCallbackSimple cb, Value::Filter f = {}, Where w = {}) override
     {
