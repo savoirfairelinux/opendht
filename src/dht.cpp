@@ -83,6 +83,7 @@ Dht::shutdown(ShutdownCallback cb, bool stop)
                         cb(false, {});
                 }
                 sr.second->announce.clear();
+                sr.second->cache.onReady(false);
                 sr.second->listeners.clear();
             }
         }

@@ -851,6 +851,7 @@ struct Dht::Search
 
     void clear()
     {
+        cache.onReady(false);
         announce.clear();
         callbacks.clear();
         listeners.clear();
