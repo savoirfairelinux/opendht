@@ -132,10 +132,18 @@ public:
     {
         initialReady = ok;
         searchReady = ok;
-        auto callbacks = std::move(readyCallbacks);
-        readyCallbacks.clear();
-        for (auto& callback : callbacks)
-            callback.second(ok);
+        std::vector<size_t> pending;
+        pending.reserve(readyCallbacks.size());
+        for (const auto& callback : readyCallbacks)
+            pending.emplace_back(callback.first);
+        for (auto token : pending) {
+            auto found = readyCallbacks.find(token);
+            if (found == readyCallbacks.end())
+                continue;
+            auto callback = std::move(found->second);
+            readyCallbacks.erase(found);
+            callback(ok);
+        }
     }
 
     void onSearchReady()
