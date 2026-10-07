@@ -189,6 +189,7 @@ public:
      * @return a token to cancel the listener later.
      */
     virtual size_t listen(const InfoHash&, ValueCallback, Value::Filter = {}, Where = {}) override;
+    size_t listen(const InfoHash&, ValueCallback, Value::Filter, Where, DoneCallbackSimple ready) override;
 
     virtual size_t listen(const InfoHash& key, GetCallback cb, Value::Filter f = {}, Where w = {}) override
     {
@@ -291,9 +292,10 @@ public:
     virtual size_t getStorageLimit() const override { return 0; }
     void setLocalStorageLimit(size_t) override {}
     virtual size_t getLocalStorageLimit() const override { return STORAGE_LIMIT_UNLIMITED; }
-    void connectivityChanged(sa_family_t) override { getProxyInfos(); }
+    void connectivityChanged(sa_family_t) override { connectivityChanged(); }
     void connectivityChanged() override
     {
+        launchConnectedCbs_ = true;
         getProxyInfos();
         loopSignal_();
     }
@@ -329,7 +331,6 @@ private:
     enum class ListenMethod {
         LISTEN,
         SUBSCRIBE,
-        RESUBSCRIBE,
     };
     using CacheValueCallback
         = std::function<bool(const std::vector<std::shared_ptr<Value>>& values, bool expired, system_clock::time_point)>;
@@ -341,11 +342,16 @@ private:
                     const CacheValueCallback& cb,
                     const Sp<OperationState>& opstate,
                     Listener& listener,
-                    ListenMethod method = ListenMethod::LISTEN);
+                    ListenMethod method,
+                    const InfoHash& key,
+                    size_t token);
     void handleResubscribe(const asio::error_code& ec,
                            const InfoHash& key,
                            const size_t token,
                            std::shared_ptr<OperationState> opstate);
+    void scheduleListenRetry(const InfoHash& key, size_t token, Listener& listener);
+    bool reconcileListenerSnapshot(Listener& listener, const std::vector<Sp<Value>>& values, const Json::Value& marker);
+    std::chrono::seconds subscriptionRequestTimeout_ {30};
 
     void doPut(const InfoHash&, Sp<Value>, DoneCallbackSimple, time_point created, bool permanent);
     void handleRefreshPut(const asio::error_code& ec, InfoHash key, Value::Id id);
@@ -437,6 +443,8 @@ private:
     /**
      * Refresh a listen via a token
      * @param token
+     * @param fetchValues ask the server to send the values it stores, for a listener
+     * that may have missed some (its previous subscription failed).
      */
     void resubscribe(const InfoHash& key, const size_t token, Listener& listener);
 
@@ -468,7 +476,6 @@ private:
     const std::function<void()> loopSignal_;
 
 #ifdef OPENDHT_PUSH_NOTIFICATIONS
-    std::string fillBody(bool resubscribe);
     void getPushRequest(Json::Value&) const;
 #endif // OPENDHT_PUSH_NOTIFICATIONS
 

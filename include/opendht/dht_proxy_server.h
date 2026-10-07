@@ -272,12 +272,19 @@ private:
     {
         std::mutex lock;
         std::string sessionId;
+        const std::string epoch {InfoHash::getRandom().toString()};
+        uint64_t revision {0};
+        std::map<Value::Id, Json::Value> values;
+        bool initialized {false};
+        bool initialOk {false};
+        std::vector<std::function<void()>> pendingSnapshots;
         PushSessionContext(const std::string& id)
             : sessionId(id)
         {}
     };
 
 #ifdef OPENDHT_PUSH_NOTIFICATIONS
+    void onPushListenReady(const std::shared_ptr<PushSessionContext>& sessionCtx, bool ok);
     PushType getTypeFromString(const std::string& type);
     std::string getDefaultTopic(PushType type);
 

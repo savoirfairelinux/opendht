@@ -16,9 +16,11 @@ class DhtProxyTester : public CppUnit::TestFixture
     CPPUNIT_TEST_SUITE(DhtProxyTester);
     CPPUNIT_TEST(testGetPut);
     CPPUNIT_TEST(testListen);
+    CPPUNIT_TEST(testListenReadiness);
     CPPUNIT_TEST(testListenValueEdit);
     CPPUNIT_TEST(testPushListenValueEdit);
     CPPUNIT_TEST(testResubscribeGetValues);
+    CPPUNIT_TEST(testFullSubscribeReturnsValuesWithoutExistingListener);
     CPPUNIT_TEST(testPushNotification);
     CPPUNIT_TEST(testProxyServerClientFullChain);
     CPPUNIT_TEST(testPutGet40KChars);
@@ -51,6 +53,7 @@ public:
      * Test listen
      */
     void testListen();
+    void testListenReadiness();
     /**
      * Test that editing a value only triggers an add callback via proxy, no expire
      */
@@ -65,6 +68,7 @@ public:
      * it should retrieve existant values
      */
     void testResubscribeGetValues();
+    void testFullSubscribeReturnsValuesWithoutExistingListener();
     /**
      * Test push notification mechanism and OpValueCache
      */

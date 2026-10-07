@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "test_dhtproxy.h"
+#include <opendht/http.h>
 
 // std
 #include <iostream>
@@ -482,6 +483,106 @@ DhtProxyTester::testResubscribeGetValues()
     // Here values should still contains 1 values
     CPPUNIT_ASSERT_EQUAL((size_t) 1u, values.size());
     CPPUNIT_ASSERT(firstVal_data == values.front()->data);
+}
+
+void
+DhtProxyTester::testListenReadiness()
+{
+    auto key = dht::InfoHash::get("proxy-listen-readiness");
+    auto value = std::make_shared<dht::Value>("present-before-ready");
+    value->id = 42;
+    std::promise<bool> stored;
+    auto storedFuture = stored.get_future();
+    nodePeer.put(key, value, [&](bool ok) { stored.set_value(ok); });
+    CPPUNIT_ASSERT(storedFuture.wait_for(10s) == std::future_status::ready);
+    CPPUNIT_ASSERT(storedFuture.get());
+    nodeClient.run(0, clientConfig);
+    std::promise<bool> ready;
+    auto readyFuture = ready.get_future();
+    bool received = false;
+    auto token = nodeClient.listen(
+        key,
+        [&](const std::vector<dht::Sp<dht::Value>>& values, bool expired) {
+            if (!expired)
+                for (const auto& current : values)
+                    received = received || current->id == 42;
+            return true;
+        },
+        {},
+        {},
+        [&](bool ok) { ready.set_value(ok && received); });
+    CPPUNIT_ASSERT(readyFuture.wait_for(10s) == std::future_status::ready);
+    CPPUNIT_ASSERT(readyFuture.get());
+    std::promise<bool> attached;
+    auto attachedFuture = attached.get_future();
+    auto second = nodeClient.listen(
+        key,
+        [](const std::vector<dht::Sp<dht::Value>>&, bool) { return true; },
+        {},
+        {},
+        [&](bool ok) { attached.set_value(ok); });
+    CPPUNIT_ASSERT(attachedFuture.wait_for(10s) == std::future_status::ready);
+    CPPUNIT_ASSERT(attachedFuture.get());
+    nodeClient.cancelListen(key, token.get());
+    nodeClient.cancelListen(key, second.get());
+}
+
+void
+DhtProxyTester::testFullSubscribeReturnsValuesWithoutExistingListener()
+{
+    auto key = dht::InfoHash::get("full-subscribe-no-server-listener");
+    std::mutex mutex;
+    std::condition_variable cv;
+    bool stored = false;
+    nodePeer.put(key, dht::Value("stored-before-subscription"), [&](bool ok) {
+        std::lock_guard lock(mutex);
+        stored = ok;
+        cv.notify_all();
+    });
+    {
+        std::unique_lock lock(mutex);
+        CPPUNIT_ASSERT(cv.wait_for(lock, 10s, [&] { return stored; }));
+    }
+    auto subscribe = [&](const std::string& clientId, const Json::Value& sync = Json::Value(Json::objectValue)) {
+        asio::io_context context;
+        auto request = std::make_shared<dht::http::Request>(context,
+                                                            clientConfig.proxy_server + "/key/" + key.toString());
+        request->set_method(restinio::http_method_subscribe());
+        Json::Value root;
+        root["key"] = "review-token";
+        root["client_id"] = clientId;
+        root["session_id"] = "review-session";
+        root["platform"] = "android";
+        root["sync"] = sync;
+        request->set_body(Json::writeString(Json::StreamWriterBuilder {}, root));
+        unsigned statusCode = 0;
+        std::string body;
+        request->add_on_done_callback([&](const dht::http::Response& response) {
+            statusCode = response.status_code;
+            body = response.body;
+        });
+        request->send();
+        context.run();
+        CPPUNIT_ASSERT_EQUAL(200u, statusCode);
+        return body;
+    };
+    auto snapshot = subscribe("existing-client");
+    CPPUNIT_ASSERT(snapshot.find("\"data\"") != std::string::npos);
+    Json::Value marker;
+    std::istringstream lines(snapshot);
+    auto reader = std::unique_ptr<Json::CharReader>(Json::CharReaderBuilder {}.newCharReader());
+    for (std::string line; std::getline(lines, line);) {
+        std::string error;
+        CPPUNIT_ASSERT(reader->parse(line.data(), line.data() + line.size(), &marker, &error));
+    }
+    CPPUNIT_ASSERT(marker["sync"]["complete"].asBool());
+    auto validation = subscribe("existing-client", marker["sync"]);
+    CPPUNIT_ASSERT(validation.find("\"data\"") == std::string::npos);
+    std::string error;
+    CPPUNIT_ASSERT(reader->parse(validation.data(), validation.data() + validation.size(), &marker, &error));
+    CPPUNIT_ASSERT(marker["sync"]["complete"].asBool());
+    CPPUNIT_ASSERT(!marker["sync"]["snapshot"].asBool());
+    CPPUNIT_ASSERT(subscribe("new-client").find("\"data\"") != std::string::npos);
 }
 
 void

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "dht_proxy_client.h"
+#include <charconv>
 #include "dhtrunner.h"
 #include "op_cache.h"
 #include "utils.h"
@@ -21,6 +22,8 @@ struct DhtProxyClient::OperationState
 {
     std::atomic_bool ok {true};
     std::atomic_bool stop {false};
+    std::atomic_uint64_t generation {0};
+    std::atomic_bool inFlight {false};
 };
 
 struct DhtProxyClient::Listener
@@ -35,6 +38,17 @@ struct DhtProxyClient::Listener
     CacheValueCallback cb;
     Sp<OperationState> opstate;
     std::shared_ptr<http::Request> request;
+    std::shared_ptr<asio::steady_timer> requestDeadline;
+    bool needsRecovery {true};
+    std::string syncEpoch;
+    uint64_t syncRevision {0};
+    std::string observedEpoch;
+    uint64_t observedRevision {0};
+    std::set<std::string> retiredEpochs;
+    std::string requestToken;
+    uint64_t pushGeneration {0};
+    std::chrono::seconds retryDelay {1};
+    DoneCallbackSimple ready;
 #ifdef OPENDHT_PUSH_NOTIFICATIONS
     std::unique_ptr<asio::system_timer> refreshSubscriberTimer;
 #endif
@@ -79,6 +93,7 @@ struct LineSplit
         return false;
     }
     const std::string& line() const { return line_; }
+    bool empty() const { return buf_.empty(); }
 
 private:
     std::deque<char> buf_ {};
@@ -202,18 +217,17 @@ DhtProxyClient::stop()
         }
         if (resolver)
             resolver->cancel();
-        cancelAllListeners();
         if (infoState_)
             infoState_->cancel = true;
-        {
-            std::lock_guard lock(requestLock_);
-            for (auto& request : requests_)
-                request.second->cancel();
-        }
         if (not httpContext_.stopped())
             httpContext_.stop();
         if (httpClientThread_.joinable())
             httpClientThread_.join();
+        cancelAllListeners();
+        for (auto& request : requests_) {
+            request.second->cancel();
+            request.second->terminate(asio::error::operation_aborted);
+        }
         requests_.clear();
     }
 }
@@ -250,7 +264,8 @@ DhtProxyClient::cancelAllListeners()
             if (l == s.second.listeners.end())
                 return;
             l->second.opstate->stop.store(true);
-            l->second.request->cancel();
+            if (l->second.request)
+                l->second.request->cancel();
             // implicit request.reset()
             s.second.listeners.erase(token);
         });
@@ -834,6 +849,12 @@ DhtProxyClient::getPublicAddress(sa_family_t family)
 size_t
 DhtProxyClient::listen(const InfoHash& key, ValueCallback cb, Value::Filter filter, Where where)
 {
+    return listen(key, std::move(cb), std::move(filter), std::move(where), {});
+}
+
+size_t
+DhtProxyClient::listen(const InfoHash& key, ValueCallback cb, Value::Filter filter, Where where, DoneCallbackSimple ready)
+{
     if (logger_)
         logger_->debug("[proxy:client] [listen] [search {}]", key.to_view());
     if (isDestroying_)
@@ -842,8 +863,11 @@ DhtProxyClient::listen(const InfoHash& key, ValueCallback cb, Value::Filter filt
     std::lock_guard lock(searchLock_);
     auto& search = searches_[key];
     auto query = std::make_shared<Query>(Select {}, std::move(where));
-    return search.ops
-        .listen(cb, query, std::move(filter), [this, key](Sp<Query>, ValueCallback cb, SyncCallback) -> size_t {
+    return search.ops.listen(
+        cb,
+        query,
+        std::move(filter),
+        [this, key](Sp<Query>, ValueCallback cb, SyncCallback synced) -> size_t {
             // Find search
             auto search = searches_.find(key);
             if (search == searches_.end()) {
@@ -871,6 +895,12 @@ DhtProxyClient::listen(const InfoHash& key, ValueCallback cb, Value::Filter filt
             // Add cache callback
             auto opstate = std::make_shared<OperationState>();
             l->second.opstate = opstate;
+            l->second.ready = [synced](bool ok) {
+                if (ok) {
+                    synced(ListenSyncStatus::ADDED);
+                    synced(ListenSyncStatus::SYNCED);
+                }
+            };
             l->second.cb = [this, key, token, opstate](const std::vector<Sp<Value>>& values,
                                                        bool expired,
                                                        system_clock::time_point t) {
@@ -911,9 +941,10 @@ DhtProxyClient::listen(const InfoHash& key, ValueCallback cb, Value::Filter filt
                 header.method(restinio::http_method_subscribe());
                 header.request_target(fmt::format("/key/{}", key.to_view()));
             }
-            sendListen(header, l->second.cb, opstate, l->second, method);
+            sendListen(header, l->second.cb, opstate, l->second, method, key, token);
             return token;
-        });
+        },
+        std::move(ready));
 }
 
 void
@@ -1053,77 +1084,304 @@ DhtProxyClient::handleExpireListener(const asio::error_code& ec, const InfoHash&
     }
 }
 
+bool
+DhtProxyClient::reconcileListenerSnapshot(Listener& listener,
+                                          const std::vector<Sp<Value>>& values,
+                                          const Json::Value& marker)
+{
+    if (!marker.isObject() || !marker["epoch"].isString() || marker["epoch"].asString().empty()
+        || !marker["revision"].isUInt64() || !marker["snapshot"].isBool() || !marker["complete"].isBool()
+        || !marker["complete"].asBool())
+        return false;
+    auto epoch = marker["epoch"].asString();
+    auto revision = marker["revision"].asUInt64();
+    if (listener.retiredEpochs.count(epoch) || (listener.syncEpoch == epoch && listener.syncRevision > revision)
+        || (listener.observedEpoch == epoch && listener.observedRevision > revision))
+        return false;
+    bool full = marker["snapshot"].asBool();
+    if (!full
+        && (listener.needsRecovery || epoch != listener.syncEpoch || revision != listener.syncRevision
+            || !values.empty()))
+        return false;
+    if (full) {
+        std::set<Value::Id> ids;
+        for (const auto& value : values)
+            ids.insert(value->id);
+        std::vector<Sp<Value>> expired;
+        for (const auto& value : listener.cache.getValues())
+            if (!ids.count(value->id))
+                expired.emplace_back(value);
+        if (!listener.cache.onValue(values, false, system_clock::time_point::min())
+            || (!expired.empty() && !listener.cache.onValue(expired, true, system_clock::time_point::max()))) {
+            listener.opstate->stop = true;
+            return false;
+        }
+    }
+    if (!listener.syncEpoch.empty() && listener.syncEpoch != epoch)
+        listener.retiredEpochs.insert(listener.syncEpoch);
+    while (listener.retiredEpochs.size() > 8)
+        listener.retiredEpochs.erase(listener.retiredEpochs.begin());
+    listener.syncEpoch = epoch;
+    listener.syncRevision = revision;
+    listener.observedEpoch = epoch;
+    listener.observedRevision = revision;
+    listener.needsRecovery = false;
+    listener.retryDelay = std::chrono::seconds(1);
+    return true;
+}
+
+void
+DhtProxyClient::scheduleListenRetry([[maybe_unused]] const InfoHash& key,
+                                    [[maybe_unused]] size_t token,
+                                    [[maybe_unused]] Listener& listener)
+{
+#ifdef OPENDHT_PUSH_NOTIFICATIONS
+    if (!listener.refreshSubscriberTimer)
+        listener.refreshSubscriberTimer = std::make_unique<asio::system_timer>(httpContext_);
+    listener.refreshSubscriberTimer->expires_after(listener.retryDelay);
+    listener.retryDelay = std::min(listener.retryDelay * 2, std::chrono::seconds(60));
+    listener.refreshSubscriberTimer->async_wait(
+        std::bind(&DhtProxyClient::handleResubscribe, this, std::placeholders::_1, key, token, listener.opstate));
+#endif
+}
+
 void
 DhtProxyClient::sendListen(const restinio::http_request_header_t& header,
                            const CacheValueCallback& cb,
                            const Sp<OperationState>& opstate,
                            Listener& listener,
-                           ListenMethod method)
+                           ListenMethod method,
+                           const InfoHash& key,
+                           size_t token)
 {
     if (logger_)
         logger_->error("[proxy:client] [listen] sendListen: {}", (int) method);
     try {
+        auto generation = ++opstate->generation;
+        bool syncRequest = method != ListenMethod::LISTEN;
+        opstate->inFlight = syncRequest;
+        if (syncRequest)
+            opstate->ok = false;
         auto request = buildRequest();
         listener.request = request;
+        auto deadline = std::make_shared<asio::steady_timer>(httpContext_);
+        listener.requestDeadline = deadline;
+        if (syncRequest) {
+            deadline->expires_after(subscriptionRequestTimeout_);
+            deadline->async_wait([weak = std::weak_ptr<http::Request>(request)](const asio::error_code& ec) {
+                if (!ec)
+                    if (auto request = weak.lock()) {
+                        request->cancel();
+                        request->terminate(asio::error::timed_out);
+                    }
+            });
+        }
         auto reqid = request->id();
-        request->set_header(header);
-        setHeaderFields(*request);
+        auto requestHeader = header;
         if (method == ListenMethod::LISTEN)
+            requestHeader.request_target(std::string(header.request_target()) + "?sync=1");
+        request->set_header(requestHeader);
+        setHeaderFields(*request);
+        if (method == ListenMethod::LISTEN) {
             request->set_connection_type(restinio::http_connection_header_t::keep_alive);
+        }
 #ifdef OPENDHT_PUSH_NOTIFICATIONS
         std::string body;
-        if (method != ListenMethod::LISTEN)
-            body = fillBody(method == ListenMethod::RESUBSCRIBE);
-        request->set_body(body);
-#endif
-        auto rxBuf = std::make_shared<LineSplit>();
-        request->add_on_body_callback([this, reqid, opstate, rxBuf, cb](const char* at, size_t length) {
-            try {
-                auto& b = *rxBuf;
-                b.append(at, length);
-
-                // one value per body line
-                while (b.getLine('\n') and !opstate->stop) {
-                    std::string err;
-                    Json::Value json;
-                    const auto& line = b.line();
-                    if (!jsonReader_->parse(line.data(), line.data() + line.size(), &json, &err)) {
-                        opstate->ok.store(false);
-                        return;
-                    }
-                    if (json.size() == 0) { // it's the end
-                        break;
-                    }
-
-                    auto value = std::make_shared<Value>(json);
-                    if (cb) {
-                        auto expired = json.get("expired", Json::Value(false)).asBool();
-                        {
-                            std::lock_guard lock(lockCallbacks_);
-                            callbacks_.emplace_back([cb, value, opstate, expired]() {
-                                if (not opstate->stop.load()
-                                    and not cb({value}, expired, system_clock::time_point::min()))
-                                    opstate->stop.store(true);
-                            });
-                        }
-                        loopSignal_();
-                    }
-                }
-            } catch (const std::exception& e) {
-                if (logger_)
-                    logger_->error("[proxy:client] [listen] request #{} error in parsing: {}", reqid, e.what());
-                opstate->ok.store(false);
+        std::string requestToken;
+        if (syncRequest) {
+            Json::Value root;
+            getPushRequest(root);
+            requestToken = root["key"].asString();
+            if (listener.requestToken != requestToken) {
+                listener.requestToken = requestToken;
+                listener.observedEpoch.clear();
+                listener.observedRevision = 0;
+                listener.retiredEpochs.clear();
             }
-        });
-        request->add_on_done_callback([this, opstate, reqid](const http::Response& response) {
-            if (response.status_code != 200) {
-                if (logger_)
-                    logger_->error("[proxy:client] [listen] send request #{} failed with code={}",
-                                   reqid,
-                                   response.status_code);
-                opstate->ok.store(false);
-                if (not response.aborted and response.status_code == 0)
-                    opFailed();
+            root["sync"] = Json::Value(Json::objectValue);
+            if (!listener.needsRecovery && !listener.syncEpoch.empty()) {
+                root["sync"]["epoch"] = listener.syncEpoch;
+                root["sync"]["revision"] = Json::UInt64(listener.syncRevision);
+            }
+            body = Json::writeString(jsonBuilder_, root);
+        }
+        request->set_body(body);
+#else
+        std::string requestToken;
+#endif
+        auto pushGeneration = listener.pushGeneration;
+        auto rxBuf = std::make_shared<LineSplit>();
+        auto snapshot = std::make_shared<std::vector<Sp<Value>>>();
+        auto marker = std::make_shared<Json::Value>();
+        auto valid = std::make_shared<bool>(true);
+        request->add_on_body_callback(
+            [this, reqid, key, token, opstate, generation, rxBuf, cb, syncRequest, snapshot, marker, valid](
+                const char* at, size_t length) {
+                if (opstate->generation != generation || opstate->stop)
+                    return;
+                try {
+                    auto& b = *rxBuf;
+                    b.append(at, length);
+
+                    // one value per body line
+                    while (b.getLine('\n') and !opstate->stop) {
+                        std::string err;
+                        Json::Value json;
+                        const auto& line = b.line();
+                        if (!jsonReader_->parse(line.data(), line.data() + line.size(), &json, &err)) {
+                            *valid = false;
+                            return;
+                        }
+                        if (syncRequest) {
+                            if (!marker->isNull()) {
+                                *valid = false;
+                                continue;
+                            }
+                            if (json.isMember("sync")) {
+                                *marker = json["sync"];
+                            } else if (json.size() != 0) {
+                                snapshot->emplace_back(std::make_shared<Value>(json));
+                            } else {
+                                *valid = false;
+                            }
+                            continue;
+                        }
+                        if (json.isMember("sync")) {
+                            if (!json["sync"].isObject() || !json["sync"]["complete"].isBool()) {
+                                *valid = false;
+                                return;
+                            }
+                            std::lock_guard callbackLock(lockCallbacks_);
+                            callbacks_.emplace_back(
+                                [this, key, token, opstate, generation, ok = json["sync"]["complete"].asBool()] {
+                                    std::lock_guard searchLock(searchLock_);
+                                    if (opstate->generation != generation || opstate->stop)
+                                        return;
+                                    auto search = searches_.find(key);
+                                    if (search == searches_.end())
+                                        return;
+                                    auto found = search->second.listeners.find(token);
+                                    if (found != search->second.listeners.end() && found->second.ready) {
+                                        auto ready = std::move(found->second.ready);
+                                        ready(ok);
+                                    }
+                                });
+                            loopSignal_();
+                            continue;
+                        }
+                        if (json.size() == 0) { // it's the end
+                            break;
+                        }
+
+                        auto value = std::make_shared<Value>(json);
+                        if (cb) {
+                            auto expired = json.get("expired", Json::Value(false)).asBool();
+                            {
+                                std::lock_guard lock(lockCallbacks_);
+                                callbacks_.emplace_back([cb, value, opstate, generation, expired]() {
+                                    if (opstate->generation == generation && not opstate->stop.load()
+                                        and not cb({value}, expired, system_clock::time_point::min()))
+                                        opstate->stop.store(true);
+                                });
+                            }
+                            loopSignal_();
+                        }
+                    }
+                } catch (const std::exception& e) {
+                    if (logger_)
+                        logger_->error("[proxy:client] [listen] request #{} error in parsing: {}", reqid, e.what());
+                    *valid = false;
+                }
+            });
+        request->add_on_done_callback([this,
+                                       opstate,
+                                       generation,
+                                       reqid,
+                                       key,
+                                       token,
+                                       syncRequest,
+                                       rxBuf,
+                                       snapshot,
+                                       marker,
+                                       valid,
+                                       deadline,
+                                       requestToken,
+                                       pushGeneration](const http::Response& response) {
+            deadline->cancel();
+            bool current = opstate->generation == generation && !opstate->stop;
+            bool successful = response.status_code == 200 && !response.aborted && *valid
+                              && (!syncRequest || rxBuf->empty());
+            if (current && !isDestroying_) {
+                {
+                    std::lock_guard callbackLock(lockCallbacks_);
+                    callbacks_.emplace_back([this,
+                                             key,
+                                             token,
+                                             opstate,
+                                             generation,
+                                             successful,
+                                             syncRequest,
+                                             transportFailed = !response.aborted && response.status_code == 0,
+                                             snapshot,
+                                             marker,
+                                             requestToken,
+                                             pushGeneration]() {
+                        std::lock_guard searchLock(searchLock_);
+                        if (opstate->generation != generation || opstate->stop)
+                            return;
+                        auto search = searches_.find(key);
+                        if (search == searches_.end())
+                            return;
+                        auto found = search->second.listeners.find(token);
+                        if (found == search->second.listeners.end() || found->second.opstate != opstate)
+                            return;
+                        auto& listener = found->second;
+                        if (!successful) {
+                            opstate->ok = false;
+                            if (transportFailed)
+                                opFailed();
+                        }
+                        opstate->inFlight = false;
+                        if (!syncRequest)
+                            return;
+                        auto observedEpoch = listener.observedEpoch;
+                        if (successful && reconcileListenerSnapshot(listener, *snapshot, *marker)) {
+                            bool validateEpoch = listener.pushGeneration != pushGeneration && !observedEpoch.empty()
+                                                 && observedEpoch != listener.syncEpoch;
+                            opstate->ok = true;
+#ifdef OPENDHT_PUSH_NOTIFICATIONS
+                            if (listener.refreshSubscriberTimer) {
+                                listener.refreshSubscriberTimer->expires_at(system_clock::now() + proxy::OP_TIMEOUT
+                                                                            - proxy::OP_MARGIN);
+                                listener.refreshSubscriberTimer->async_wait(std::bind(&DhtProxyClient::handleResubscribe,
+                                                                                      this,
+                                                                                      std::placeholders::_1,
+                                                                                      key,
+                                                                                      token,
+                                                                                      opstate));
+                            }
+#endif
+                            if (listener.ready) {
+                                auto ready = std::move(listener.ready);
+                                ready(true);
+                            }
+                            bool changedToken;
+                            {
+                                std::lock_guard infoLock(lockCurrentProxyInfos_);
+                                changedToken = requestToken != deviceKey_;
+                            }
+                            if (changedToken || validateEpoch)
+                                resubscribe(key, token, listener);
+                            return;
+                        }
+                        if (opstate->stop)
+                            return;
+                        listener.needsRecovery = true;
+                        opstate->ok = false;
+                        scheduleListenRetry(key, token, listener);
+                    });
+                }
+                loopSignal_();
             }
             if (not isDestroying_) {
                 std::lock_guard l(requestLock_);
@@ -1134,14 +1392,21 @@ DhtProxyClient::sendListen(const restinio::http_request_header_t& header,
             std::lock_guard l(requestLock_);
             requests_[reqid] = request;
         }
-        request->add_on_status_callback([request, seconds = this->listenKeepIdle()](unsigned status_code) {
-            if (status_code == 200) {
-                // increase TCP_KEEPIDLE to save power
-                request->get_connection()->set_keepalive(seconds);
-            }
-        });
+        request->add_on_status_callback(
+            [weak = std::weak_ptr<http::Request>(request), seconds = this->listenKeepIdle()](unsigned status_code) {
+                if (status_code == 200) {
+                    // increase TCP_KEEPIDLE to save power
+                    if (auto request = weak.lock())
+                        if (auto connection = request->get_connection())
+                            connection->set_keepalive(seconds);
+                }
+            });
         request->send();
     } catch (const std::exception& e) {
+        opstate->ok = false;
+        opstate->inFlight = false;
+        listener.needsRecovery = true;
+        scheduleListenRetry(key, token, listener);
         if (logger_)
             logger_->error("[proxy:client] [listen] request failed: {}", e.what());
     }
@@ -1212,8 +1477,7 @@ DhtProxyClient::restartListeners(const asio::error_code& ec)
         // Connectivity changed, refresh all subscribe
         for (auto& search : searches_)
             for (auto& listener : search.second.listeners)
-                if (!listener.second.opstate->ok)
-                    resubscribe(search.first, listener.first, listener.second);
+                resubscribe(search.first, listener.first, listener.second);
         return;
     }
     if (logger_)
@@ -1223,7 +1487,8 @@ DhtProxyClient::restartListeners(const asio::error_code& ec)
             auto& listener = l.second;
             if (auto opstate = listener.opstate)
                 opstate->stop = true;
-            listener.request->cancel();
+            if (listener.request)
+                listener.request->cancel();
             listener.request.reset();
         }
     }
@@ -1239,16 +1504,34 @@ DhtProxyClient::restartListeners(const asio::error_code& ec)
             restinio::http_request_header_t header;
             header.method(restinio::http_method_get());
             header.request_target("/key/" + search.first.toString() + "/listen");
-            sendListen(header, cb, opstate, listener, ListenMethod::LISTEN);
+            sendListen(header, cb, opstate, listener, ListenMethod::LISTEN, search.first, l.first);
         }
     }
 }
+
+#ifdef OPENDHT_PUSH_NOTIFICATIONS
+static uint64_t
+parsePushNumber(const std::string& text)
+{
+    uint64_t number = 0;
+    auto result = std::from_chars(text.data(), text.data() + text.size(), number);
+    if (text.empty() || result.ec != std::errc {} || result.ptr != text.data() + text.size())
+        throw std::invalid_argument("Invalid push number");
+    return number;
+}
+#endif
 
 PushNotificationResult
 DhtProxyClient::pushNotificationReceived([[maybe_unused]] const std::map<std::string, std::string>& notification)
 {
     auto ret = PushNotificationResult::IgnoredNoOp;
 #ifdef OPENDHT_PUSH_NOTIFICATIONS
+    auto sessionId = notification.find("s");
+    if (sessionId != notification.end() and sessionId->second != pushSessionId_) {
+        if (logger_)
+            logger_->debug("[proxy:client] [push] ignoring push for other session");
+        return PushNotificationResult::IgnoredWrongSession;
+    }
     {
         // If a push notification is received, the proxy is up and running
         std::lock_guard l(lockCurrentProxyInfos_);
@@ -1260,12 +1543,6 @@ DhtProxyClient::pushNotificationReceived([[maybe_unused]] const std::map<std::st
     }
     auto launchLoop = false;
     try {
-        auto sessionId = notification.find("s");
-        if (sessionId != notification.end() and sessionId->second != pushSessionId_) {
-            if (logger_)
-                logger_->debug("[proxy:client] [push] ignoring push for other session");
-            return PushNotificationResult::IgnoredWrongSession;
-        }
         std::lock_guard lock(searchLock_);
         auto timeout = notification.find("timeout");
         if (timeout != notification.cend()) {
@@ -1292,14 +1569,88 @@ DhtProxyClient::pushNotificationReceived([[maybe_unused]] const std::map<std::st
                                                : PushNotificationResult::ListenRefresh;
             }
         } else {
-            system_clock::time_point sendTime = system_clock::time_point::min();
-            try {
-                sendTime = system_clock::time_point(std::chrono::milliseconds(std::stoull(notification.at("t"))));
-            } catch (...) {
-            }
             auto key = InfoHash(notification.at("key"));
             auto& search = searches_.at(key);
             auto expired = notification.find("exp");
+            auto expirationFlag = notification.find("expired");
+            bool isExpired = expired != notification.end()
+                             || (expirationFlag != notification.end() && expirationFlag->second == "true");
+            auto epoch = notification.find("epoch");
+            auto revision = notification.find("revision");
+            if (epoch == notification.end() && revision == notification.end()) {
+                auto sendTime = system_clock::time_point::min();
+                auto timestamp = notification.find("t");
+                if (timestamp != notification.end()) {
+                    try {
+                        sendTime = system_clock::time_point(
+                            std::chrono::milliseconds(parsePushNumber(timestamp->second)));
+                    } catch (const std::exception&) {
+                    }
+                }
+                for (auto& entry : search.listeners) {
+                    auto& listener = entry.second;
+                    if (listener.opstate->stop)
+                        continue;
+                    if (!isExpired) {
+                        auto oldValues = listener.cache.getValues();
+                        auto receivedIds = std::make_shared<std::set<Value::Id>>();
+                        auto callback = listener.cb;
+                        get(
+                            key,
+                            [callback, sendTime, receivedIds](const std::vector<Sp<Value>>& values) {
+                                for (const auto& value : values)
+                                    receivedIds->insert(value->id);
+                                return callback(values, false, sendTime);
+                            },
+                            [callback, oldValues, sendTime, receivedIds](bool ok) {
+                                if (!ok)
+                                    return;
+                                std::vector<Sp<Value>> absent;
+                                for (const auto& value : oldValues)
+                                    if (!receivedIds->count(value->id))
+                                        absent.emplace_back(value);
+                                if (!absent.empty())
+                                    callback(absent, true, sendTime);
+                            });
+                        ret = PushNotificationResult::Values;
+                    } else {
+                        std::vector<Value::Id> ids;
+                        std::stringstream stream(notification.at("exp"));
+                        for (std::string id; std::getline(stream, id, ',');)
+                            ids.emplace_back(parsePushNumber(id));
+                        std::lock_guard callbackLock(lockCallbacks_);
+                        callbacks_.emplace_back(
+                            [this, key, token = entry.first, opstate = listener.opstate, ids, sendTime] {
+                                std::lock_guard searchLock(searchLock_);
+                                if (opstate->stop)
+                                    return;
+                                auto search = searches_.find(key);
+                                if (search == searches_.end())
+                                    return;
+                                auto found = search->second.listeners.find(token);
+                                if (found != search->second.listeners.end() && found->second.opstate == opstate
+                                    && !found->second.cache.onValuesExpired(ids, sendTime))
+                                    opstate->stop = true;
+                            });
+                        launchLoop = true;
+                        ret = PushNotificationResult::ValuesExpired;
+                    }
+                }
+                if (launchLoop)
+                    loopSignal_();
+                return ret;
+            }
+            if (epoch == notification.end() || revision == notification.end() || epoch->second.empty())
+                throw std::invalid_argument("Incomplete push revision");
+            auto number = parsePushNumber(revision->second);
+            std::vector<Value::Id> ids;
+            if (isExpired) {
+                std::stringstream stream(expired != notification.end() ? expired->second : notification.at("ids"));
+                for (std::string id; std::getline(stream, id, ',');)
+                    ids.emplace_back(parsePushNumber(id));
+                if (ids.empty())
+                    throw std::invalid_argument("Empty expiration list");
+            }
             for (auto& list : search.listeners) {
                 if (list.second.opstate->stop)
                     continue;
@@ -1307,41 +1658,19 @@ DhtProxyClient::pushNotificationReceived([[maybe_unused]] const std::map<std::st
                     logger_->debug("[proxy:client] [push] [search {}] received", key);
                 auto token = list.first;
                 auto opstate = list.second.opstate;
-                if (expired == notification.end()) {
-                    auto cb = list.second.cb;
-                    auto oldValues = list.second.cache.getValues();
-                    auto receivedIds = std::make_shared<std::set<Value::Id>>();
-                    get(
-                        key,
-                        [cb, sendTime, receivedIds](const std::vector<Sp<Value>>& vals) {
-                            for (const auto& v : vals)
-                                receivedIds->insert(v->id);
-                            return cb(vals, false, sendTime);
-                        },
-                        [cb, oldValues, sendTime, receivedIds](bool ok) {
-                            if (!ok)
-                                return;
-                            // Decrement old values refcount to expire values not
-                            // present in the new list
-                            std::vector<Sp<Value>> toExpire;
-                            for (const auto& v : oldValues)
-                                if (receivedIds->find(v->id) == receivedIds->end())
-                                    toExpire.emplace_back(v);
-                            if (!toExpire.empty())
-                                cb(toExpire, true, sendTime);
-                        });
-                    ret = PushNotificationResult::Values;
-                } else {
-                    std::stringstream ss(expired->second);
-                    std::vector<Value::Id> ids;
-                    while (ss.good()) {
-                        std::string substr;
-                        getline(ss, substr, ',');
-                        ids.emplace_back(std::stoull(substr));
-                    }
+                auto& listener = list.second;
+                if (listener.retiredEpochs.count(epoch->second)
+                    || (epoch->second == listener.syncEpoch && number <= listener.syncRevision)
+                    || (epoch->second == listener.observedEpoch && number <= listener.observedRevision))
+                    continue;
+                ++listener.pushGeneration;
+                listener.observedEpoch = epoch->second;
+                listener.observedRevision = number;
+                if (isExpired && !listener.needsRecovery && epoch->second == listener.syncEpoch
+                    && number > listener.syncRevision && number - listener.syncRevision == 1) {
                     {
                         std::lock_guard lockCb(lockCallbacks_);
-                        callbacks_.emplace_back([this, key, token, opstate, ids, sendTime]() {
+                        callbacks_.emplace_back([this, key, token, opstate, ids, epoch = epoch->second, number]() {
                             if (opstate->stop)
                                 return;
                             std::lock_guard lock(searchLock_);
@@ -1349,15 +1678,27 @@ DhtProxyClient::pushNotificationReceived([[maybe_unused]] const std::map<std::st
                             if (s == searches_.end())
                                 return;
                             auto l = s->second.listeners.find(token);
-                            if (l == s->second.listeners.end())
+                            if (l == s->second.listeners.end() || l->second.opstate != opstate)
                                 return;
-                            if (not opstate->stop and not l->second.cache.onValuesExpired(ids, sendTime))
-                                opstate->stop = true;
+                            auto& listener = l->second;
+                            if (!listener.needsRecovery && listener.syncEpoch == epoch && number > listener.syncRevision
+                                && number - listener.syncRevision == 1) {
+                                if (!listener.cache.onValuesExpired(ids, system_clock::time_point::min()))
+                                    opstate->stop = true;
+                                listener.syncRevision = number;
+                            } else if (listener.syncEpoch != epoch || number > listener.syncRevision) {
+                                listener.needsRecovery = true;
+                                resubscribe(key, token, listener);
+                            }
                         });
                     }
                     launchLoop = true;
-                    ret = PushNotificationResult::ValuesExpired;
+                } else {
+                    if (epoch->second == listener.syncEpoch)
+                        listener.needsRecovery = true;
+                    resubscribe(key, token, listener);
                 }
+                ret = isExpired ? PushNotificationResult::ValuesExpired : PushNotificationResult::Values;
             }
         }
     } catch (const std::out_of_range& e) {
@@ -1385,8 +1726,19 @@ DhtProxyClient::resubscribe([[maybe_unused]] const InfoHash& key,
         logger_->debug("[proxy:client] [resubscribe] [search {}]", key);
 
     auto opstate = listener.opstate;
-    listener.request.reset(); // This will update ok to false
-    opstate->ok = true;
+    if (opstate->stop)
+        return;
+    listener.needsRecovery = listener.needsRecovery || (!opstate->ok && !opstate->inFlight);
+    if (opstate->inFlight && listener.request) {
+        if (listener.refreshSubscriberTimer && listener.refreshSubscriberTimer->expiry() <= system_clock::now())
+            scheduleListenRetry(key, token, listener);
+        return;
+    }
+    if (listener.request) {
+        ++opstate->generation;
+        listener.request->cancel();
+        listener.request.reset();
+    }
 
     restinio::http_request_header_t header;
     header.method(restinio::http_method_subscribe());
@@ -1398,7 +1750,7 @@ DhtProxyClient::resubscribe([[maybe_unused]] const InfoHash& key,
     listener.refreshSubscriberTimer->async_wait(
         std::bind(&DhtProxyClient::handleResubscribe, this, std::placeholders::_1, key, token, opstate));
     auto vcb = listener.cb;
-    sendListen(header, vcb, opstate, listener, ListenMethod::RESUBSCRIBE);
+    sendListen(header, vcb, opstate, listener, ListenMethod::SUBSCRIBE, key, token);
 #endif
 }
 
@@ -1406,6 +1758,7 @@ DhtProxyClient::resubscribe([[maybe_unused]] const InfoHash& key,
 void
 DhtProxyClient::getPushRequest(Json::Value& body) const
 {
+    std::lock_guard infoLock(lockCurrentProxyInfos_);
     body["key"] = deviceKey_;
     body["client_id"] = pushClientId_;
     body["session_id"] = pushSessionId_;
@@ -1413,23 +1766,6 @@ DhtProxyClient::getPushRequest(Json::Value& body) const
     body["platform"] = platform_;
 }
 
-std::string
-DhtProxyClient::fillBody(bool resubscribe)
-{
-    // Fill body with
-    // {
-    //   "key":"device_key",
-    // }
-    Json::Value body;
-    getPushRequest(body);
-    if (resubscribe) {
-        // This is the first listen, we want to retrieve previous values.
-        body["refresh"] = true;
-    }
-    auto content = Json::writeString(jsonBuilder_, body) + "\n";
-    std::replace(content.begin(), content.end(), '\n', ' ');
-    return content;
-}
 #endif // OPENDHT_PUSH_NOTIFICATIONS
 
 void
@@ -1446,6 +1782,10 @@ DhtProxyClient::setPushNotificationToken([[maybe_unused]] const std::string& tok
     }
     if (logger_)
         logger_->debug("[proxy:client] [push] token changed, resubscribing");
+    if (token.empty()) {
+        restartListeners({});
+        return;
+    }
     std::lock_guard lock(searchLock_);
     for (auto& search : searches_) {
         for (auto& listener : search.second.listeners) {

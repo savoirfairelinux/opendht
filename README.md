@@ -23,6 +23,8 @@ Values are distributed over the network, with redundancy.
 ## Documentation
 See the wiki: <https://github.com/savoirfairelinux/opendht/wiki>
 
+Push subscription recovery protocol: [doc/proxy-sync.md](doc/proxy-sync.md).
+
 #### How to run a node
 
 You can help contribute to the public network by running a stable node with a public IP address.
