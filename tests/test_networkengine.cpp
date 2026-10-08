@@ -348,7 +348,7 @@ struct ListenSnapshotTransport
             acknowledge();
     }
 
-    void acknowledge(bool legacy = false, bool updatesFirst = false)
+    void acknowledge(bool legacy = false, bool updatesFirst = false, bool includeToken = true)
     {
         auto requests = std::move(clientPackets->sends);
         clientPackets->sends.clear();
@@ -381,7 +381,8 @@ struct ListenSnapshotTransport
         if (legacy) {
             ParsedMessage acknowledgment;
             acknowledgment.type = MessageType::Reply;
-            acknowledgment.token = std::move(legacyToken);
+            if (includeToken)
+                acknowledgment.token = std::move(legacyToken);
             initialRequest()->setDone(std::move(acknowledgment));
         }
         for (const auto& packet : confirmations)
@@ -821,13 +822,18 @@ void
 NetworkEngineTester::testListenReadinessSnapshotLegacy()
 {
     for (size_t count : {size_t(0), size_t(3)})
-        for (bool updatesFirst : {false, true}) {
+        for (bool updatesFirst : {false, true})
+            for (bool includeToken : {false, true}) {
             ListenSnapshotTransport transport;
             transport.store(count, 6000);
             transport.start(false);
-            transport.acknowledge(true, updatesFirst);
+            auto request = transport.initialRequest();
+            auto query = transport.client->searches(AF_INET).at(transport.key)->nodes.front()->listenStatus.begin()->first;
+            auto socketId = transport.client->searches(AF_INET).at(transport.key)->nodes.front()->listenStatus.at(query).socketId;
+            transport.acknowledge(true, updatesFirst, includeToken);
             CPPUNIT_ASSERT(transport.results == std::vector<bool>({true}));
             CPPUNIT_ASSERT(transport.snapshots == std::vector<size_t>({updatesFirst ? count : 0}));
+            CPPUNIT_ASSERT(request->node->getSocket(socketId));
             transport.getRound(true);
             CPPUNIT_ASSERT_EQUAL(count, transport.received.size());
             CPPUNIT_ASSERT_EQUAL(size_t(1), transport.results.size());
@@ -878,7 +884,6 @@ NetworkEngineTester::testListenReadinessMixedPeers()
     legacy.server->storageAddListener(transport.key, peer, status.socketId, std::move(query), 1, {});
     ParsedMessage acknowledgment;
     acknowledgment.type = MessageType::Reply;
-    acknowledgment.token = source->token;
     status.req->setDone(std::move(acknowledgment));
     CPPUNIT_ASSERT(transport.results.empty());
     for (const auto& packet : legacy.serverPackets->sends)
@@ -907,6 +912,11 @@ NetworkEngineTester::testListenReadinessSnapshotFailure()
         } else {
             ParsedMessage answer;
             answer.type = MessageType::Reply;
+            if (failure == 1) {
+                auto search = transport.client->searches(AF_INET).at(transport.key);
+                auto registration = search->nodes.front()->listenStatus.begin()->second.registration;
+                answer.listenSync = net::ListenSync {registration, 1, 0, 0};
+            }
             if (failure == 2) {
                 answer.token = transport.server->makeToken(transport.clientAddr, false);
                 answer.fields.emplace_back(std::make_shared<FieldValueIndex>());
