@@ -69,9 +69,17 @@ struct PermanentPut
 
 struct DhtProxyClient::ProxySearch
 {
+    struct Readiness
+    {
+        std::atomic_bool pending {true};
+        DoneCallbackSimple callback;
+        size_t token {0};
+    };
+
     SearchCache ops {false};
     std::unique_ptr<asio::steady_timer> opExpirationTimer;
     std::map<size_t, Listener> listeners {};
+    std::map<size_t, std::shared_ptr<Readiness>> readiness;
     std::map<Value::Id, PermanentPut> puts {};
     std::set<Sp<Value>> pendingPuts {};
 };
@@ -270,6 +278,9 @@ DhtProxyClient::cancelAllListeners()
         }
         s.second.ops.onReady(false);
         s.second.ops.cancelAll([&](size_t token) { s.second.listeners.erase(token); });
+        for (const auto& readiness : s.second.readiness)
+            if (readiness.second->pending.exchange(false))
+                readiness.second->callback(false);
     }
 }
 
@@ -321,6 +332,12 @@ DhtProxyClient::periodic(const uint8_t*, size_t, SockAddr, const time_point& /*n
     for (auto& callback : callbacks)
         callback();
     callbacks.clear();
+    {
+        std::lock_guard lock(lockCallbacks_);
+        callbacks = std::move(readinessCallbacks_);
+    }
+    for (auto& callback : callbacks)
+        callback();
     return time_point::max();
 }
 
@@ -867,7 +884,30 @@ DhtProxyClient::listen(const InfoHash& key, ValueCallback cb, Value::Filter filt
     std::lock_guard lock(searchLock_);
     auto& search = searches_[key];
     auto query = std::make_shared<Query>(Select {}, std::move(where));
-    return search.ops.listen(
+    std::shared_ptr<ProxySearch::Readiness> readiness;
+    DoneCallbackSimple notify;
+    if (ready) {
+        readiness = std::make_shared<ProxySearch::Readiness>();
+        readiness->callback = std::move(ready);
+        notify = [this, key, readiness](bool ok) {
+            {
+                std::lock_guard callbackLock(lockCallbacks_);
+                readinessCallbacks_.emplace_back([this, key, readiness, ok] {
+                    {
+                        std::lock_guard searchLock(searchLock_);
+                        if (!readiness->pending.exchange(false))
+                            return;
+                        auto search = searches_.find(key);
+                        if (search != searches_.end())
+                            search->second.readiness.erase(readiness->token);
+                    }
+                    readiness->callback(ok);
+                });
+            }
+            loopSignal_();
+        };
+    }
+    auto token = search.ops.listen(
         cb,
         query,
         std::move(filter),
@@ -952,7 +992,14 @@ DhtProxyClient::listen(const InfoHash& key, ValueCallback cb, Value::Filter filt
             sendListen(header, l->second.cb, opstate, l->second, method, key, token);
             return token;
         },
-        std::move(ready));
+        notify);
+    if (readiness) {
+        readiness->token = token;
+        search.readiness.emplace(token, readiness);
+        if (!token)
+            notify(false);
+    }
+    return token;
 }
 
 void
@@ -996,6 +1043,11 @@ DhtProxyClient::cancelListen(const InfoHash& key, size_t gtoken)
         return false;
     auto& ops = it->second.ops;
     bool canceled = ops.cancelListen(gtoken, std::chrono::steady_clock::now());
+    auto readiness = it->second.readiness.find(gtoken);
+    if (readiness != it->second.readiness.end()) {
+        readiness->second->pending = false;
+        it->second.readiness.erase(readiness);
+    }
 
     // define real cancel listen only once
     if (not it->second.opExpirationTimer)
@@ -1594,69 +1646,6 @@ DhtProxyClient::pushNotificationReceived([[maybe_unused]] const std::map<std::st
                              || (expirationFlag != notification.end() && expirationFlag->second == "true");
             auto epoch = notification.find("epoch");
             auto revision = notification.find("revision");
-            if (epoch == notification.end() && revision == notification.end()) {
-                auto sendTime = system_clock::time_point::min();
-                auto timestamp = notification.find("t");
-                if (timestamp != notification.end()) {
-                    try {
-                        sendTime = system_clock::time_point(
-                            std::chrono::milliseconds(parsePushNumber(timestamp->second)));
-                    } catch (const std::exception&) {
-                    }
-                }
-                for (auto& entry : search.listeners) {
-                    auto& listener = entry.second;
-                    if (listener.opstate->stop)
-                        continue;
-                    if (!isExpired) {
-                        auto oldValues = listener.cache.getValues();
-                        auto receivedIds = std::make_shared<std::set<Value::Id>>();
-                        auto callback = listener.cb;
-                        get(
-                            key,
-                            [callback, sendTime, receivedIds](const std::vector<Sp<Value>>& values) {
-                                for (const auto& value : values)
-                                    receivedIds->insert(value->id);
-                                return callback(values, false, sendTime);
-                            },
-                            [callback, oldValues, sendTime, receivedIds](bool ok) {
-                                if (!ok)
-                                    return;
-                                std::vector<Sp<Value>> absent;
-                                for (const auto& value : oldValues)
-                                    if (!receivedIds->count(value->id))
-                                        absent.emplace_back(value);
-                                if (!absent.empty())
-                                    callback(absent, true, sendTime);
-                            });
-                        ret = PushNotificationResult::Values;
-                    } else {
-                        std::vector<Value::Id> ids;
-                        std::stringstream stream(notification.at("exp"));
-                        for (std::string id; std::getline(stream, id, ',');)
-                            ids.emplace_back(parsePushNumber(id));
-                        std::lock_guard callbackLock(lockCallbacks_);
-                        callbacks_.emplace_back(
-                            [this, key, token = entry.first, opstate = listener.opstate, ids, sendTime] {
-                                std::lock_guard searchLock(searchLock_);
-                                if (opstate->stop)
-                                    return;
-                                auto search = searches_.find(key);
-                                if (search == searches_.end())
-                                    return;
-                                auto found = search->second.listeners.find(token);
-                                if (found != search->second.listeners.end() && found->second.opstate == opstate
-                                    && !found->second.cache.onValuesExpired(ids, sendTime))
-                                    opstate->stop = true;
-                            });
-                        launchLoop = true;
-                        ret = PushNotificationResult::ValuesExpired;
-                    }
-                }
-                if (launchLoop)
-                    loopSignal_();
-                return ret;
-            }
             if (epoch == notification.end() || revision == notification.end() || epoch->second.empty())
                 throw std::invalid_argument("Incomplete push revision");
             auto number = parsePushNumber(revision->second);

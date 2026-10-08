@@ -425,6 +425,7 @@ private:
      */
     std::mutex lockCallbacks_;
     std::vector<std::function<void()>> callbacks_;
+    std::vector<std::function<void()>> readinessCallbacks_;
 
     Sp<InfoState> infoState_;
 
