@@ -31,6 +31,49 @@ sendPush(dht::DhtRunner& node, const std::map<std::string, std::string>& data, s
 }
 
 void
+setValueRevision(dht::DhtProxyServer& server,
+                 const dht::InfoHash& key,
+                 const std::string& pushToken,
+                 const std::vector<std::pair<dht::Value::Id, uint16_t>>& expected,
+                 std::map<std::string, std::string>& data)
+{
+    std::shared_ptr<dht::DhtProxyServer::PushSessionContext> context;
+    {
+        std::lock_guard lock(server.lockListener_);
+        context = server.pushListeners_.at(pushToken).listeners.at(key).front().sessionCtx;
+    }
+    auto observed = std::make_shared<std::promise<void>>();
+    auto completed = std::make_shared<std::atomic_bool>(false);
+    auto future = observed->get_future();
+    auto token = server.dht_
+                     ->listen(key,
+                              [context, expected, observed, completed](const std::vector<std::shared_ptr<dht::Value>>&,
+                                                                       bool expired) {
+                                  if (expired)
+                                      return true;
+                                  std::lock_guard lock(context->lock);
+                                  for (const auto& version : expected) {
+                                      auto value = context->values.find(version.first);
+                                      if (value == context->values.end()
+                                          || dht::Value(value->second).seq != version.second)
+                                          return true;
+                                  }
+                                  if (!completed->exchange(true))
+                                      observed->set_value();
+                                  return true;
+                              })
+                     .get();
+    auto received = future.wait_for(10s) == std::future_status::ready;
+    server.dht_->cancelListen(key, token);
+    CPPUNIT_ASSERT(received);
+    {
+        std::lock_guard lock(context->lock);
+        data["epoch"] = context->epoch;
+        data["revision"] = std::to_string(context->revision);
+    }
+}
+
+void
 setExpirationRevision(dht::DhtProxyServer& server,
                       const dht::InfoHash& key,
                       const std::string& pushToken,
@@ -380,6 +423,13 @@ DhtProxyTester::testPushListenValueEdit()
     push_data["t"] = std::to_string(
         std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch())
             .count());
+    setValueRevision(*serverProxy,
+                     key,
+                     clientConfig.push_token,
+                     {
+                         {77, 1}
+    },
+                     push_data);
     sendPush(nodeClient, push_data, lk);
 
     // Wait for first add callback
@@ -405,6 +455,13 @@ DhtProxyTester::testPushListenValueEdit()
     push_data["t"] = std::to_string(
         std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch())
             .count());
+    setValueRevision(*serverProxy,
+                     key,
+                     clientConfig.push_token,
+                     {
+                         {77, 2}
+    },
+                     push_data);
     sendPush(nodeClient, push_data, lk);
 
     // Wait for the second add
@@ -737,6 +794,13 @@ DhtProxyTester::testPushNotification()
     push_data["t"] = std::to_string(
         std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch())
             .count());
+    setValueRevision(*serverProxy,
+                     key,
+                     clientConfig.push_token,
+                     {
+                         {1337, 1}
+    },
+                     push_data);
     CPPUNIT_ASSERT(sendPush(nodeClient, push_data, lk) == dht::PushNotificationResult::Values);
 
     // Wait for client to receive the value
@@ -766,6 +830,13 @@ DhtProxyTester::testPushNotification()
     push_data["t"] = std::to_string(
         std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch())
             .count());
+    setValueRevision(*serverProxy,
+                     key,
+                     clientConfig.push_token,
+                     {
+                         {1337, 2}
+    },
+                     push_data);
     CPPUNIT_ASSERT(sendPush(nodeClient, push_data, lk) == dht::PushNotificationResult::Values);
 
     // Wait for client to receive the edited value
@@ -780,6 +851,7 @@ DhtProxyTester::testPushNotification()
 
     // Simulate expiration push notification for the edited value
     push_data["exp"] = std::to_string((dht::Value::Id) 1337);
+    setExpirationRevision(*serverProxy, key, clientConfig.push_token, 1337, push_data);
     push_data["t"] = std::to_string(
         std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch())
             .count());
@@ -1373,6 +1445,14 @@ DhtProxyTester::testPushMultiValueEditExpire()
     push_data["t"] = std::to_string(
         std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch())
             .count());
+    setValueRevision(*serverProxy,
+                     key,
+                     clientConfig.push_token,
+                     {
+                         {100, 1},
+                         {200, 1}
+    },
+                     push_data);
     sendPush(nodeClient, push_data, lk);
 
     // Wait for both values to arrive
@@ -1406,6 +1486,14 @@ DhtProxyTester::testPushMultiValueEditExpire()
         std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch())
             .count());
     push_data.erase("exp");
+    setValueRevision(*serverProxy,
+                     key,
+                     clientConfig.push_token,
+                     {
+                         {100, 2},
+                         {200, 1}
+    },
+                     push_data);
     sendPush(nodeClient, push_data, lk);
 
     // Wait for the edited value (id=100, seq=2) to arrive
@@ -1525,6 +1613,15 @@ DhtProxyTester::testPushRefreshNoSpuriousExpire()
     push_data["t"] = std::to_string(
         std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch())
             .count());
+    setValueRevision(*serverProxy,
+                     key,
+                     clientConfig.push_token,
+                     {
+                         {10, 1},
+                         {20, 1},
+                         {30, 1}
+    },
+                     push_data);
     sendPush(nodeClient, push_data, lk);
 
     // Wait for all 3 values to arrive
@@ -1551,6 +1648,15 @@ DhtProxyTester::testPushRefreshNoSpuriousExpire()
         std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch())
             .count());
     push_data.erase("exp");
+    setValueRevision(*serverProxy,
+                     key,
+                     clientConfig.push_token,
+                     {
+                         {10, 1},
+                         {20, 1},
+                         {30, 1}
+    },
+                     push_data);
     sendPush(nodeClient, push_data, lk);
 
     // Wait a bit for any callbacks
@@ -1799,6 +1905,13 @@ DhtProxyTester::testPushRapidEditsNoPhantom()
         push_data["t"] = std::to_string(
             std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch())
                 .count());
+        setValueRevision(*serverProxy,
+                         key,
+                         clientConfig.push_token,
+                         {
+                             {500, uint16_t(seq)}
+        },
+                         push_data);
         sendPush(nodeClient, push_data, lk);
     }
 
@@ -1913,6 +2026,13 @@ DhtProxyTester::testPushRefreshAfterEditKeepsLatest()
         push_data["t"] = std::to_string(
             std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch())
                 .count());
+        setValueRevision(*serverProxy,
+                         key,
+                         clientConfig.push_token,
+                         {
+                             {600, 1}
+        },
+                         push_data);
         sendPush(nodeClient, push_data, lk);
     }
 
@@ -1947,6 +2067,13 @@ DhtProxyTester::testPushRefreshAfterEditKeepsLatest()
         push_data["t"] = std::to_string(
             std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch())
                 .count());
+        setValueRevision(*serverProxy,
+                         key,
+                         clientConfig.push_token,
+                         {
+                             {600, 3}
+        },
+                         push_data);
         sendPush(nodeClient, push_data, lk);
     }
 
@@ -1967,6 +2094,13 @@ DhtProxyTester::testPushRefreshAfterEditKeepsLatest()
         push_data["t"] = std::to_string(
             std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch())
                 .count());
+        setValueRevision(*serverProxy,
+                         key,
+                         clientConfig.push_token,
+                         {
+                             {600, 3}
+        },
+                         push_data);
         sendPush(nodeClient, push_data, lk);
     }
 

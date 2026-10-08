@@ -168,7 +168,8 @@ DhtProxyClientTester::testRejectsUnrevisionedPushes()
              {{"key", key.toString()}, {"t", "10000"}},
              {{"key", key.toString()}, {"expired", "true"}, {"ids", "42"}},
              {{"key", key.toString()}, {"epoch", "test-epoch"}},
-             {{"key", key.toString()}, {"revision", "6"}}}) {
+             {{"key", key.toString()}, {"revision", "6"}}
+    }) {
         CPPUNIT_ASSERT(client.pushNotificationReceived(notification) == PushNotificationResult::Error);
         CPPUNIT_ASSERT(listener.request == synchronized);
         CPPUNIT_ASSERT_EQUAL(requestCount, client.requests_.size());
@@ -176,20 +177,23 @@ DhtProxyClientTester::testRejectsUnrevisionedPushes()
         CPPUNIT_ASSERT(listener.opstate->ok.load());
         CPPUNIT_ASSERT(client.getLocalById(key, 42));
     }
-    CPPUNIT_ASSERT(client.pushNotificationReceived({
-        {"key",      key.toString()},
-        {"epoch",    "test-epoch"  },
-        {"revision", "6"           },
-        {"expired",  "true"        },
-        {"ids",      "42"          }
-    }) == PushNotificationResult::ValuesExpired);
+    CPPUNIT_ASSERT(
+        client.pushNotificationReceived({
+            {"key",      key.toString()},
+            {"epoch",    "test-epoch"  },
+            {"revision", "6"           },
+            {"expired",  "true"        },
+            {"ids",      "42"          }
+    })
+        == PushNotificationResult::ValuesExpired);
     client.periodic(nullptr, 0, {}, clock::now());
     CPPUNIT_ASSERT(!client.getLocalById(key, 42));
     client.restartListeners({});
     auto validation = listener.request;
     CPPUNIT_ASSERT(client.pushNotificationReceived({
-        {"key", key.toString()}
-    }) == PushNotificationResult::Error);
+                       {"key", key.toString()}
+    })
+                   == PushNotificationResult::Error);
     finishSync(client, validation, {}, 6, true, false);
     CPPUNIT_ASSERT(listener.request == validation);
     CPPUNIT_ASSERT(listener.opstate->ok.load());

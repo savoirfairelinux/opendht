@@ -360,13 +360,7 @@ struct ListenSnapshotTransport
                 if (legacy) {
                     auto message = parse(packet);
                     auto node = server->network_engine.insertNode(client->getNodeId(), clientAddr);
-                    auto answer = server->onListen(node,
-                                                   key,
-                                                   message.token,
-                                                   message.socket_id,
-                                                   message.query,
-                                                   1,
-                                                   {});
+                    auto answer = server->onListen(node, key, message.token, message.socket_id, message.query, 1, {});
                     legacyToken = std::move(answer.ntoken);
                 } else
                     server->network_engine.processMessage(packet.data.data(), packet.data.size(), clientAddr);
