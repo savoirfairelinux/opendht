@@ -824,37 +824,89 @@ NetworkEngineTester::testListenReadinessSnapshotLegacy()
     for (size_t count : {size_t(0), size_t(3)})
         for (bool updatesFirst : {false, true})
             for (bool includeToken : {false, true}) {
-            ListenSnapshotTransport transport;
-            transport.store(count, 6000);
-            transport.start(false);
-            auto request = transport.initialRequest();
-            auto query = transport.client->searches(AF_INET).at(transport.key)->nodes.front()->listenStatus.begin()->first;
-            auto socketId = transport.client->searches(AF_INET).at(transport.key)->nodes.front()->listenStatus.at(query).socketId;
-            transport.acknowledge(true, updatesFirst, includeToken);
-            CPPUNIT_ASSERT(transport.results == std::vector<bool>({true}));
-            CPPUNIT_ASSERT(transport.snapshots == std::vector<size_t>({updatesFirst ? count : 0}));
-            CPPUNIT_ASSERT(request->node->getSocket(socketId));
-            transport.getRound(true);
-            CPPUNIT_ASSERT_EQUAL(count, transport.received.size());
-            CPPUNIT_ASSERT_EQUAL(size_t(1), transport.results.size());
+                ListenSnapshotTransport transport;
+                transport.store(count, 6000);
+                transport.start(false);
+                auto request = transport.initialRequest();
+                auto search = transport.client->searches(AF_INET).at(transport.key);
+                auto query = search->nodes.front()->listenStatus.begin()->first;
+                auto socketId = search->nodes.front()->listenStatus.at(query).socketId;
+                transport.acknowledge(true, updatesFirst, includeToken);
+                CPPUNIT_ASSERT(transport.results == std::vector<bool>({true}));
+                CPPUNIT_ASSERT(transport.snapshots == std::vector<size_t>({updatesFirst ? count : 0}));
+                CPPUNIT_ASSERT(request->node->getSocket(socketId));
+                transport.getRound(true);
+                CPPUNIT_ASSERT_EQUAL(count, transport.received.size());
+                CPPUNIT_ASSERT_EQUAL(size_t(1), transport.results.size());
 
-            std::vector<bool> reusedResults;
-            size_t reusedValues = 0;
-            auto reused = transport.client->listen(
-                transport.key,
-                [&](const std::vector<Sp<Value>>& values, bool expired) {
-                    if (!expired)
-                        reusedValues += values.size();
-                    return true;
-                },
-                {},
-                {},
-                [&](bool ok) { reusedResults.emplace_back(ok); });
-            CPPUNIT_ASSERT(reused != 0);
-            CPPUNIT_ASSERT_EQUAL(count, reusedValues);
-            CPPUNIT_ASSERT(reusedResults == std::vector<bool>({true}));
-            CPPUNIT_ASSERT(transport.client->cancelListen(transport.key, reused));
-        }
+                std::vector<bool> reusedResults;
+                size_t reusedValues = 0;
+                auto reused = transport.client->listen(
+                    transport.key,
+                    [&](const std::vector<Sp<Value>>& values, bool expired) {
+                        if (!expired)
+                            reusedValues += values.size();
+                        return true;
+                    },
+                    {},
+                    {},
+                    [&](bool ok) { reusedResults.emplace_back(ok); });
+                CPPUNIT_ASSERT(reused != 0);
+                CPPUNIT_ASSERT_EQUAL(count, reusedValues);
+                CPPUNIT_ASSERT(reusedResults == std::vector<bool>({true}));
+                CPPUNIT_ASSERT(transport.client->cancelListen(transport.key, reused));
+            }
+}
+
+void
+NetworkEngineTester::testListenLegacyLateValuesAndRenewal()
+{
+    ListenSnapshotTransport transport;
+    transport.start(false);
+    transport.acknowledge(true, false, false);
+    CPPUNIT_ASSERT(transport.results == std::vector<bool>({true}));
+    auto search = transport.client->searches(AF_INET).at(transport.key);
+    auto node = transport.initialRequest()->node;
+    auto* source = search->getNode(node);
+    auto query = source->listenStatus.begin()->first;
+    auto socketId = source->listenStatus.at(query).socketId;
+    auto token = source->token;
+    CPPUNIT_ASSERT(!token.empty());
+
+    transport.client->scheduler.syncTime(transport.client->scheduler.time() + std::chrono::seconds(35));
+    transport.client->scheduler.run();
+    CPPUNIT_ASSERT(node->getSocket(socketId));
+    source = search->getNode(node);
+    CPPUNIT_ASSERT(source);
+    CPPUNIT_ASSERT(source->token == token);
+    auto first = std::make_shared<Value>("late-legacy-value");
+    first->id = 42;
+    CPPUNIT_ASSERT(transport.server->storageStore(transport.key, first, transport.server->scheduler.time()));
+    transport.delayedUpdates = std::move(transport.serverPackets->sends);
+    transport.serverPackets->sends.clear();
+    transport.deliverUpdates();
+    CPPUNIT_ASSERT(transport.received == std::vector<Value::Id>({42}));
+
+    if (!source->listenStatus.at(query).req->pending()) {
+        transport.clientPackets->sends.clear();
+        source->listenStatus.at(query).req->reply_time = transport.client->scheduler.time()
+                                                         - transport.client->getListenExpiration();
+        transport.client->searchSynchedNodeListen(search, *source);
+    }
+    transport.acknowledge(true, false, false);
+    CPPUNIT_ASSERT(transport.delayedUpdates.empty());
+    CPPUNIT_ASSERT(node->getSocket(socketId));
+    CPPUNIT_ASSERT_EQUAL(socketId, source->listenStatus.at(query).socketId);
+    CPPUNIT_ASSERT(source->token == token);
+
+    auto second = std::make_shared<Value>("after-legacy-renewal");
+    second->id = 43;
+    CPPUNIT_ASSERT(transport.server->storageStore(transport.key, second, transport.server->scheduler.time()));
+    transport.delayedUpdates = std::move(transport.serverPackets->sends);
+    transport.serverPackets->sends.clear();
+    transport.getRound();
+    CPPUNIT_ASSERT(transport.received == std::vector<Value::Id>({42, 43}));
+    CPPUNIT_ASSERT(transport.results == std::vector<bool>({true}));
 }
 
 void
