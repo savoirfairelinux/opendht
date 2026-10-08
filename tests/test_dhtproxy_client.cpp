@@ -61,6 +61,104 @@ finishSync(DhtProxyClient& client,
 #endif
 
 void
+DhtProxyClientTester::testReadinessShutdown()
+{
+    for (bool push : {false, true}) {
+        DhtProxyClient client({}, {}, [] {}, "", "OpenDHT-Test", "client-id", push ? "push-token" : "");
+        client.httpContext_.stop();
+        client.httpClientThread_.join();
+        client.proxyUrl_ = "http://127.0.0.1:1";
+        auto key = InfoHash::get("readiness-shutdown");
+        std::vector<bool> results;
+        auto values = [](const std::vector<Sp<Value>>&, bool) {
+            return true;
+        };
+        CPPUNIT_ASSERT(client.listen(key, values, {}, {}, [&](bool ok) {
+            results.push_back(ok);
+            CPPUNIT_ASSERT(client.getLocal(key, {}).empty());
+        }) != 0);
+        CPPUNIT_ASSERT(results.empty());
+        client.shutdown({}, true);
+        CPPUNIT_ASSERT(results == std::vector<bool>({false}));
+        client.shutdown({}, true);
+        CPPUNIT_ASSERT_EQUAL(size_t(1), results.size());
+        CPPUNIT_ASSERT_EQUAL(size_t(0), client.listen(key, values, {}, {}, [&](bool ok) { results.push_back(ok); }));
+        CPPUNIT_ASSERT(results == std::vector<bool>({false, false}));
+    }
+}
+
+#ifdef OPENDHT_PUSH_NOTIFICATIONS
+void
+DhtProxyClientTester::testInitialReadinessFailures()
+{
+    for (unsigned failure = 0; failure < 4; ++failure) {
+        bool push = failure == 1 || failure == 3;
+        DhtProxyClient client({}, {}, [] {}, "", "OpenDHT-Test", "client-id", push ? "push-token" : "");
+        client.httpContext_.stop();
+        client.httpClientThread_.join();
+        client.proxyUrl_ = "http://127.0.0.1:1";
+        auto key = InfoHash::get("initial-readiness-failure");
+        std::vector<bool> results;
+        CPPUNIT_ASSERT(client.listen(
+                           key,
+                           [](const std::vector<Sp<Value>>&, bool) { return true; },
+                           {},
+                           {},
+                           [&](bool ok) { results.push_back(ok); })
+                       != 0);
+        auto& listener = client.searches_.at(key).listeners.begin()->second;
+        auto request = listener.request;
+        if (failure == 0) {
+            std::string marker = "{\"sync\":{\"complete\":false}}\n";
+            request->cbs_.on_body(marker.data(), marker.size());
+        } else if (failure == 3) {
+            finishSync(client, request, {}, 1, false);
+        } else {
+            dht::http::Response response;
+            response.status_code = 503;
+            request->cbs_.on_state_change(dht::http::Request::State::DONE, response);
+        }
+        client.periodic(nullptr, 0, {}, clock::now());
+        CPPUNIT_ASSERT(results == std::vector<bool>({false}));
+        client.shutdown({}, true);
+        CPPUNIT_ASSERT_EQUAL(size_t(1), results.size());
+    }
+}
+
+void
+DhtProxyClientTester::testReadinessRecoveryIsOneShot()
+{
+    DhtProxyClient client({}, {}, [] {}, "", "OpenDHT-Test", "client-id", "push-token");
+    client.httpContext_.stop();
+    client.httpClientThread_.join();
+    client.proxyUrl_ = "http://127.0.0.1:1";
+    auto key = InfoHash::get("readiness-recovery");
+    auto values = [](const std::vector<Sp<Value>>&, bool) {
+        return true;
+    };
+    std::vector<bool> first;
+    CPPUNIT_ASSERT(client.listen(key, values, {}, {}, [&](bool ok) { first.push_back(ok); }) != 0);
+    auto& listener = client.searches_.at(key).listeners.begin()->second;
+    auto request = listener.request;
+    dht::http::Response response;
+    response.status_code = 503;
+    request->cbs_.on_state_change(dht::http::Request::State::DONE, response);
+    client.periodic(nullptr, 0, {}, clock::now());
+    CPPUNIT_ASSERT(first == std::vector<bool>({false}));
+    std::vector<bool> second;
+    CPPUNIT_ASSERT(client.listen(key, values, {}, {}, [&](bool ok) { second.push_back(ok); }) != 0);
+    CPPUNIT_ASSERT(second.empty());
+    client.handleResubscribe({}, key, 1, listener.opstate);
+    finishSync(client, listener.request, {}, 1);
+    CPPUNIT_ASSERT(first == std::vector<bool>({false}));
+    CPPUNIT_ASSERT(second == std::vector<bool>({true}));
+    client.shutdown({}, true);
+    CPPUNIT_ASSERT_EQUAL(size_t(1), first.size());
+    CPPUNIT_ASSERT_EQUAL(size_t(1), second.size());
+}
+#endif
+
+void
 DhtProxyClientTester::testResubscribeUsesKeyRoute()
 {
 #ifdef OPENDHT_PUSH_NOTIFICATIONS
@@ -725,6 +823,7 @@ DhtProxyClientTester::testContiguousExpiration()
     auto second = std::make_shared<Value>("second");
     second->id = 43;
     finishSync(client, listener.request, {first, second}, 5);
+    CPPUNIT_ASSERT(listener.cache.onValuesAdded({first, second}, system_clock::now()));
     auto request = listener.request;
     client.pushNotificationReceived({
         {"key",      key.toString()},
@@ -738,6 +837,12 @@ DhtProxyClientTester::testContiguousExpiration()
     CPPUNIT_ASSERT(!client.getLocalById(key, 42));
     CPPUNIT_ASSERT(!client.getLocalById(key, 43));
     CPPUNIT_ASSERT_EQUAL(uint64_t(6), listener.syncRevision);
+    client.resubscribe(key, 1, listener);
+    finishSync(client, listener.request, {}, 6, true, false);
+    CPPUNIT_ASSERT(!client.getLocalById(key, 42));
+    CPPUNIT_ASSERT(!client.getLocalById(key, 43));
+    CPPUNIT_ASSERT(listener.opstate->ok.load());
+    request = listener.request;
     client.pushNotificationReceived({
         {"key",      key.toString()},
         {"epoch",    "test-epoch"  },

@@ -13,7 +13,10 @@ class DhtProxyClientTester : public CppUnit::TestFixture
     CPPUNIT_TEST(testResubscribeUsesKeyRoute);
     CPPUNIT_TEST(testSetPushNotificationTokenResubscribesWithNewToken);
     CPPUNIT_TEST(testRestartListenersFetchesValuesAfterFailedSubscribe);
+    CPPUNIT_TEST(testReadinessShutdown);
 #ifdef OPENDHT_PUSH_NOTIFICATIONS
+    CPPUNIT_TEST(testInitialReadinessFailures);
+    CPPUNIT_TEST(testReadinessRecoveryIsOneShot);
     CPPUNIT_TEST(testWrongSessionPushDoesNotTouchSubscriptions);
     CPPUNIT_TEST(testNewSessionSynchronizesIndependently);
     CPPUNIT_TEST(testFailedTimerRetryFetchesValues);
@@ -42,7 +45,10 @@ public:
     void testResubscribeUsesKeyRoute();
     void testSetPushNotificationTokenResubscribesWithNewToken();
     void testRestartListenersFetchesValuesAfterFailedSubscribe();
+    void testReadinessShutdown();
 #ifdef OPENDHT_PUSH_NOTIFICATIONS
+    void testInitialReadinessFailures();
+    void testReadinessRecoveryIsOneShot();
     void testWrongSessionPushDoesNotTouchSubscriptions();
     void testNewSessionSynchronizesIndependently();
     void testFailedTimerRetryFetchesValues();

@@ -7,7 +7,26 @@
 #include <cppunit/extensions/HelperMacros.h>
 
 #include <opendht/dhtrunner.h>
+#include <opendht/http.h>
+#include <restinio/all.hpp>
+#include <restinio/tls.hpp>
+#include <json/json.h>
+
+#if defined(__clang__)
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wkeyword-macro"
+#elif defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wpedantic"
+#endif
+#define private public
 #include <opendht/dht_proxy_server.h>
+#undef private
+#if defined(__clang__)
+#pragma clang diagnostic pop
+#elif defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
 
 namespace test {
 
@@ -17,6 +36,9 @@ class DhtProxyTester : public CppUnit::TestFixture
     CPPUNIT_TEST(testGetPut);
     CPPUNIT_TEST(testListen);
     CPPUNIT_TEST(testListenReadiness);
+#ifdef OPENDHT_PUSH_NOTIFICATIONS
+    CPPUNIT_TEST(testInitializingSubscriptionCancellation);
+#endif
     CPPUNIT_TEST(testListenValueEdit);
     CPPUNIT_TEST(testPushListenValueEdit);
     CPPUNIT_TEST(testResubscribeGetValues);
@@ -54,6 +76,9 @@ public:
      */
     void testListen();
     void testListenReadiness();
+#ifdef OPENDHT_PUSH_NOTIFICATIONS
+    void testInitializingSubscriptionCancellation();
+#endif
     /**
      * Test that editing a value only triggers an add callback via proxy, no expire
      */

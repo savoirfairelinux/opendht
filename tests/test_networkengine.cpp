@@ -332,7 +332,7 @@ struct ListenSnapshotTransport
         CPPUNIT_ASSERT(token != 0);
     }
 
-    void start()
+    void start(bool confirm = true)
     {
         listen();
         auto search = client->searches(AF_INET).at(key);
@@ -342,7 +342,8 @@ struct ListenSnapshotTransport
         searchNode->token = server->makeToken(clientAddr, false);
         searchNode->last_get_reply = client->scheduler.time();
         client->searchStep(search);
-        acknowledge();
+        if (confirm)
+            acknowledge();
     }
 
     void acknowledge()
@@ -933,6 +934,60 @@ NetworkEngineTester::testListenReadinessSnapshotRenewal()
     for (const auto& packet : transport.clientPackets->sends)
         CPPUNIT_ASSERT(ListenSnapshotTransport::parse(packet).type != MessageType::GetValues);
     CPPUNIT_ASSERT_EQUAL(size_t(1), transport.results.size());
+}
+
+void
+NetworkEngineTester::testListenRegistrationFailure()
+{
+    ListenSnapshotTransport transport;
+    transport.store(1);
+    transport.start(false);
+    auto search = transport.client->searches(AF_INET).at(transport.key);
+    auto* node = search->nodes.front().get();
+    auto request = node->listenStatus.begin()->second.req;
+    CPPUNIT_ASSERT(request->pending());
+    CPPUNIT_ASSERT(!node->node->isExpired());
+    request->setExpired();
+    CPPUNIT_ASSERT(transport.results == std::vector<bool>({false}));
+    CPPUNIT_ASSERT(!node->node->isExpired());
+    transport.clientPackets->sends.clear();
+    transport.client->searchStep(search);
+    transport.acknowledge();
+    transport.getRound();
+    transport.getRound();
+    CPPUNIT_ASSERT(transport.results == std::vector<bool>({false}));
+}
+
+void
+NetworkEngineTester::testListenRegistrationCapacity()
+{
+    for (bool dualStack : {false, true}) {
+        auto socket = std::make_unique<TestDatagramSocket>();
+        socket->ipv6 = dualStack;
+        Config config;
+        config.max_searches = 1;
+        Dht localDht(std::move(socket), config, {}, std::make_unique<std::mt19937_64>(40));
+        auto occupiedKey = InfoHash::get("occupied-search");
+        auto rejectedKey = InfoHash::get("rejected-search");
+        auto values = [](const std::vector<Sp<Value>>&, bool) {
+            return true;
+        };
+        if (dualStack)
+            CPPUNIT_ASSERT(localDht.search(occupiedKey, AF_INET6));
+        else
+            CPPUNIT_ASSERT(localDht.listen(occupiedKey, values) != 0);
+        std::vector<bool> results;
+        CPPUNIT_ASSERT_EQUAL(size_t(0),
+                             localDht.listen(rejectedKey, values, {}, {}, [&](bool ok) { results.push_back(ok); }));
+        CPPUNIT_ASSERT(results == std::vector<bool>({false}));
+        CPPUNIT_ASSERT(localDht.store.at(rejectedKey).local_listeners.empty());
+        if (dualStack) {
+            auto partial = localDht.searches(AF_INET).at(rejectedKey);
+            CPPUNIT_ASSERT(!partial->cache.cancelListen(1, localDht.scheduler.time()));
+            partial->cache.onReady();
+            CPPUNIT_ASSERT_EQUAL(size_t(1), results.size());
+        }
+    }
 }
 
 void

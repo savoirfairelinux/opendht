@@ -486,6 +486,53 @@ DhtProxyTester::testResubscribeGetValues()
 }
 
 void
+DhtProxyTester::testInitializingSubscriptionCancellation()
+{
+#ifdef OPENDHT_PUSH_NOTIFICATIONS
+    for (unsigned removal = 0; removal < 3; ++removal) {
+        auto key = dht::InfoHash::get("pending-snapshot-cancellation");
+        auto context = std::make_shared<dht::DhtProxyServer::PushSessionContext>("session");
+        std::weak_ptr<dht::DhtProxyServer::PushSessionContext> weakContext = context;
+        auto retained = std::make_shared<unsigned>(42);
+        std::weak_ptr<unsigned> weakRetained = retained;
+        auto completed = std::make_shared<std::promise<bool>>();
+        auto future = completed->get_future();
+        context->pendingSnapshots.emplace_back([context, retained, completed] {
+            std::lock_guard lock(context->lock);
+            completed->set_value(context->initialOk);
+        });
+        {
+            std::lock_guard lock(serverProxy->lockListener_);
+            auto& listeners = serverProxy->pushListeners_["push-token"].listeners[key];
+            listeners.emplace_back();
+            auto& listener = listeners.back();
+            listener.clientId = "client-id";
+            listener.sessionCtx = context;
+            std::promise<size_t> token;
+            token.set_value(0);
+            listener.internalToken = token.get_future();
+        }
+        context.reset();
+        retained.reset();
+        if (removal == 2) {
+            serverProxy.reset();
+        } else {
+            if (removal == 1) {
+                serverProxy->handleCancelPushListen(asio::error::operation_aborted, "push-token", key, "client-id");
+                CPPUNIT_ASSERT(future.wait_for(0s) == std::future_status::timeout);
+                CPPUNIT_ASSERT(!weakContext.expired());
+            }
+            serverProxy->handleCancelPushListen({}, "push-token", key, "client-id");
+        }
+        CPPUNIT_ASSERT(future.wait_for(5s) == std::future_status::ready);
+        CPPUNIT_ASSERT(!future.get());
+        CPPUNIT_ASSERT(weakContext.expired());
+        CPPUNIT_ASSERT(weakRetained.expired());
+    }
+#endif
+}
+
+void
 DhtProxyTester::testListenReadiness()
 {
     auto key = dht::InfoHash::get("proxy-listen-readiness");
