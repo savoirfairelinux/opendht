@@ -255,20 +255,21 @@ DhtProxyClient::getLocalById(const InfoHash& k, Value::Id id) const
 void
 DhtProxyClient::cancelAllListeners()
 {
-    std::lock_guard lock(searchLock_);
+    std::map<InfoHash, ProxySearch> canceled;
+    {
+        std::lock_guard lock(searchLock_);
+        canceled.swap(searches_);
+    }
     if (logger_)
-        logger_->debug("[proxy:client] [listeners] [{} searches] cancel all", searches_.size());
-    for (auto& s : searches_) {
-        s.second.ops.cancelAll([&](size_t token) {
-            auto l = s.second.listeners.find(token);
-            if (l == s.second.listeners.end())
-                return;
-            l->second.opstate->stop.store(true);
-            if (l->second.request)
-                l->second.request->cancel();
-            // implicit request.reset()
-            s.second.listeners.erase(token);
-        });
+        logger_->debug("[proxy:client] [listeners] [{} searches] cancel all", canceled.size());
+    for (auto& s : canceled) {
+        for (auto& listener : s.second.listeners) {
+            listener.second.opstate->stop.store(true);
+            if (listener.second.request)
+                listener.second.request->cancel();
+        }
+        s.second.ops.onReady(false);
+        s.second.ops.cancelAll([&](size_t token) { s.second.listeners.erase(token); });
     }
 }
 
@@ -857,8 +858,11 @@ DhtProxyClient::listen(const InfoHash& key, ValueCallback cb, Value::Filter filt
 {
     if (logger_)
         logger_->debug("[proxy:client] [listen] [search {}]", key.to_view());
-    if (isDestroying_)
+    if (isDestroying_) {
+        if (ready)
+            ready(false);
         return 0;
+    }
 
     std::lock_guard lock(searchLock_);
     auto& search = searches_[key];
@@ -867,7 +871,7 @@ DhtProxyClient::listen(const InfoHash& key, ValueCallback cb, Value::Filter filt
         cb,
         query,
         std::move(filter),
-        [this, key](Sp<Query>, ValueCallback cb, SyncCallback synced) -> size_t {
+        [this, key](Sp<Query> query, ValueCallback cb, SyncCallback synced) -> size_t {
             // Find search
             auto search = searches_.find(key);
             if (search == searches_.end()) {
@@ -895,11 +899,15 @@ DhtProxyClient::listen(const InfoHash& key, ValueCallback cb, Value::Filter filt
             // Add cache callback
             auto opstate = std::make_shared<OperationState>();
             l->second.opstate = opstate;
-            l->second.ready = [synced](bool ok) {
-                if (ok) {
-                    synced(ListenSyncStatus::ADDED);
-                    synced(ListenSyncStatus::SYNCED);
+            synced(ListenSyncStatus::ADDED);
+            l->second.ready = [this, key, query, synced, synchronized = std::make_shared<bool>(false)](bool ok) {
+                if (*synchronized != ok) {
+                    *synchronized = ok;
+                    synced(ok ? ListenSyncStatus::SYNCED : ListenSyncStatus::UNSYNCED);
                 }
+                auto search = searches_.find(key);
+                if (search != searches_.end())
+                    search->second.ops.onReady(query, ok);
             };
             l->second.cb = [this, key, token, opstate](const std::vector<Sp<Value>>& values,
                                                        bool expired,
@@ -1262,7 +1270,7 @@ DhtProxyClient::sendListen(const restinio::http_request_header_t& header,
                                         return;
                                     auto found = search->second.listeners.find(token);
                                     if (found != search->second.listeners.end() && found->second.ready) {
-                                        auto ready = std::move(found->second.ready);
+                                        auto ready = found->second.ready;
                                         ready(ok);
                                     }
                                 });
@@ -1342,8 +1350,13 @@ DhtProxyClient::sendListen(const restinio::http_request_header_t& header,
                                 opFailed();
                         }
                         opstate->inFlight = false;
-                        if (!syncRequest)
+                        if (!syncRequest) {
+                            if (!successful && listener.ready) {
+                                auto ready = listener.ready;
+                                ready(false);
+                            }
                             return;
+                        }
                         auto observedEpoch = listener.observedEpoch;
                         if (successful && reconcileListenerSnapshot(listener, *snapshot, *marker)) {
                             bool validateEpoch = listener.pushGeneration != pushGeneration && !observedEpoch.empty()
@@ -1362,7 +1375,7 @@ DhtProxyClient::sendListen(const restinio::http_request_header_t& header,
                             }
 #endif
                             if (listener.ready) {
-                                auto ready = std::move(listener.ready);
+                                auto ready = listener.ready;
                                 ready(true);
                             }
                             bool changedToken;
@@ -1378,6 +1391,10 @@ DhtProxyClient::sendListen(const restinio::http_request_header_t& header,
                             return;
                         listener.needsRecovery = true;
                         opstate->ok = false;
+                        if (listener.ready) {
+                            auto ready = listener.ready;
+                            ready(false);
+                        }
                         scheduleListenRetry(key, token, listener);
                     });
                 }
@@ -1683,7 +1700,7 @@ DhtProxyClient::pushNotificationReceived([[maybe_unused]] const std::map<std::st
                             auto& listener = l->second;
                             if (!listener.needsRecovery && listener.syncEpoch == epoch && number > listener.syncRevision
                                 && number - listener.syncRevision == 1) {
-                                if (!listener.cache.onValuesExpired(ids, system_clock::time_point::min()))
+                                if (!listener.cache.onValuesExpired(ids, system_clock::time_point::max()))
                                     opstate->stop = true;
                                 listener.syncRevision = number;
                             } else if (listener.syncEpoch != epoch || number > listener.syncRevision) {
