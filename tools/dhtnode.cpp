@@ -405,7 +405,8 @@ cmd_loop(std::shared_ptr<DhtRunner>& node,
                     return true;
                 },
                 {},
-                dht::Where {rem});
+                dht::Where {rem},
+                [](bool synced) { std::cout << "Listen: " << (synced ? "synced" : "not synced") << std::endl; });
             auto t = token.get();
             std::cout << "Listening, token: " << t << std::endl;
         }
