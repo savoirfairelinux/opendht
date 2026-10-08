@@ -29,6 +29,12 @@ class NetworkEngineTester : public CppUnit::TestFixture
     CPPUNIT_TEST(testListenReadinessSnapshotCancellation);
     CPPUNIT_TEST(testListenReadinessSnapshotReplacement);
     CPPUNIT_TEST(testListenReadinessSnapshotRenewal);
+    CPPUNIT_TEST(testListenUpdatesBeforeConfirmation);
+    CPPUNIT_TEST(testListenLiveChangesBeforeSnapshot);
+    CPPUNIT_TEST(testListenDuplicateRegistration);
+    CPPUNIT_TEST(testListenLargeSnapshotDefaultLimits);
+    CPPUNIT_TEST(testListenLiveUpdateOrdering);
+    CPPUNIT_TEST(testListenInitializationTimeout);
     CPPUNIT_TEST(testListenRegistrationFailure);
     CPPUNIT_TEST(testListenRegistrationCapacity);
     CPPUNIT_TEST(testListenReadinessAddressFamilies);
@@ -63,6 +69,12 @@ public:
     void testListenReadinessSnapshotCancellation();
     void testListenReadinessSnapshotReplacement();
     void testListenReadinessSnapshotRenewal();
+    void testListenUpdatesBeforeConfirmation();
+    void testListenLiveChangesBeforeSnapshot();
+    void testListenDuplicateRegistration();
+    void testListenLargeSnapshotDefaultLimits();
+    void testListenLiveUpdateOrdering();
+    void testListenInitializationTimeout();
     void testListenRegistrationFailure();
     void testListenRegistrationCapacity();
     void testListenReadinessAddressFamilies();

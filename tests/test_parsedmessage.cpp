@@ -106,6 +106,69 @@ ParsedMessageTester::setUp()
 {}
 
 void
+ParsedMessageTester::testParseListenSync()
+{
+    for (const auto& fields : std::vector<std::vector<int64_t>> {
+             {1, 2, 3, 1},
+             {0, 2, 3, 1},
+             {1, 2, -1, 1},
+             {1, 2, 3},
+             {1, 2, 3, 1, 0}
+    }) {
+        msgpack::sbuffer buffer;
+        msgpack::packer<msgpack::sbuffer> packer(buffer);
+        packer.pack_map(3);
+        packer.pack(KEY_Y);
+        packer.pack(KEY_R);
+        packer.pack(KEY_TID);
+        packer.pack(1);
+        packer.pack(KEY_R);
+        packer.pack_map(2);
+        packer.pack(KEY_VERSION);
+        packer.pack(2);
+        packer.pack(KEY_LISTEN_SYNC);
+        packer.pack(fields);
+        if (fields == std::vector<int64_t>({1, 2, 3, 1})) {
+            auto message = parsePackedMessage(buffer);
+            CPPUNIT_ASSERT(message.listenSync);
+            CPPUNIT_ASSERT_EQUAL(uint64_t(1), message.listenSync->registration);
+            CPPUNIT_ASSERT_EQUAL(uint64_t(2), message.listenSync->epoch);
+            CPPUNIT_ASSERT_EQUAL(uint64_t(3), message.listenSync->sequence);
+            CPPUNIT_ASSERT_EQUAL(uint64_t(1), message.listenSync->snapshotEnd);
+        } else {
+            CPPUNIT_ASSERT_THROW(parsePackedMessage(buffer), msgpack::type_error);
+        }
+    }
+}
+
+void
+ParsedMessageTester::testParseRejectsMalformedSyncedValues()
+{
+    for (unsigned failure = 0; failure < 3; ++failure) {
+        msgpack::sbuffer buffer;
+        msgpack::packer<msgpack::sbuffer> packer(buffer);
+        packer.pack_map(3);
+        packer.pack(KEY_Y);
+        packer.pack(KEY_R);
+        packer.pack(KEY_TID);
+        packer.pack(1);
+        packer.pack(KEY_R);
+        packer.pack_map(3);
+        packer.pack(KEY_VERSION);
+        packer.pack(2);
+        packer.pack(KEY_LISTEN_SYNC);
+        packer.pack(ListenSync {1, 2, 1, 1});
+        packer.pack(KEY_REQ_VALUES);
+        packer.pack_array(1);
+        if (failure == 0)
+            packer.pack_nil();
+        else
+            packer.pack(failure == 1 ? MAX_VALUE_SIZE + 33 : 0);
+        CPPUNIT_ASSERT_THROW(parsePackedMessage(buffer), msgpack::type_error);
+    }
+}
+
+void
 ParsedMessageTester::tearDown()
 {}
 

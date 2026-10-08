@@ -29,6 +29,38 @@ sendPush(dht::DhtRunner& node, const std::map<std::string, std::string>& data, s
     lk.lock();
     return ret;
 }
+
+void
+setExpirationRevision(dht::DhtProxyServer& server,
+                      const dht::InfoHash& key,
+                      const std::string& pushToken,
+                      dht::Value::Id id,
+                      std::map<std::string, std::string>& data)
+{
+    std::shared_ptr<dht::DhtProxyServer::PushSessionContext> context;
+    dht::PushType type;
+    std::string clientId;
+    std::string topic;
+    {
+        std::lock_guard lock(server.lockListener_);
+        auto& listener = server.pushListeners_.at(pushToken).listeners.at(key).front();
+        context = listener.sessionCtx;
+        type = listener.type;
+        clientId = listener.clientId;
+        topic = listener.topic;
+    }
+    std::shared_ptr<dht::Value> value;
+    {
+        std::lock_guard lock(context->lock);
+        value = std::make_shared<dht::Value>(context->values.at(id));
+    }
+    server.handlePushListen(key, pushToken, type, clientId, context, topic, {value}, true);
+    {
+        std::lock_guard lock(context->lock);
+        data["epoch"] = context->epoch;
+        data["revision"] = std::to_string(context->revision);
+    }
+}
 } // namespace
 #endif
 
@@ -402,6 +434,7 @@ DhtProxyTester::testPushListenValueEdit()
 
     // Simulate expiration push notification
     push_data["exp"] = std::to_string((dht::Value::Id) 77);
+    setExpirationRevision(*serverProxy, key, clientConfig.push_token, 77, push_data);
     push_data["t"] = std::to_string(
         std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch())
             .count());
@@ -1393,6 +1426,7 @@ DhtProxyTester::testPushMultiValueEditExpire()
 
     // Expire value B via push notification
     push_data["exp"] = std::to_string((dht::Value::Id) 200);
+    setExpirationRevision(*serverProxy, key, clientConfig.push_token, 200, push_data);
     push_data["t"] = std::to_string(
         std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch())
             .count());
@@ -1535,6 +1569,7 @@ DhtProxyTester::testPushRefreshNoSpuriousExpire()
     // then trigger another refresh. The removed value should be expired.
     // We'll use the "exp" field to explicitly expire value 20.
     push_data["exp"] = "20";
+    setExpirationRevision(*serverProxy, key, clientConfig.push_token, 20, push_data);
     push_data["t"] = std::to_string(
         std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch())
             .count());

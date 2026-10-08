@@ -14,6 +14,8 @@ class DhtProxyClientTester : public CppUnit::TestFixture
     CPPUNIT_TEST(testSetPushNotificationTokenResubscribesWithNewToken);
     CPPUNIT_TEST(testRestartListenersFetchesValuesAfterFailedSubscribe);
     CPPUNIT_TEST(testReadinessShutdown);
+    CPPUNIT_TEST(testReadinessReentrancy);
+    CPPUNIT_TEST(testReadinessCancelsAnotherListener);
 #ifdef OPENDHT_PUSH_NOTIFICATIONS
     CPPUNIT_TEST(testInitialReadinessFailures);
     CPPUNIT_TEST(testReadinessRecoveryIsOneShot);
@@ -38,6 +40,7 @@ class DhtProxyClientTester : public CppUnit::TestFixture
     CPPUNIT_TEST(testInvalidPushRevision);
     CPPUNIT_TEST(testRecoveryBackoff);
     CPPUNIT_TEST(testContiguousExpiration);
+    CPPUNIT_TEST(testLegacyPushValidatesRevisions);
 #endif
     CPPUNIT_TEST_SUITE_END();
 
@@ -46,6 +49,8 @@ public:
     void testSetPushNotificationTokenResubscribesWithNewToken();
     void testRestartListenersFetchesValuesAfterFailedSubscribe();
     void testReadinessShutdown();
+    void testReadinessReentrancy();
+    void testReadinessCancelsAnotherListener();
 #ifdef OPENDHT_PUSH_NOTIFICATIONS
     void testInitialReadinessFailures();
     void testReadinessRecoveryIsOneShot();
@@ -70,6 +75,7 @@ public:
     void testInvalidPushRevision();
     void testRecoveryBackoff();
     void testContiguousExpiration();
+    void testLegacyPushValidatesRevisions();
 #endif
 };
 

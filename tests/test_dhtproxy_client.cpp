@@ -87,7 +87,114 @@ DhtProxyClientTester::testReadinessShutdown()
     }
 }
 
+void
+DhtProxyClientTester::testReadinessReentrancy()
+{
+    DhtProxyClient client({}, {}, [] {}, "", "OpenDHT-Test", "client-id", "");
+    client.httpContext_.stop();
+    client.httpClientThread_.join();
+    client.proxyUrl_ = "http://127.0.0.1:1";
+    auto key = InfoHash::get("ready-reentrancy");
+    std::vector<bool> results;
+    client.listen(
+        key,
+        [](const std::vector<Sp<Value>>&, bool) { return true; },
+        {},
+        {},
+        [&](bool ok) {
+            auto unlocked = client.searchLock_.try_lock();
+            if (unlocked)
+                client.searchLock_.unlock();
+            CPPUNIT_ASSERT(unlocked);
+            CPPUNIT_ASSERT(client.getLocal(key, {}).empty());
+            results.push_back(ok);
+        });
+    auto request = client.searches_.at(key).listeners.begin()->second.request;
+    std::string marker = "{\"sync\":{\"complete\":true}}\n";
+    request->cbs_.on_body(marker.data(), marker.size());
+    client.periodic(nullptr, 0, {}, clock::now());
+    CPPUNIT_ASSERT(results == std::vector<bool>({true}));
+}
+
+void
+DhtProxyClientTester::testReadinessCancelsAnotherListener()
+{
+    DhtProxyClient client({}, {}, [] {}, "", "OpenDHT-Test", "client-id", "");
+    client.httpContext_.stop();
+    client.httpClientThread_.join();
+    client.proxyUrl_ = "http://127.0.0.1:1";
+    auto key = InfoHash::get("ready-cancel-neighbor");
+    size_t second = 0;
+    unsigned firstCalls = 0;
+    unsigned secondCalls = 0;
+    auto values = [](const std::vector<Sp<Value>>&, bool) {
+        return true;
+    };
+    client.listen(key, values, {}, {}, [&](bool ok) {
+        auto unlocked = client.searchLock_.try_lock();
+        if (unlocked)
+            client.searchLock_.unlock();
+        CPPUNIT_ASSERT(unlocked);
+        CPPUNIT_ASSERT(ok);
+        ++firstCalls;
+        CPPUNIT_ASSERT(client.cancelListen(key, second));
+    });
+    second = client.listen(key, values, {}, {}, [&](bool) { ++secondCalls; });
+    auto request = client.searches_.at(key).listeners.begin()->second.request;
+    std::string marker = "{\"sync\":{\"complete\":true}}\n";
+    request->cbs_.on_body(marker.data(), marker.size());
+    client.periodic(nullptr, 0, {}, clock::now());
+    CPPUNIT_ASSERT_EQUAL(1u, firstCalls);
+    CPPUNIT_ASSERT_EQUAL(0u, secondCalls);
+}
+
 #ifdef OPENDHT_PUSH_NOTIFICATIONS
+void
+DhtProxyClientTester::testLegacyPushValidatesRevisions()
+{
+    DhtProxyClient client({}, {}, [] {}, "", "OpenDHT-Test", "client-id", "push-token");
+    client.httpContext_.stop();
+    client.httpClientThread_.join();
+    client.proxyUrl_ = "http://127.0.0.1:1";
+    auto key = InfoHash::get("legacy-push-validation");
+    client.listen(key, [](const std::vector<Sp<Value>>&, bool) { return true; }, {}, {});
+    auto& listener = client.searches_.at(key).listeners.begin()->second;
+    auto value = std::make_shared<Value>("obsolete");
+    value->id = 42;
+    finishSync(client, listener.request, {value}, 5);
+    client.pushNotificationReceived({
+        {"key", key.toString()},
+        {"t",   "10000"       }
+    });
+    auto validation = listener.request;
+    CPPUNIT_ASSERT(validation->header_.method() == restinio::http_method_subscribe());
+    CPPUNIT_ASSERT_EQUAL(size_t(1), client.requests_.size());
+    client.pushNotificationReceived({
+        {"key",      key.toString()},
+        {"epoch",    "test-epoch"  },
+        {"revision", "6"           },
+        {"expired",  "true"        },
+        {"ids",      "42"          }
+    });
+    client.periodic(nullptr, 0, {}, clock::now());
+    CPPUNIT_ASSERT(!client.getLocalById(key, 42));
+    finishSync(client, validation, {value}, 5);
+    CPPUNIT_ASSERT(!client.getLocalById(key, 42));
+    client.handleResubscribe({}, key, 1, listener.opstate);
+    finishSync(client, listener.request, {}, 6);
+    CPPUNIT_ASSERT(listener.opstate->ok.load());
+    CPPUNIT_ASSERT(!client.getLocalById(key, 42));
+    client.restartListeners({});
+    validation = listener.request;
+    client.pushNotificationReceived({
+        {"key", key.toString()}
+    });
+    finishSync(client, validation, {}, 6, true, false);
+    CPPUNIT_ASSERT(listener.request != validation);
+    finishSync(client, listener.request, {}, 6, true, false);
+    CPPUNIT_ASSERT(listener.opstate->ok.load());
+}
+
 void
 DhtProxyClientTester::testInitialReadinessFailures()
 {
