@@ -59,6 +59,10 @@ epochs are remembered in a bounded, push-token-scoped set; other unknown epochs
 are validated without changing cached values. Returning to an earlier push token
 remains valid.
 Token rotation during a pending request is applied after that request completes.
+Clients require an updated proxy server. Value pushes without both epoch and
+revision are malformed and return `Error`; they do not mutate the listener cache
+or trigger synchronization requests. The proxy adds these fields independently
+of whether its upstream DHT peers support version-2 native LISTEN.
 Pushes for another client session return `IgnoredWrongSession` without changing
 subscriptions, cached values, or connectivity state. Their application-level
 purpose is to wake the mobile app; session creation and desired subscriptions
@@ -89,17 +93,81 @@ a one-shot `DoneCallbackSimple` as its fifth argument:
 runner.listen(key, valuesCallback, {}, {}, readyCallback);
 ```
 
-`readyCallback(true)` follows delivery of initially observed values and completed
-search/listener synchronization for each enabled address family. Isolated
-families with no peers are ready after delivering local values. Initial search
-or registration failure reports `false`; cancellation does not promise a callback.
+`readyCallback(true)` follows completed search/listener synchronization for each
+enabled address family. Version-2 native sources complete after initial delivery
+and contiguous updates through their observed high-water mark. Legacy sources
+complete when LISTEN registration is acknowledged; initial values can arrive
+after readiness. Isolated families with no peers are ready after delivering local
+values. Initial search or registration failure reports `false`; cancellation
+does not promise a callback.
 This is an initial completion notification, not a global consistency guarantee.
 It does not start a GET or add polling. Attaching to a synchronized cache delivers
 cached values before notifying readiness.
+Mixed-version and entirely legacy networks can initialize successfully without
+GET fallback or polling. A legacy acknowledgment confirms registration, not
+complete baseline delivery or absence of values. Late values remain ordinary
+listener updates: the proxy advances its revision and push clients reconcile
+through the existing subscription path. A client snapshot is authoritative for
+the proxy's observed cache, not proof of a complete upstream DHT baseline. A
+legacy update never received by the proxy cannot be detected by proxy revision
+validation. Proxy readiness callbacks run outside the client's search lock;
+cancellation suppresses queued notifications.
 
 Streaming proxy clients request `/key/<hash>/listen?sync=1`. Updated proxies send
 `{"sync":{"complete":true}}` after initial values, or `complete:false` on initial
 failure. Requests without this opt-in retain the original stream format.
+
+## Native Initial Delivery
+
+Native clients request LISTEN version `ve:2` with an `ls` tuple:
+
+```text
+[registration, epoch, sequence, snapshotEnd]
+```
+
+The registration is a fresh nonzero client nonce; a LISTEN request sends zeros
+for the other fields. The server explicitly acknowledges version 2, assigns a
+nonzero stream epoch, and declares the number of initial UPDATE batches in
+`snapshotEnd`. An empty baseline declares zero batches. Each UPDATE carries the
+same registration, epoch, and snapshotEnd with a consecutive sequence starting
+at one. The initial batches occupy sequences 1 through snapshotEnd; live changes
+follow them. The acknowledgment's sequence is the server's current high-water
+mark. All tuple fields are unsigned 64-bit integers.
+
+The server registers the listener and serializes the initial batches on its DHT
+thread. Existing UPDATE fragmentation and acknowledgments deliver each initial
+value once per source registration on a loss-free connection. There is no
+additional GET or second value download. Retries resend the same immutable
+request bytes. Repeated registrations with the same nonce reuse the baseline;
+healthy renewals return metadata only. Recreated sockets use a new nonce and
+cannot accept the previous registration's updates.
+
+Live updates, including edits, expirations, and refreshes, are sent immediately
+while the baseline is in flight. The receiver buffers them until every declared
+initial batch has been fully reassembled and validated. It then applies the
+baseline followed by contiguous live changes in sequence order. Duplicates are
+acknowledged without being applied again. Known sequence gaps prevent the cache
+from being considered synchronized; retransmission can fill them. Initialization
+or an unresolved live gap fails after 30 seconds and allows a fresh registration.
+
+Batches contain at most 32 values and target the existing 56 KiB serialized-value
+budget; individual larger values retain the existing fragment transport. The
+receiver bounds buffered batches to 4096 and payload bytes to 64 MiB, and rejects
+baselines exceeding its 4096-value cache capacity. Invalid version-2 values fail
+the batch instead of being silently skipped. This design adds neither pacing
+nor send windows. Per-peer baselines are coherent with their subsequent updates,
+but do not provide an atomic snapshot of the entire distributed DHT.
+
+Peers that do not explicitly acknowledge version 2 remain legacy listeners.
+Their values are delivered normally and successful LISTEN acknowledgment
+completes their best-effort initialization. No GET fallback or polling is added.
+Legacy LISTEN acknowledgments may omit the token; clients retain the token
+previously obtained during discovery and keep the listener socket open. A
+version-2 acknowledgment must include its token and synchronization metadata.
+The source records whether it uses legacy completion or a verified version-2
+stream. An established version-2 stream cannot downgrade on a metadata-free
+acknowledgment; invalid initialization and registration failures still report
+failure.
 
 ## HTTP Transport Note
 
