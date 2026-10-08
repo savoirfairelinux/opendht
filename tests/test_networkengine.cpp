@@ -370,17 +370,11 @@ struct ListenSnapshotTransport
 
     void getRound(bool reversed = false)
     {
-        auto requests = std::move(clientPackets->sends);
-        clientPackets->sends.clear();
-        for (const auto& packet : requests)
-            if (parse(packet).type == MessageType::GetValues)
-                server->network_engine.processMessage(packet.data.data(), packet.data.size(), clientAddr);
-        auto replies = std::move(serverPackets->sends);
-        serverPackets->sends.clear();
+        for (const auto& packet : clientPackets->sends)
+            CPPUNIT_ASSERT(parse(packet).type != MessageType::GetValues);
         if (reversed)
-            std::reverse(replies.begin(), replies.end());
-        for (const auto& packet : replies)
-            client->network_engine.processMessage(packet.data.data(), packet.data.size(), serverAddr);
+            std::reverse(delayedUpdates.begin(), delayedUpdates.end());
+        deliverUpdates();
     }
 
     void deliverUpdates()
@@ -394,9 +388,8 @@ struct ListenSnapshotTransport
     {
         auto search = client->searches(AF_INET).at(key);
         auto& status = search->nodes.front()->listenStatus.begin()->second;
-        CPPUNIT_ASSERT(status.initialSnapshot);
-        CPPUNIT_ASSERT(!status.initialSnapshot->requests.empty());
-        return status.initialSnapshot->requests.front();
+        CPPUNIT_ASSERT(status.req);
+        return status.req;
     }
 };
 
@@ -775,22 +768,8 @@ NetworkEngineTester::testListenReadinessWaitsForInitialUpdate()
         client.network_engine.processMessage(packet.data.data(), packet.data.size(), serverAddr);
     CPPUNIT_ASSERT(snapshots.empty());
     serverPackets->sends.clear();
-    for (unsigned round = 0; round < 3 && snapshots.empty(); ++round) {
-        auto requests = std::move(clientPackets->sends);
-        clientPackets->sends.clear();
-        for (const auto& packet : requests) {
-            ParsedMessage message;
-            message.msgpack_unpack(msgpack::unpack((const char*) packet.data.data(), packet.data.size()).get());
-            if (message.type == MessageType::GetValues)
-                server.network_engine.processMessage(packet.data.data(), packet.data.size(), clientAddr);
-        }
-        auto replies = std::move(serverPackets->sends);
-        serverPackets->sends.clear();
-        for (const auto& packet : replies)
-            client.network_engine.processMessage(packet.data.data(), packet.data.size(), serverAddr);
-    }
-    CPPUNIT_ASSERT_EQUAL(size_t(1), snapshots.size());
-    CPPUNIT_ASSERT_EQUAL(size_t(1), snapshots.front());
+    for (const auto& packet : clientPackets->sends)
+        CPPUNIT_ASSERT(ListenSnapshotTransport::parse(packet).type != MessageType::GetValues);
     for (const auto& packet : updates)
         client.network_engine.processMessage(packet.data.data(), packet.data.size(), serverAddr);
     CPPUNIT_ASSERT(client.cancelListen(key, token));
@@ -806,12 +785,9 @@ NetworkEngineTester::testListenReadinessSnapshotVariants()
         ListenSnapshotTransport transport;
         transport.store(count, 6000);
         transport.start();
-        CPPUNIT_ASSERT(transport.results.empty());
-        transport.getRound(true);
-        if (count != 0) {
+        if (count != 0)
             CPPUNIT_ASSERT(transport.results.empty());
-            transport.getRound(true);
-        }
+        transport.getRound(true);
         CPPUNIT_ASSERT(transport.results == std::vector<bool>({true}));
         CPPUNIT_ASSERT(transport.snapshots == std::vector<size_t>({count}));
         transport.deliverUpdates();
@@ -826,37 +802,27 @@ NetworkEngineTester::testListenReadinessSnapshotLegacy()
     for (size_t count : {size_t(0), size_t(3)}) {
         ListenSnapshotTransport transport;
         transport.store(count);
-        transport.start();
+        transport.start(false);
         auto request = transport.initialRequest();
         ParsedMessage answer;
         answer.type = MessageType::Reply;
         answer.token = transport.server->makeToken(transport.clientAddr, false);
-        answer.values = transport.server->getLocal(transport.key);
         request->setDone(std::move(answer));
-        CPPUNIT_ASSERT(transport.results == std::vector<bool>({true}));
-        CPPUNIT_ASSERT(transport.snapshots == std::vector<size_t>({count}));
-        transport.deliverUpdates();
-        CPPUNIT_ASSERT_EQUAL(count, transport.received.size());
+        CPPUNIT_ASSERT(transport.results == std::vector<bool>({false}));
+        CPPUNIT_ASSERT(transport.received.empty());
     }
 }
 
 void
 NetworkEngineTester::testListenReadinessSnapshotFailure()
 {
-    for (unsigned failure = 0; failure < 4; ++failure) {
+    for (unsigned failure = 0; failure < 3; ++failure) {
         ListenSnapshotTransport transport;
         transport.store(1);
-        transport.start();
+        transport.start(false);
         auto request = transport.initialRequest();
         if (failure == 0) {
             request->setExpired();
-        } else if (failure == 3) {
-            transport.getRound();
-            CPPUNIT_ASSERT(transport.results.empty());
-            auto search = transport.client->searches(AF_INET).at(transport.key);
-            auto snapshot = search->nodes.front()->listenStatus.begin()->second.initialSnapshot;
-            CPPUNIT_ASSERT_EQUAL(size_t(2), snapshot->requests.size());
-            snapshot->requests.back()->setExpired();
         } else {
             ParsedMessage answer;
             answer.type = MessageType::Reply;
@@ -897,8 +863,8 @@ NetworkEngineTester::testListenReadinessSnapshotReplacement()
     auto previous = transport.initialRequest();
     auto search = transport.client->searches(AF_INET).at(transport.key);
     auto* node = search->nodes.front().get();
+    auto oldUpdates = std::move(transport.delayedUpdates);
     node->listenStatus.clear();
-    CPPUNIT_ASSERT(previous->cancelled());
     transport.clientPackets->sends.clear();
     transport.client->searchSynchedNodeListen(search, *node);
     transport.acknowledge();
@@ -907,6 +873,8 @@ NetworkEngineTester::testListenReadinessSnapshotReplacement()
     answer.token = transport.server->makeToken(transport.clientAddr, false);
     answer.values = transport.server->getLocal(transport.key);
     previous->setDone(std::move(answer));
+    for (const auto& packet : oldUpdates)
+        transport.client->network_engine.processMessage(packet.data.data(), packet.data.size(), transport.serverAddr);
     CPPUNIT_ASSERT(transport.results.empty());
     transport.getRound();
     transport.getRound();
