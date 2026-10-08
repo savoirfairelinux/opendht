@@ -15,6 +15,7 @@ class DhtProxyClientTester : public CppUnit::TestFixture
     CPPUNIT_TEST(testRestartListenersFetchesValuesAfterFailedSubscribe);
     CPPUNIT_TEST(testReadinessShutdown);
     CPPUNIT_TEST(testReadinessReentrancy);
+    CPPUNIT_TEST(testCachedReadinessDispatch);
     CPPUNIT_TEST(testReadinessCancelsAnotherListener);
 #ifdef OPENDHT_PUSH_NOTIFICATIONS
     CPPUNIT_TEST(testInitialReadinessFailures);
@@ -50,6 +51,7 @@ public:
     void testRestartListenersFetchesValuesAfterFailedSubscribe();
     void testReadinessShutdown();
     void testReadinessReentrancy();
+    void testCachedReadinessDispatch();
     void testReadinessCancelsAnotherListener();
 #ifdef OPENDHT_PUSH_NOTIFICATIONS
     void testInitialReadinessFailures();

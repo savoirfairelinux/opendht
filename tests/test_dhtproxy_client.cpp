@@ -117,6 +117,69 @@ DhtProxyClientTester::testReadinessReentrancy()
 }
 
 void
+DhtProxyClientTester::testCachedReadinessDispatch()
+{
+    for (unsigned action = 0; action < 3; ++action) {
+        DhtProxyClient client({}, {}, [] {}, "", "OpenDHT-Test", "client-id", "");
+        client.httpContext_.stop();
+        client.httpClientThread_.join();
+        client.proxyUrl_ = "http://127.0.0.1:1";
+        auto key = InfoHash::get("cached-readiness-dispatch");
+        auto values = [](const std::vector<Sp<Value>>&, bool) {
+            return true;
+        };
+        auto first = client.listen(key, values, {}, {});
+        CPPUNIT_ASSERT(first != 0);
+        auto value = std::make_shared<Value>("cached");
+        value->id = 42;
+        auto request = client.searches_.at(key).listeners.begin()->second.request;
+        auto body = Json::writeString(client.jsonBuilder_, value->toJson()) + "\n{\"sync\":{\"complete\":true}}\n";
+        request->cbs_.on_body(body.data(), body.size());
+        client.periodic(nullptr, 0, {}, clock::now());
+        CPPUNIT_ASSERT(client.getLocalById(key, 42));
+
+        std::vector<bool> results;
+        size_t delivered = 0;
+        auto attached = client.listen(
+            key,
+            [&](const std::vector<Sp<Value>>& cached, bool expired) {
+                if (!expired)
+                    delivered += cached.size();
+                return true;
+            },
+            {},
+            {},
+            [&](bool ok) {
+                results.emplace_back(ok);
+                if (ok) {
+                    CPPUNIT_ASSERT(client.getLocalById(key, 42));
+                    auto nested = client.listen(key, values, {}, {});
+                    CPPUNIT_ASSERT(nested != 0);
+                    CPPUNIT_ASSERT(client.cancelListen(key, nested));
+                } else
+                    CPPUNIT_ASSERT(client.getLocal(key, {}).empty());
+            });
+        CPPUNIT_ASSERT(attached != 0);
+        CPPUNIT_ASSERT_EQUAL(size_t(1), delivered);
+        CPPUNIT_ASSERT(results.empty());
+        CPPUNIT_ASSERT_EQUAL(size_t(1), client.readinessCallbacks_.size());
+        if (action == 1)
+            CPPUNIT_ASSERT(client.cancelListen(key, attached));
+        else if (action == 2) {
+            client.shutdown({}, true);
+            CPPUNIT_ASSERT(results == std::vector<bool>({false}));
+        }
+        client.periodic(nullptr, 0, {}, clock::now());
+        if (action == 1)
+            CPPUNIT_ASSERT(results.empty());
+        else
+            CPPUNIT_ASSERT(results == std::vector<bool>({action == 0}));
+        client.shutdown({}, true);
+        CPPUNIT_ASSERT_EQUAL(action == 1 ? size_t(0) : size_t(1), results.size());
+    }
+}
+
+void
 DhtProxyClientTester::testReadinessCancelsAnotherListener()
 {
     DhtProxyClient client({}, {}, [] {}, "", "OpenDHT-Test", "client-id", "");
