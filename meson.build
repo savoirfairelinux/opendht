@@ -5,7 +5,7 @@ project(
     'cython',
     license: 'MIT',
     license_files: 'LICENSE',
-    version: '4.4.1',
+    version: '5.0.0',
     meson_version: '>=1.1.0',
     default_options: ['cpp_std=c++20', 'warning_level=3'],
 )
@@ -129,6 +129,8 @@ endif
 opendht = library(
     'opendht',
     opendht_src,
+    version: meson.project_version(),
+    soversion: '5',
     include_directories: opendht_inc,
     dependencies: deps,
     cpp_args: ['-DOPENDHT_BUILD', '-Dopendht_EXPORTS'],
@@ -178,6 +180,8 @@ if get_option('c').enabled()
     opendht_c = library(
         'opendht-c',
         ['c/opendht.cpp', 'c/opendht_c.h'],
+        version: meson.project_version(),
+        soversion: '5',
         dependencies: [opendht_dep, msgpack, jsoncpp, fmt],
         cpp_args: ['-DOPENDHT_C_BUILD', '-Dopendht_c_EXPORTS'],
         install: true,
@@ -344,6 +348,17 @@ if get_option('tests').enabled()
         test('Http', test_http)
     endif
 
+    if get_option('proxy_client').enabled()
+        test_proxy_client = executable(
+            'test_dhtproxy_client',
+            'tests/test_dhtproxy_client.cpp',
+            'tests/tests_runner.cpp',
+            include_directories: opendht_inc,
+            dependencies: [opendht_dep, cppunit, jsoncpp, fmt, openssl, msgpack, llhttp],
+        )
+        test('DhtProxyClient', test_proxy_client)
+    endif
+
     if get_option('peer_discovery').enabled()
         test_peerdiscovery = executable(
             'test_peerdiscovery',
@@ -361,7 +376,7 @@ if get_option('tests').enabled()
             'tests/tests_runner.cpp',
             dependencies: [opendht_dep, cppunit, jsoncpp, fmt, openssl, msgpack],
         )
-        test('DhtProxy', test_proxy)
+        test('DhtProxy', test_proxy, timeout: 120)
 
         if get_option('long_tests').enabled()
             test_proxystress = executable(
