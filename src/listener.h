@@ -5,6 +5,8 @@
 #include "value.h"
 #include "utils.h"
 #include "callbacks.h"
+#include "network_engine.h"
+#include "request.h"
 
 namespace dht {
 
@@ -13,9 +15,21 @@ namespace dht {
  */
 struct Listener
 {
+    struct Stream
+    {
+        net::ListenSync sync;
+        std::vector<Sp<net::Request>> initialRequests;
+        ~Stream()
+        {
+            for (const auto& request : initialRequests)
+                request->cancel();
+        }
+    };
+
     time_point time;
     Query query;
     int version;
+    std::shared_ptr<Stream> stream;
 
     Listener(time_point t, Query&& q, int version = 0)
         : time(t)

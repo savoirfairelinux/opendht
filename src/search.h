@@ -65,6 +65,16 @@ struct Dht::SearchNode
         Sp<Scheduler::Job> refresh {};
         Sp<Scheduler::Job> cacheExpirationJob {};
         Sp<net::Request> req {};
+        Sp<Scheduler::Job> syncDeadline {};
+        uint64_t registration {0};
+        std::optional<net::ListenSync> manifest;
+        std::map<std::pair<uint64_t, uint64_t>, net::RequestAnswer> pendingUpdates;
+        uint64_t nextSequence {1};
+        uint64_t watermark {0};
+        size_t pendingBytes {0};
+        bool baselineComplete {false};
+        bool initialized {false};
+        bool legacy {false};
         Tid socketId {0};
         CachedListenStatus(ValueStateCallback&& cb, SyncCallback scb, Tid sid)
             : cache(std::forward<ValueStateCallback>(cb), std::forward<SyncCallback>(scb))
@@ -74,6 +84,12 @@ struct Dht::SearchNode
         CachedListenStatus(const CachedListenStatus&) = delete;
         ~CachedListenStatus()
         {
+            if (syncDeadline)
+                syncDeadline->cancel();
+            if (refresh)
+                refresh->cancel();
+            if (cacheExpirationJob)
+                cacheExpirationJob->cancel();
             if (socketId and req and req->node) {
                 req->node->closeSocket(socketId);
             }
@@ -253,17 +269,130 @@ struct Dht::SearchNode
         getStatus.clear();
     }
 
-    void onValues(const Sp<Query>& q, net::RequestAnswer&& answer, const TypeStore& types, Scheduler& scheduler)
+    bool confirmListen(const Sp<Query>& query,
+                       const std::optional<net::ListenSync>& manifest,
+                       const TypeStore& types,
+                       Scheduler& scheduler)
     {
-        auto l = listenStatus.find(q);
-        if (l != listenStatus.end()) {
-            auto next = l->second.cache.onValues(answer.values,
-                                                 answer.refreshed_values,
-                                                 answer.expired_values,
-                                                 types,
-                                                 scheduler.time());
-            scheduler.edit(l->second.cacheExpirationJob, next);
+        auto found = listenStatus.find(query);
+        if (found == listenStatus.end())
+            return false;
+        auto& status = found->second;
+        if (!manifest) {
+            if (status.manifest)
+                return false;
+            status.legacy = true;
+            status.initialized = true;
+            status.pendingUpdates.clear();
+            status.pendingBytes = 0;
+            scheduler.cancel(status.syncDeadline);
+            status.cache.onSynced(true);
+            return true;
         }
+        if (manifest->registration != status.registration || !manifest->epoch || manifest->snapshotEnd > 4096
+            || manifest->sequence < manifest->snapshotEnd
+            || (status.manifest
+                && (status.manifest->epoch != manifest->epoch || status.manifest->snapshotEnd != manifest->snapshotEnd)))
+            return false;
+        status.legacy = false;
+        status.manifest = manifest;
+        status.watermark = std::max(status.watermark, manifest->sequence);
+        return onValues(query, {}, types, scheduler);
+    }
+
+    bool onValues(const Sp<Query>& query, net::RequestAnswer&& answer, const TypeStore& types, Scheduler& scheduler)
+    {
+        auto found = listenStatus.find(query);
+        if (found == listenStatus.end())
+            return true;
+        auto& status = found->second;
+        auto apply = [&](net::RequestAnswer&& update) {
+            auto next = status.cache.onValues(update.values,
+                                              update.refreshed_values,
+                                              update.expired_values,
+                                              types,
+                                              scheduler.time());
+            scheduler.edit(status.cacheExpirationJob, next);
+        };
+        if (!answer.listenSync
+            && (!answer.values.empty() || !answer.refreshed_values.empty() || !answer.expired_values.empty())) {
+            if (status.manifest)
+                return true;
+            status.legacy = true;
+            apply(std::move(answer));
+            return true;
+        }
+        if (answer.listenSync) {
+            auto sync = *answer.listenSync;
+            if (sync.registration != status.registration || (status.manifest && sync.epoch != status.manifest->epoch))
+                return true;
+            if (!sync.epoch || !sync.sequence || sync.snapshotEnd > 4096
+                || (status.manifest && sync.snapshotEnd != status.manifest->snapshotEnd))
+                return false;
+            if (!answer.fields.empty()
+                || (sync.sequence <= sync.snapshotEnd
+                    && (answer.values.empty() || !answer.expired_values.empty() || !answer.refreshed_values.empty())))
+                return false;
+            if (sync.sequence < status.nextSequence)
+                return true;
+            auto key = std::make_pair(sync.epoch, sync.sequence);
+            if (!status.pendingUpdates.count(key)) {
+                size_t bytes = 0;
+                for (const auto& value : answer.values)
+                    bytes += value->size();
+                bytes += (answer.refreshed_values.size() + answer.expired_values.size()) * sizeof(Value::Id);
+                if (status.pendingUpdates.size() >= 4096 || bytes > 64 * 1024 * 1024 - status.pendingBytes)
+                    return false;
+                status.pendingBytes += bytes;
+                status.pendingUpdates.emplace(key, std::move(answer));
+            }
+        }
+        if (!status.manifest)
+            return true;
+        auto epoch = status.manifest->epoch;
+        for (auto pending = status.pendingUpdates.begin(); pending != status.pendingUpdates.end();) {
+            if (pending->first.first != epoch)
+                pending = status.pendingUpdates.erase(pending);
+            else {
+                if (pending->second.listenSync->snapshotEnd != status.manifest->snapshotEnd)
+                    return false;
+                status.watermark = std::max(status.watermark, pending->first.second);
+                ++pending;
+            }
+        }
+        if (!status.baselineComplete) {
+            size_t values = 0;
+            for (uint64_t sequence = 1; sequence <= status.manifest->snapshotEnd; ++sequence) {
+                auto batch = status.pendingUpdates.find({epoch, sequence});
+                if (batch == status.pendingUpdates.end())
+                    return true;
+                values += batch->second.values.size();
+            }
+            if (values > 4096)
+                return false;
+            status.baselineComplete = true;
+        }
+        while (true) {
+            auto pending = status.pendingUpdates.find({epoch, status.nextSequence});
+            if (pending == status.pendingUpdates.end())
+                break;
+            auto update = std::move(pending->second);
+            status.pendingUpdates.erase(pending);
+            ++status.nextSequence;
+            apply(std::move(update));
+        }
+        status.pendingBytes = 0;
+        for (const auto& pending : status.pendingUpdates) {
+            for (const auto& value : pending.second.values)
+                status.pendingBytes += value->size();
+            status.pendingBytes += (pending.second.refreshed_values.size() + pending.second.expired_values.size())
+                                   * sizeof(Value::Id);
+        }
+        status.initialized = status.nextSequence > status.watermark;
+        if (status.initialized)
+            scheduler.cancel(status.syncDeadline);
+        status.cache.onSynced(status.initialized);
+        return true;
     }
 
     void onListenSynced(const Sp<Query>& q, bool synced = true, Sp<Scheduler::Job> refreshJob = {})

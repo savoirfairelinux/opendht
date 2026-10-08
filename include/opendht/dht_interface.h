@@ -262,8 +262,10 @@ public:
     virtual PushNotificationResult pushNotificationReceived(const std::map<std::string, std::string>& data) = 0;
 
     /**
-     * Listen with a one-shot notification after initial values are delivered and
-     * synchronization completes on all enabled address families.
+     * Listen with a one-shot notification after initial synchronization completes
+     * on all enabled address families. Version-2 native peers complete after
+     * initial delivery; legacy peers complete on LISTEN acknowledgment and may
+     * deliver initial values after the notification.
      * @param ready called with false on initialization failure or shutdown.
      *        Canceling the listener suppresses a pending readiness notification.
      *        The callback may run before listen returns. Implementations that do

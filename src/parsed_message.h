@@ -5,6 +5,7 @@
 #include "infohash.h"
 #include "sockaddr.h"
 #include "net.h"
+#include "network_engine.h"
 
 #include <algorithm>
 #include <map>
@@ -44,6 +45,7 @@ static constexpr auto KEY_REQ_REFRESHED = "re"sv;
 static constexpr auto KEY_REQ_FIELDS = "fileds"sv;
 static constexpr auto KEY_REQ_WANT = "w"sv;
 static constexpr auto KEY_VERSION = "ve"sv;
+static constexpr auto KEY_LISTEN_SYNC = "ls"sv;
 
 static constexpr auto QUERY_PING = "ping"sv;
 static constexpr auto QUERY_FIND = "find"sv;
@@ -128,6 +130,7 @@ struct ParsedMessage
     /* reported address by the distant node */
     std::string ua;
     int version {0};
+    std::optional<ListenSync> listenSync {};
     SockAddr addr;
     void msgpack_unpack(const msgpack::object& o);
 
@@ -180,7 +183,10 @@ ParsedMessage::complete()
         auto assembled = pv.reassemble();
         msgpack::unpacked msg;
         msgpack::unpack(msg, (const char*) assembled.data(), assembled.size());
-        values.emplace_back(std::make_shared<Value>(msg.get()));
+        auto value = std::make_shared<Value>(msg.get());
+        if (listenSync && value->id == Value::INVALID_ID)
+            throw msgpack::type_error();
+        values.emplace_back(std::move(value));
     }
     return true;
 }
@@ -337,7 +343,21 @@ ParsedMessage::msgpack_unpack(const msgpack::object& msg)
             parsedReq.want = &o.val;
         else if (key == KEY_VERSION)
             version = o.val.as<int>();
+        else if (key == KEY_LISTEN_SYNC) {
+            if (o.val.type != msgpack::type::ARRAY || o.val.via.array.size != 4)
+                throw msgpack::type_error();
+            for (const auto& number :
+                 {o.val.via.array.ptr[0], o.val.via.array.ptr[1], o.val.via.array.ptr[2], o.val.via.array.ptr[3]})
+                if (number.type != msgpack::type::POSITIVE_INTEGER)
+                    throw msgpack::type_error();
+            listenSync = o.val.as<ListenSync>();
+            if (!listenSync->registration)
+                throw msgpack::type_error();
+        }
     }
+
+    if (listenSync && version != 2)
+        throw msgpack::type_error();
 
     if (parsedReq.sa) {
         if (parsedReq.sa->type != msgpack::type::BIN)
@@ -360,18 +380,28 @@ ParsedMessage::msgpack_unpack(const msgpack::object& msg)
     if (parsedReq.values) {
         if (parsedReq.values->type != msgpack::type::ARRAY)
             throw msgpack::type_error();
+        if (listenSync && parsedReq.values->via.array.size > 32)
+            throw msgpack::type_error();
         for (size_t i = 0; i < parsedReq.values->via.array.size; i++) {
             auto& packed_v = parsedReq.values->via.array.ptr[i];
             if (packed_v.type == msgpack::type::POSITIVE_INTEGER) {
                 // Skip oversize values with a small margin for header overhead
-                if (packed_v.via.u64 > MAX_VALUE_SIZE + 32)
+                if (packed_v.via.u64 > MAX_VALUE_SIZE + 32 || (listenSync && !packed_v.via.u64)) {
+                    if (listenSync)
+                        throw msgpack::type_error();
                     continue;
+                }
                 value_parts[i].total_size = packed_v.via.u64;
             } else {
                 try {
-                    values.emplace_back(std::make_shared<Value>(parsedReq.values->via.array.ptr[i]));
+                    auto value = std::make_shared<Value>(parsedReq.values->via.array.ptr[i]);
+                    if (listenSync && value->id == Value::INVALID_ID)
+                        throw msgpack::type_error();
+                    values.emplace_back(std::move(value));
                 } catch (const std::exception& e) {
                     // DHT_LOG_WARN("Error reading value: %s", e.what());
+                    if (listenSync)
+                        throw msgpack::type_error();
                 }
             }
         }

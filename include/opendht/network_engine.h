@@ -19,6 +19,7 @@
 #include <algorithm>
 #include <memory>
 #include <queue>
+#include <optional>
 
 namespace dht {
 namespace net {
@@ -78,6 +79,15 @@ private:
 
 struct ParsedMessage;
 
+struct ListenSync
+{
+    uint64_t registration {0};
+    uint64_t epoch {0};
+    uint64_t sequence {0};
+    uint64_t snapshotEnd {0};
+    MSGPACK_DEFINE_ARRAY(registration, epoch, sequence, snapshotEnd)
+};
+
 /**
  * Answer for a request.
  */
@@ -91,6 +101,7 @@ struct RequestAnswer
     std::vector<Sp<FieldValueIndex>> fields {};
     std::vector<Sp<Node>> nodes4 {};
     std::vector<Sp<Node>> nodes6 {};
+    std::optional<ListenSync> listenSync {};
     RequestAnswer() {}
     RequestAnswer(ParsedMessage&& msg);
 };
@@ -167,7 +178,9 @@ private:
      * @param token (type: Blob) security token.
      * @param rid (type: uint16_t) request id.
      */
-    std::function<RequestAnswer(Sp<Node>, const InfoHash&, const Blob&, Tid, const Query&, int)> onListen {};
+    std::function<
+        RequestAnswer(Sp<Node>, const InfoHash&, const Blob&, Tid, const Query&, int, const std::optional<ListenSync>&)>
+        onListen {};
     /**
      * Called on announce request.
      *
@@ -231,29 +244,32 @@ public:
      * @param values      The values to send.
      * @param version     If version = 1, a request will be used to answer to the listener
      */
-    void tellListener(const Sp<Node>& n,
-                      Tid socket_id,
-                      const InfoHash& hash,
-                      want_t want,
-                      const Blob& ntoken,
-                      std::vector<Sp<Node>>&& nodes,
-                      std::vector<Sp<Node>>&& nodes6,
-                      std::vector<Sp<Value>>&& values,
-                      const Query& q,
-                      int version);
+    std::vector<Sp<Request>> tellListener(const Sp<Node>& n,
+                                          Tid socket_id,
+                                          const InfoHash& hash,
+                                          want_t want,
+                                          const Blob& ntoken,
+                                          std::vector<Sp<Node>>&& nodes,
+                                          std::vector<Sp<Node>>&& nodes6,
+                                          std::vector<Sp<Value>>&& values,
+                                          const Query& q,
+                                          int version,
+                                          ListenSync* sync = nullptr);
 
     void tellListenerRefreshed(const Sp<Node>& n,
                                Tid socket_id,
                                const InfoHash& hash,
                                const Blob& ntoken,
                                const std::vector<Value::Id>& values,
-                               int version);
+                               int version,
+                               ListenSync* sync = nullptr);
     void tellListenerExpired(const Sp<Node>& n,
                              Tid socket_id,
                              const InfoHash& hash,
                              const Blob& ntoken,
                              const std::vector<Value::Id>& values,
-                             int version);
+                             int version,
+                             ListenSync* sync = nullptr);
 
     bool isRunning(sa_family_t af) const;
     inline want_t want() const { return dht_socket->hasIPv4() and dht_socket->hasIPv6() ? (WANT4 | WANT6) : -1; }
@@ -358,7 +374,8 @@ public:
                            const Blob& token,
                            Tid socketId,
                            RequestCb&& on_done,
-                           RequestExpiredCb&& on_expired);
+                           RequestExpiredCb&& on_expired,
+                           const std::optional<ListenSync>& sync = {});
     /**
      * Send a "announce" request to a given node.
      *
@@ -411,19 +428,22 @@ public:
      *
      * @return the request with information concerning its success.
      */
-    void sendUpdateValues(const Sp<Node>& n,
-                          const InfoHash& infohash,
-                          std::vector<Sp<Value>>&& values,
-                          time_point created,
-                          const Blob& token,
-                          size_t sid);
+    static size_t getUpdateBatchCount(const std::vector<Sp<Value>>& values);
+    std::vector<Sp<Request>> sendUpdateValues(const Sp<Node>& n,
+                                              const InfoHash& infohash,
+                                              std::vector<Sp<Value>>&& values,
+                                              time_point created,
+                                              const Blob& token,
+                                              size_t sid,
+                                              ListenSync* sync = nullptr);
     Sp<Request> sendUpdateValues(const Sp<Node>& n,
                                  const InfoHash& infohash,
                                  std::vector<Sp<Value>>::iterator begin,
                                  std::vector<Sp<Value>>::iterator end,
                                  time_point created,
                                  const Blob& token,
-                                 size_t sid);
+                                 size_t sid,
+                                 ListenSync* sync = nullptr);
 
     /**
      * Parses a message and calls appropriate callbacks.
@@ -552,7 +572,10 @@ private:
     std::pair<Blob, Blob> bufferNodes(
         sa_family_t af, const InfoHash& id, want_t want, std::vector<Sp<Node>>& nodes, std::vector<Sp<Node>>& nodes6);
     /* answer to a listen request */
-    void sendListenConfirmation(const SockAddr& addr, Tid tid, const Blob& token = {});
+    void sendListenConfirmation(const SockAddr& addr,
+                                Tid tid,
+                                const Blob& token = {},
+                                const std::optional<ListenSync>& sync = {});
     /* answer to put request */
     void sendValueAnnounced(const SockAddr& addr, Tid, Value::Id);
     /* answer in case of error */

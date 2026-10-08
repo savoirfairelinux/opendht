@@ -461,7 +461,12 @@ private:
     void reportedAddr(const SockAddr&);
 
     // Storage
-    void storageAddListener(const InfoHash& id, const Sp<Node>& node, size_t tid, Query&& = {}, int version = 0);
+    std::optional<net::ListenSync> storageAddListener(const InfoHash& id,
+                                                      const Sp<Node>& node,
+                                                      size_t tid,
+                                                      Query&& = {},
+                                                      int version = 0,
+                                                      const std::optional<net::ListenSync>& sync = {});
     bool storageStore(const InfoHash& id,
                       const Sp<Value>& value,
                       time_point created,
@@ -615,6 +620,7 @@ private:
     void searchStep(std::weak_ptr<Search> ws);
 
     void searchSynchedNodeListen(const Sp<Search>&, SearchNode&);
+    void searchNodeListenDeadline(const Sp<Search>&, SearchNode&, const Sp<Query>&);
 
     void dumpSearch(const Search& sr, std::ostream& out) const;
 
@@ -632,8 +638,13 @@ private:
     net::RequestAnswer onGetValues(Sp<Node> node, const InfoHash& hash, want_t want, const Query& q);
     void onGetValuesDone(const Sp<Node>& status, net::RequestAnswer& a, Sp<Search>& sr, const Sp<Query>& orig_query);
     /* when we receive a listen request */
-    net::RequestAnswer onListen(
-        Sp<Node> node, const InfoHash& hash, const Blob& token, size_t socket_id, const Query& query, int version = 0);
+    net::RequestAnswer onListen(Sp<Node> node,
+                                const InfoHash& hash,
+                                const Blob& token,
+                                size_t socket_id,
+                                const Query& query,
+                                int version = 0,
+                                const std::optional<net::ListenSync>& sync = {});
     void onListenDone(const Sp<Node>& node, net::RequestAnswer& a, Sp<Search>& sr);
     /* when we receive an announce request */
     net::RequestAnswer onAnnounce(Sp<Node> node,

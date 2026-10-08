@@ -103,6 +103,7 @@ RequestAnswer::RequestAnswer(ParsedMessage&& msg)
     , fields(std::move(msg.fields))
     , nodes4(std::move(msg.nodes4))
     , nodes6(std::move(msg.nodes6))
+    , listenSync(std::move(msg.listenSync))
 {}
 
 NetworkEngine::NetworkEngine(InfoHash& myid,
@@ -144,7 +145,7 @@ NetworkEngine::~NetworkEngine()
     clear();
 }
 
-void
+std::vector<Sp<Request>>
 NetworkEngine::tellListener(const Sp<Node>& node,
                             Tid socket_id,
                             const InfoHash& hash,
@@ -154,12 +155,13 @@ NetworkEngine::tellListener(const Sp<Node>& node,
                             std::vector<Sp<Node>>&& nodes6,
                             std::vector<Sp<Value>>&& values,
                             const Query& query,
-                            int version)
+                            int version,
+                            ListenSync* sync)
 {
     auto nnodes = bufferNodes(node->getFamily(), hash, want, nodes, nodes6);
     try {
         if (version >= 1) {
-            sendUpdateValues(node, hash, std::move(values), scheduler.time(), ntoken, socket_id);
+            return sendUpdateValues(node, hash, std::move(values), scheduler.time(), ntoken, socket_id, sync);
         } else {
             sendNodesValues(node->getAddr(), socket_id, nnodes.first, nnodes.second, std::move(values), query, ntoken);
         }
@@ -167,6 +169,7 @@ NetworkEngine::tellListener(const Sp<Node>& node,
         if (logger_)
             logger_->error("Unable to send value: buffer not large enough.");
     }
+    return {};
 }
 
 void
@@ -175,7 +178,8 @@ NetworkEngine::tellListenerRefreshed(const Sp<Node>& n,
                                      const InfoHash&,
                                      const Blob& token,
                                      const std::vector<Value::Id>& values,
-                                     int version)
+                                     int version,
+                                     ListenSync* sync)
 {
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
@@ -183,7 +187,15 @@ NetworkEngine::tellListenerRefreshed(const Sp<Node>& n,
     pk.pack_map(4 + (version >= 1 ? 1 : 0) + (config.network ? 1 : 0) + (config.is_client ? 1 : 0));
 
     pk.pack(version >= 1 ? KEY_A : KEY_U);
-    pk.pack_map(1 + (version >= 1 ? 1 : 0) + (not values.empty() ? 1 : 0) + (not token.empty() ? 1 : 0));
+    pk.pack_map(1 + (version >= 1 ? 1 : 0) + (not values.empty() ? 1 : 0) + (not token.empty() ? 1 : 0)
+                + (sync ? 2 : 0));
+    if (sync) {
+        ++sync->sequence;
+        pk.pack(KEY_VERSION);
+        pk.pack(2);
+        pk.pack(KEY_LISTEN_SYNC);
+        pk.pack(*sync);
+    }
     pk.pack(KEY_REQ_ID);
     pk.pack(myid);
     if (version >= 1) {
@@ -246,7 +258,8 @@ NetworkEngine::tellListenerExpired(const Sp<Node>& n,
                                    const InfoHash&,
                                    const Blob& token,
                                    const std::vector<Value::Id>& values,
-                                   int version)
+                                   int version,
+                                   ListenSync* sync)
 {
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
@@ -254,7 +267,15 @@ NetworkEngine::tellListenerExpired(const Sp<Node>& n,
     pk.pack_map(4 + (version >= 1 ? 1 : 0) + (config.network ? 1 : 0) + (config.is_client ? 1 : 0));
 
     pk.pack(version >= 1 ? KEY_A : KEY_U);
-    pk.pack_map(1 + (version >= 1 ? 1 : 0) + (not values.empty() ? 1 : 0) + (not token.empty() ? 1 : 0));
+    pk.pack_map(1 + (version >= 1 ? 1 : 0) + (not values.empty() ? 1 : 0) + (not token.empty() ? 1 : 0)
+                + (sync ? 2 : 0));
+    if (sync) {
+        ++sync->sequence;
+        pk.pack(KEY_VERSION);
+        pk.pack(2);
+        pk.pack(KEY_LISTEN_SYNC);
+        pk.pack(*sync);
+    }
     pk.pack(KEY_REQ_ID);
     pk.pack(myid);
     if (version >= 1) {
@@ -784,10 +805,15 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
                 if (logIncoming_ and logger_)
                     logger_->debug("[node {}] got 'listen' request for {}", node->toString(), msg->info_hash.toString());
                 ++in_stats.listen;
-                RequestAnswer answer
-                    = onListen(node, msg->info_hash, msg->token, msg->socket_id, std::move(msg->query), msg->version);
+                RequestAnswer answer = onListen(node,
+                                                msg->info_hash,
+                                                msg->token,
+                                                msg->socket_id,
+                                                std::move(msg->query),
+                                                msg->version,
+                                                msg->listenSync);
                 auto nnodes = bufferNodes(from.getFamily(), msg->info_hash, msg->want, answer.nodes4, answer.nodes6);
-                sendListenConfirmation(from, msg->tid, answer.ntoken);
+                sendListenConfirmation(from, msg->tid, answer.ntoken, answer.listenSync);
                 break;
             }
             case MessageType::UpdateValue: {
@@ -1307,7 +1333,8 @@ NetworkEngine::sendListen(const Sp<Node>& n,
                           const Blob& token,
                           Tid socketId,
                           RequestCb&& on_done,
-                          RequestExpiredCb&& on_expired)
+                          RequestExpiredCb&& on_expired,
+                          const std::optional<ListenSync>& sync)
 {
     Tid tid(n->getNewTid());
     msgpack::sbuffer buffer;
@@ -1316,11 +1343,15 @@ NetworkEngine::sendListen(const Sp<Node>& n,
 
     auto has_query = not query.where.empty() or not query.select.empty();
     pk.pack(KEY_A);
-    pk.pack_map(5 + has_query);
+    pk.pack_map(5 + has_query + (sync ? 1 : 0));
     pk.pack(KEY_REQ_ID);
     pk.pack(myid);
     pk.pack(KEY_VERSION);
-    pk.pack(1);
+    pk.pack(sync ? 2 : 1);
+    if (sync) {
+        pk.pack(KEY_LISTEN_SYNC);
+        pk.pack(*sync);
+    }
     pk.pack(KEY_REQ_H);
     pk.pack(hash);
     pk.pack(KEY_REQ_TOKEN);
@@ -1366,14 +1397,23 @@ NetworkEngine::sendListen(const Sp<Node>& n,
 }
 
 void
-NetworkEngine::sendListenConfirmation(const SockAddr& addr, Tid tid, const Blob& token)
+NetworkEngine::sendListenConfirmation(const SockAddr& addr,
+                                      Tid tid,
+                                      const Blob& token,
+                                      const std::optional<ListenSync>& sync)
 {
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
     pk.pack_map(4 + (config.network ? 1 : 0) + (config.is_client ? 1 : 0));
 
     pk.pack(KEY_R);
-    pk.pack_map(2 + (not token.empty() ? 1 : 0));
+    pk.pack_map(2 + (not token.empty() ? 1 : 0) + (sync ? 2 : 0));
+    if (sync) {
+        pk.pack(KEY_VERSION);
+        pk.pack(2);
+        pk.pack(KEY_LISTEN_SYNC);
+        pk.pack(*sync);
+    }
     pk.pack(KEY_REQ_ID);
     pk.pack(myid);
     insertAddr(pk, addr);
@@ -1471,29 +1511,50 @@ NetworkEngine::sendAnnounceValue(const Sp<Node>& n,
     return req;
 }
 
-void
+static std::vector<size_t>
+updateBatchEnds(const std::vector<Sp<Value>>& values)
+{
+    std::vector<size_t> ends;
+    size_t totalSize = 0;
+    size_t count = 0;
+    for (size_t index = 0; index < values.size(); ++index) {
+        auto size = packMsg(*values[index]).size();
+        if (count && (count == 32 || totalSize + size > 56 * 1024)) {
+            ends.emplace_back(index);
+            totalSize = 0;
+            count = 0;
+        }
+        totalSize += size;
+        ++count;
+    }
+    if (count)
+        ends.emplace_back(values.size());
+    return ends;
+}
+
+size_t
+NetworkEngine::getUpdateBatchCount(const std::vector<Sp<Value>>& values)
+{
+    return updateBatchEnds(values).size();
+}
+
+std::vector<Sp<Request>>
 NetworkEngine::sendUpdateValues(const Sp<Node>& n,
                                 const InfoHash& infohash,
                                 std::vector<Sp<Value>>&& values,
                                 time_point created,
                                 const Blob& token,
-                                size_t socket_id)
+                                size_t socket_id,
+                                ListenSync* sync)
 {
-    size_t total_size = 0;
-
-    auto b = values.begin(), e = values.begin();
-    while (e != values.end()) {
-        if (total_size >= MAX_MESSAGE_VALUE_SIZE) {
-            sendUpdateValues(n, infohash, b, e, created, token, socket_id);
-            b = e;
-            total_size = 0;
-        }
-        total_size += (*e)->size();
-        ++e;
+    std::vector<Sp<Request>> requests;
+    size_t begin = 0;
+    for (auto end : updateBatchEnds(values)) {
+        requests.emplace_back(
+            sendUpdateValues(n, infohash, values.begin() + begin, values.begin() + end, created, token, socket_id, sync));
+        begin = end;
     }
-    if (b != e) {
-        sendUpdateValues(n, infohash, b, e, created, token, socket_id);
-    }
+    return requests;
 }
 
 Sp<Request>
@@ -1503,7 +1564,8 @@ NetworkEngine::sendUpdateValues(const Sp<Node>& n,
                                 std::vector<Sp<Value>>::iterator end,
                                 time_point created,
                                 const Blob& token,
-                                size_t socket_id)
+                                size_t socket_id,
+                                ListenSync* sync)
 {
     Tid tid(n->getNewTid());
     Tid sid(socket_id);
@@ -1513,11 +1575,16 @@ NetworkEngine::sendUpdateValues(const Sp<Node>& n,
     pk.pack_map(5 + (config.network ? 1 : 0) + (config.is_client ? 1 : 0));
 
     pk.pack(KEY_A);
-    pk.pack_map((created < scheduler.time() ? 7 : 6));
+    pk.pack_map((created < scheduler.time() ? 7 : 6) + (sync ? 1 : 0));
     pk.pack(KEY_REQ_ID);
     pk.pack(myid);
     pk.pack(KEY_VERSION);
-    pk.pack(1);
+    pk.pack(sync ? 2 : 1);
+    if (sync) {
+        ++sync->sequence;
+        pk.pack(KEY_LISTEN_SYNC);
+        pk.pack(*sync);
+    }
     pk.pack(KEY_REQ_H);
     pk.pack(infohash);
     pk.pack(KEY_REQ_SID);

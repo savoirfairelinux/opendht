@@ -650,6 +650,30 @@ Dht::searchSendAnnounceValue(const Sp<Search>& sr, unsigned syncLevel)
 }
 
 void
+Dht::searchNodeListenDeadline(const Sp<Search>& search, SearchNode& source, const Sp<Query>& query)
+{
+    auto found = source.listenStatus.find(query);
+    if (found == source.listenStatus.end() || found->second.initialized || found->second.syncDeadline)
+        return;
+    std::weak_ptr<Search> pending = search;
+    found->second.syncDeadline
+        = scheduler.add(scheduler.time() + std::chrono::seconds(30),
+                        [this, pending, query, node = source.node, registration = found->second.registration] {
+                            if (auto search = pending.lock()) {
+                                if (auto source = search->getNode(node)) {
+                                    auto status = source->listenStatus.find(query);
+                                    if (status != source->listenStatus.end()
+                                        && status->second.registration == registration && !status->second.initialized) {
+                                        search->cache.onReady(query, false);
+                                        source->listenStatus.erase(query);
+                                        scheduler.edit(search->nextSearchStep, scheduler.time());
+                                    }
+                                }
+                            }
+                        });
+}
+
+void
 Dht::searchSynchedNodeListen(const Sp<Search>& sr, SearchNode& n)
 {
     const auto& listenExp = getListenExpiration();
@@ -665,7 +689,11 @@ Dht::searchSynchedNodeListen(const Sp<Search>& sr, SearchNode& n)
                     if (auto sn = sr->getNode(node)) {
                         if (not answer.ntoken.empty())
                             sn->refreshToken(answer.ntoken);
-                        sn->onValues(query, std::move(answer), types, scheduler);
+                        if (!sn->onValues(query, std::move(answer), types, scheduler)) {
+                            sr->cache.onReady(query, false);
+                            sn->listenStatus.erase(query);
+                        } else
+                            searchNodeListenDeadline(sr, *sn, query);
                     }
                 }
             });
@@ -678,6 +706,10 @@ Dht::searchSynchedNodeListen(const Sp<Search>& sr, SearchNode& n)
         //     logger_->d(sr->id, n.node->id, "[search %s] [node %s] Sending 'listen'",
         //        sr->id.toString().c_str(), n.node->toString().c_str());
 
+        if (r != n.listenStatus.end() && !n.node->getSocket(r->second.socketId)) {
+            n.listenStatus.erase(r);
+            r = n.listenStatus.end();
+        }
         if (r == n.listenStatus.end()) {
             r = n.listenStatus
                     .emplace(std::piecewise_construct,
@@ -691,25 +723,39 @@ Dht::searchSynchedNodeListen(const Sp<Search>& sr, SearchNode& n)
                     }
                 }
             });
-        } else if (not n.node->getSocket(r->second.socketId)) {
-            r->second.socketId = openListenSocket();
         }
+        if (!r->second.registration)
+            r->second.registration = std::uniform_int_distribution<uint64_t>(1)(rd);
+        searchNodeListenDeadline(sr, n, query);
         auto new_req = network_engine.sendListen(
             n.node,
             sr->id,
             *query,
             n.token,
             r->second.socketId,
-            [this, ws, query](const net::Request& req, net::RequestAnswer&& answer) mutable {
+            [this, ws, query, socketId = r->second.socketId](const net::Request& req,
+                                                             net::RequestAnswer&& answer) mutable {
                 /* on done */
                 if (auto sr = ws.lock()) {
-                    scheduler.edit(sr->nextSearchStep, scheduler.time());
                     if (auto sn = sr->getNode(req.node)) {
+                        auto status = sn->listenStatus.find(query);
+                        if (status == sn->listenStatus.end() || status->second.socketId != socketId)
+                            return;
+                        scheduler.edit(sr->nextSearchStep, scheduler.time());
+                        onListenDone(req.node, answer, sr);
                         auto job = scheduler.add(sn->getListenTime(query, getListenExpiration()),
                                                  std::bind(&Dht::searchStep, this, ws));
-                        sn->onListenSynced(query, true, std::move(job));
+                        sn->onListenSynced(query, status->second.initialized, std::move(job));
+                        if ((answer.listenSync && answer.ntoken.empty()) || !answer.fields.empty()
+                            || !answer.values.empty()
+                            || !sn->confirmListen(query, answer.listenSync, types, scheduler)) {
+                            sr->cache.onReady(query, false);
+                            status = sn->listenStatus.find(query);
+                            if (status != sn->listenStatus.end())
+                                sn->listenStatus.erase(status);
+                        } else
+                            searchNodeListenDeadline(sr, *sn, query);
                     }
-                    onListenDone(req.node, answer, sr);
                 }
             },
             [this, ws, query, socketId = r->second.socketId](const net::Request& req, bool over) mutable {
@@ -726,7 +772,8 @@ Dht::searchSynchedNodeListen(const Sp<Search>& sr, SearchNode& n)
                         }
                     }
                 }
-            });
+            },
+            net::ListenSync {r->second.registration, 0, 0, 0});
         // Here the request may have failed and the CachedListenStatus removed
         r = n.listenStatus.find(query);
         if (r != n.listenStatus.end()) {
@@ -1484,7 +1531,8 @@ Dht::storageChanged(const InfoHash& id, Storage& st, const Sp<Value>& v, bool ne
                                             {},
                                             std::move(vals),
                                             l.second.query,
-                                            l.second.version);
+                                            l.second.version,
+                                            l.second.stream ? &l.second.stream->sync : nullptr);
             }
         }
     }
@@ -1557,35 +1605,56 @@ Dht::storageStore(const InfoHash& id,
     return std::get<0>(store);
 }
 
-void
-Dht::storageAddListener(const InfoHash& id, const Sp<Node>& node, size_t socket_id, Query&& query, int version)
+std::optional<net::ListenSync>
+Dht::storageAddListener(const InfoHash& id,
+                        const Sp<Node>& node,
+                        size_t socket_id,
+                        Query&& query,
+                        int version,
+                        const std::optional<net::ListenSync>& sync)
 {
     const auto& now = scheduler.time();
     auto st = store.find(id);
     if (st == store.end()) {
         if (store.size() >= max_store_keys)
-            return;
+            throw net::DhtProtocolException(net::DhtProtocolException::NON_AUTHORITATIVE_INFORMATION);
         st = store.emplace(id, now).first;
     }
     auto& node_listeners = st->second.listeners[node];
     auto l = node_listeners.find(socket_id);
+    if (l != node_listeners.end() && sync
+        && (!l->second.stream || l->second.stream->sync.registration != sync->registration)) {
+        node_listeners.erase(l);
+        l = node_listeners.end();
+    }
     if (l == node_listeners.end()) {
-        auto vals = st->second.get(query.where.getFilter());
-        if (not vals.empty()) {
-            network_engine.tellListener(node,
-                                        socket_id,
-                                        id,
-                                        WANT4 | WANT6,
-                                        makeToken(node->getAddr(), false),
-                                        dht4.buckets.findClosestNodes(id, now, TARGET_NODES),
-                                        dht6.buckets.findClosestNodes(id, now, TARGET_NODES),
-                                        std::move(vals),
-                                        query,
-                                        version);
+        l = node_listeners.emplace(socket_id, Listener {now, std::move(query), version}).first;
+        auto vals = st->second.get(l->second.query.where.getFilter());
+        if (version == 2 && sync) {
+            l->second.stream = std::make_shared<Listener::Stream>();
+            l->second.stream->sync = {sync->registration,
+                                      std::uniform_int_distribution<uint64_t>(1)(rd),
+                                      0,
+                                      network_engine.getUpdateBatchCount(vals)};
         }
-        node_listeners.emplace(socket_id, Listener {now, std::forward<Query>(query), version});
+        if (not vals.empty()) {
+            auto requests = network_engine.tellListener(node,
+                                                        socket_id,
+                                                        id,
+                                                        WANT4 | WANT6,
+                                                        makeToken(node->getAddr(), false),
+                                                        dht4.buckets.findClosestNodes(id, now, TARGET_NODES),
+                                                        dht6.buckets.findClosestNodes(id, now, TARGET_NODES),
+                                                        std::move(vals),
+                                                        l->second.query,
+                                                        version,
+                                                        l->second.stream ? &l->second.stream->sync : nullptr);
+            if (l->second.stream)
+                l->second.stream->initialRequests = std::move(requests);
+        }
     } else
         l->second.refresh(now, std::forward<Query>(query));
+    return l->second.stream ? std::optional<net::ListenSync>(l->second.stream->sync) : std::nullopt;
 }
 
 void
@@ -1632,7 +1701,13 @@ Dht::storageRemoved(const InfoHash& id, Storage& st, const std::vector<Sp<Value>
                                   id.to_view(),
                                   node_listeners.first->toString());
                 Blob ntoken = makeToken(node_listeners.first->getAddr(), false);
-                network_engine.tellListenerExpired(node_listeners.first, l.first, id, ntoken, ids, l.second.version);
+                network_engine.tellListenerExpired(node_listeners.first,
+                                                   l.first,
+                                                   id,
+                                                   ntoken,
+                                                   ids,
+                                                   l.second.version,
+                                                   l.second.stream ? &l.second.stream->sync : nullptr);
             }
         }
     }
@@ -2085,7 +2160,7 @@ Dht::Dht(std::unique_ptr<net::DatagramSocket>&& sock,
                      std::bind(&Dht::onPing, this, _1),
                      std::bind(&Dht::onFindNode, this, _1, _2, _3),
                      std::bind(&Dht::onGetValues, this, _1, _2, _3, _4),
-                     std::bind(&Dht::onListen, this, _1, _2, _3, _4, _5, _6),
+                     std::bind(&Dht::onListen, this, _1, _2, _3, _4, _5, _6, _7),
                      std::bind(&Dht::onAnnounce, this, _1, _2, _3, _4, _5),
                      std::bind(&Dht::onRefresh, this, _1, _2, _3, _4))
     , persistPath(config.persist_path)
@@ -2784,7 +2859,13 @@ Dht::onGetValuesDone(const Sp<Node>& node, net::RequestAnswer& a, Sp<Search>& sr
 }
 
 net::RequestAnswer
-Dht::onListen(Sp<Node> node, const InfoHash& hash, const Blob& token, size_t socket_id, const Query& query, int version)
+Dht::onListen(Sp<Node> node,
+              const InfoHash& hash,
+              const Blob& token,
+              size_t socket_id,
+              const Query& query,
+              int version,
+              const std::optional<net::ListenSync>& sync)
 {
     if (not hash) {
         if (logger_)
@@ -2798,9 +2879,11 @@ Dht::onListen(Sp<Node> node, const InfoHash& hash, const Blob& token, size_t soc
         throw net::DhtProtocolException {net::DhtProtocolException::UNAUTHORIZED,
                                          net::DhtProtocolException::LISTEN_WRONG_TOKEN};
     }
+    if (version == 2 && (!sync || sync->epoch || sync->sequence || sync->snapshotEnd))
+        throw net::DhtProtocolException(net::DhtProtocolException::NON_AUTHORITATIVE_INFORMATION);
     Query q = query;
-    storageAddListener(hash, node, socket_id, std::move(q), version);
     net::RequestAnswer answer {};
+    answer.listenSync = storageAddListener(hash, node, socket_id, std::move(q), version, sync);
     answer.ntoken = makeToken(node->getAddr(), false);
     return answer;
 }
@@ -2942,8 +3025,13 @@ Dht::storageRefresh(const InfoHash& id, Value::Id vid)
                                       id.toString(),
                                       node_listeners.first->toString());
                     Blob ntoken = makeToken(node_listeners.first->getAddr(), false);
-                    network_engine
-                        .tellListenerRefreshed(node_listeners.first, l.first, id, ntoken, ids, l.second.version);
+                    network_engine.tellListenerRefreshed(node_listeners.first,
+                                                         l.first,
+                                                         id,
+                                                         ntoken,
+                                                         ids,
+                                                         l.second.version,
+                                                         l.second.stream ? &l.second.stream->sync : nullptr);
                 }
             }
         }
