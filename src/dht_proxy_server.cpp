@@ -564,6 +564,7 @@ DhtProxyServer::~DhtProxyServer()
                         l.expireNotifyTimer->cancel();
                     if (l.expireTimer)
                         l.expireTimer->cancel();
+                    onPushListenReady(l.sessionCtx, false);
                     dht_->cancelListen(ls.first, std::move(l.internalToken));
                 }
         }
@@ -982,6 +983,7 @@ DhtProxyServer::subscribe(restinio::request_handle_t request, restinio::router::
                 failed = listIt->sessionCtx->initialized && !listIt->sessionCtx->initialOk;
             }
             if (failed) {
+                onPushListenReady(listIt->sessionCtx, false);
                 dht_->cancelListen(infoHash, std::move(listIt->internalToken));
                 listIt->sessionCtx = std::make_shared<PushSessionContext>(sessionId);
                 newListener = true;
@@ -1040,7 +1042,16 @@ DhtProxyServer::subscribe(restinio::request_handle_t request, restinio::router::
         }
         if (root["sync"].isObject()) {
             auto sessionCtx = listener.sessionCtx;
-            auto finish = [this, request, sessionCtx, sync = root["sync"]]() {
+            auto finish = [this,
+                           request,
+                           context = std::weak_ptr<PushSessionContext>(sessionCtx),
+                           sync = root["sync"]]() {
+                auto sessionCtx = context.lock();
+                if (!sessionCtx) {
+                    auto response = initHttpResponse(request->create_response(restinio::status_service_unavailable()));
+                    response.done();
+                    return;
+                }
                 std::vector<Json::Value> snapshotValues;
                 Json::Value marker;
                 bool ok;
@@ -1179,6 +1190,7 @@ DhtProxyServer::handleCancelPushListen(const asio::error_code& ec,
 
     for (auto listener = listeners->second.begin(); listener != listeners->second.end();) {
         if (listener->clientId == clientId) {
+            onPushListenReady(listener->sessionCtx, false);
             if (dht_)
                 dht_->cancelListen(key, std::move(listener->internalToken));
             listener = listeners->second.erase(listener);
@@ -1195,16 +1207,24 @@ DhtProxyServer::handleCancelPushListen(const asio::error_code& ec,
 void
 DhtProxyServer::onPushListenReady(const std::shared_ptr<PushSessionContext>& sessionCtx, bool ok)
 {
+    if (!sessionCtx)
+        return;
     std::vector<std::function<void()>> pending;
     {
         std::lock_guard sessionLock(sessionCtx->lock);
+        if (sessionCtx->initialized)
+            return;
         sessionCtx->initialized = true;
         sessionCtx->initialOk = ok;
         pending = std::move(sessionCtx->pendingSnapshots);
         sessionCtx->pendingSnapshots.clear();
     }
-    for (auto& response : pending)
-        asio::post(io_context(), std::move(response));
+    for (auto& response : pending) {
+        if (ok)
+            asio::post(io_context(), std::move(response));
+        else
+            response();
+    }
 }
 
 bool
