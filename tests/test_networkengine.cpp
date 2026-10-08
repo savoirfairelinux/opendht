@@ -271,7 +271,7 @@ struct ListenSnapshotTransport
     std::unique_ptr<Dht> server;
     size_t token {0};
 
-    ListenSnapshotTransport()
+    explicit ListenSnapshotTransport(uint64_t serverSeed = 31)
     {
         Config config {};
         config.max_req_per_sec = -1;
@@ -290,7 +290,7 @@ struct ListenSnapshotTransport
         server = std::make_unique<Dht>(std::move(serverSocket),
                                        config,
                                        Sp<Logger> {},
-                                       std::make_unique<std::mt19937_64>(31));
+                                       std::make_unique<std::mt19937_64>(serverSeed));
     }
 
     ~ListenSnapshotTransport()
@@ -348,26 +348,50 @@ struct ListenSnapshotTransport
             acknowledge();
     }
 
-    void acknowledge()
+    void acknowledge(bool legacy = false, bool updatesFirst = false)
     {
         auto requests = std::move(clientPackets->sends);
         clientPackets->sends.clear();
         unsigned registrations = 0;
+        Blob legacyToken;
         for (const auto& packet : requests) {
             if (parse(packet).type == MessageType::Listen) {
                 ++registrations;
-                server->network_engine.processMessage(packet.data.data(), packet.data.size(), clientAddr);
+                if (legacy) {
+                    auto message = parse(packet);
+                    auto node = server->network_engine.insertNode(client->getNodeId(), clientAddr);
+                    auto answer = server->onListen(node,
+                                                   key,
+                                                   message.token,
+                                                   message.socket_id,
+                                                   message.query,
+                                                   1,
+                                                   {});
+                    legacyToken = std::move(answer.ntoken);
+                } else
+                    server->network_engine.processMessage(packet.data.data(), packet.data.size(), clientAddr);
             }
         }
         CPPUNIT_ASSERT_EQUAL(1u, registrations);
         auto replies = std::move(serverPackets->sends);
         serverPackets->sends.clear();
+        std::vector<TestDatagramSocket::SentPacket> confirmations;
         for (const auto& packet : replies) {
             if (parse(packet).type == MessageType::Reply)
-                client->network_engine.processMessage(packet.data.data(), packet.data.size(), serverAddr);
+                confirmations.emplace_back(packet);
             else
                 delayedUpdates.emplace_back(packet);
         }
+        if (updatesFirst)
+            deliverUpdates();
+        if (legacy) {
+            ParsedMessage acknowledgment;
+            acknowledgment.type = MessageType::Reply;
+            acknowledgment.token = std::move(legacyToken);
+            initialRequest()->setDone(std::move(acknowledgment));
+        }
+        for (const auto& packet : confirmations)
+            client->network_engine.processMessage(packet.data.data(), packet.data.size(), serverAddr);
     }
 
     void getRound(bool reversed = false)
@@ -802,18 +826,78 @@ NetworkEngineTester::testListenReadinessSnapshotVariants()
 void
 NetworkEngineTester::testListenReadinessSnapshotLegacy()
 {
-    for (size_t count : {size_t(0), size_t(3)}) {
-        ListenSnapshotTransport transport;
-        transport.store(count);
-        transport.start(false);
-        auto request = transport.initialRequest();
-        ParsedMessage answer;
-        answer.type = MessageType::Reply;
-        answer.token = transport.server->makeToken(transport.clientAddr, false);
-        request->setDone(std::move(answer));
-        CPPUNIT_ASSERT(transport.results == std::vector<bool>({false}));
-        CPPUNIT_ASSERT(transport.received.empty());
-    }
+    for (size_t count : {size_t(0), size_t(3)})
+        for (bool updatesFirst : {false, true}) {
+            ListenSnapshotTransport transport;
+            transport.store(count, 6000);
+            transport.start(false);
+            transport.acknowledge(true, updatesFirst);
+            CPPUNIT_ASSERT(transport.results == std::vector<bool>({true}));
+            CPPUNIT_ASSERT(transport.snapshots == std::vector<size_t>({updatesFirst ? count : 0}));
+            transport.getRound(true);
+            CPPUNIT_ASSERT_EQUAL(count, transport.received.size());
+            CPPUNIT_ASSERT_EQUAL(size_t(1), transport.results.size());
+
+            std::vector<bool> reusedResults;
+            size_t reusedValues = 0;
+            auto reused = transport.client->listen(
+                transport.key,
+                [&](const std::vector<Sp<Value>>& values, bool expired) {
+                    if (!expired)
+                        reusedValues += values.size();
+                    return true;
+                },
+                {},
+                {},
+                [&](bool ok) { reusedResults.emplace_back(ok); });
+            CPPUNIT_ASSERT(reused != 0);
+            CPPUNIT_ASSERT_EQUAL(count, reusedValues);
+            CPPUNIT_ASSERT(reusedResults == std::vector<bool>({true}));
+            CPPUNIT_ASSERT(transport.client->cancelListen(transport.key, reused));
+        }
+}
+
+void
+NetworkEngineTester::testListenReadinessMixedPeers()
+{
+    ListenSnapshotTransport transport;
+    transport.store(1);
+    transport.start(false);
+    auto nativeRequests = std::move(transport.clientPackets->sends);
+    transport.clientPackets->sends.clear();
+
+    ListenSnapshotTransport legacy(32);
+    legacy.serverAddr.setPort(5032);
+    legacy.serverPackets->bound_ = legacy.serverAddr;
+    legacy.store(2);
+    auto search = transport.client->searches(AF_INET).at(transport.key);
+    auto node = transport.client->network_engine.insertNode(legacy.server->getNodeId(), legacy.serverAddr);
+    auto* source = search->getNode(node);
+    CPPUNIT_ASSERT(source);
+    source->token = legacy.server->makeToken(transport.clientAddr, false);
+    source->last_get_reply = transport.client->scheduler.time();
+    transport.client->searchSynchedNodeListen(search, *source);
+    CPPUNIT_ASSERT_EQUAL(size_t(1), source->listenStatus.size());
+    auto& status = source->listenStatus.begin()->second;
+    auto peer = legacy.server->network_engine.insertNode(transport.client->getNodeId(), transport.clientAddr);
+    auto query = *source->listenStatus.begin()->first;
+    legacy.server->storageAddListener(transport.key, peer, status.socketId, std::move(query), 1, {});
+    ParsedMessage acknowledgment;
+    acknowledgment.type = MessageType::Reply;
+    acknowledgment.token = source->token;
+    status.req->setDone(std::move(acknowledgment));
+    CPPUNIT_ASSERT(transport.results.empty());
+    for (const auto& packet : legacy.serverPackets->sends)
+        transport.client->network_engine.processMessage(packet.data.data(), packet.data.size(), legacy.serverAddr);
+    CPPUNIT_ASSERT_EQUAL(size_t(2), transport.received.size());
+    CPPUNIT_ASSERT(transport.results.empty());
+
+    transport.clientPackets->sends = std::move(nativeRequests);
+    transport.acknowledge();
+    CPPUNIT_ASSERT(transport.results.empty());
+    transport.getRound();
+    CPPUNIT_ASSERT(transport.results == std::vector<bool>({true}));
+    CPPUNIT_ASSERT_EQUAL(size_t(2), transport.received.size());
 }
 
 void

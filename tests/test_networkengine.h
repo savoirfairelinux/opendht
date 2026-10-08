@@ -25,6 +25,7 @@ class NetworkEngineTester : public CppUnit::TestFixture
     CPPUNIT_TEST(testListenReadinessWaitsForInitialUpdate);
     CPPUNIT_TEST(testListenReadinessSnapshotVariants);
     CPPUNIT_TEST(testListenReadinessSnapshotLegacy);
+    CPPUNIT_TEST(testListenReadinessMixedPeers);
     CPPUNIT_TEST(testListenReadinessSnapshotFailure);
     CPPUNIT_TEST(testListenReadinessSnapshotCancellation);
     CPPUNIT_TEST(testListenReadinessSnapshotReplacement);
@@ -65,6 +66,7 @@ public:
     void testListenReadinessWaitsForInitialUpdate();
     void testListenReadinessSnapshotVariants();
     void testListenReadinessSnapshotLegacy();
+    void testListenReadinessMixedPeers();
     void testListenReadinessSnapshotFailure();
     void testListenReadinessSnapshotCancellation();
     void testListenReadinessSnapshotReplacement();
