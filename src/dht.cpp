@@ -712,13 +712,19 @@ Dht::searchSynchedNodeListen(const Sp<Search>& sr, SearchNode& n)
                     onListenDone(req.node, answer, sr);
                 }
             },
-            [this, ws, query](const net::Request& req, bool over) mutable {
+            [this, ws, query, socketId = r->second.socketId](const net::Request& req, bool over) mutable {
                 /* on request expired */
                 if (auto sr = ws.lock()) {
-                    scheduler.edit(sr->nextSearchStep, scheduler.time());
-                    if (over)
-                        if (auto sn = sr->getNode(req.node))
+                    if (auto sn = sr->getNode(req.node)) {
+                        auto status = sn->listenStatus.find(query);
+                        if (status == sn->listenStatus.end() || status->second.socketId != socketId)
+                            return;
+                        scheduler.edit(sr->nextSearchStep, scheduler.time());
+                        if (over) {
+                            sr->cache.onReady(query, false);
                             sn->listenStatus.erase(query);
+                        }
+                    }
                 }
             });
         // Here the request may have failed and the CachedListenStatus removed
@@ -974,8 +980,11 @@ Dht::listenTo(
     auto& srs = searches(af);
     auto srp = srs.find(id);
     Sp<Search> sr = (srp == srs.end() || srp->second->expired) ? search(id, af) : srp->second;
-    if (!sr)
-        throw DhtException("Unable to create search");
+    if (!sr) {
+        if (ready)
+            ready(false);
+        return 0;
+    }
     if (logger_)
         logger_->warn("[search {} IPv{}] Listen", id.to_view(), (af == AF_INET) ? '4' : '6');
     sr->done = false;
@@ -1052,6 +1061,15 @@ Dht::listen(const InfoHash& id, ValueCallback cb, Value::Filter f, Where where, 
     if ((isRunning(AF_INET) && token4 == 0) || (isRunning(AF_INET6) && token6 == 0)) {
         if (st != store.end())
             st->second.cancelListen(tokenlocal);
+        for (auto family : {AF_INET, AF_INET6}) {
+            auto listenerToken = family == AF_INET ? token4 : token6;
+            if (!listenerToken)
+                continue;
+            auto& familySearches = searches(family);
+            auto search = familySearches.find(id);
+            if (search != familySearches.end())
+                search->second->cancelListen(listenerToken, scheduler);
+        }
         initial->notify(false);
         return 0;
     }

@@ -239,6 +239,13 @@ public:
             operation.second->onReady(ok);
     }
 
+    void onReady(const Sp<Query>& query, bool ok)
+    {
+        auto operation = getOp(query);
+        if (operation != ops.end())
+            operation->second->onReady(ok);
+    }
+
     void onSearchReady()
     {
         for (auto& operation : ops)
