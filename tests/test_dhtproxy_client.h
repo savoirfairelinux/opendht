@@ -40,7 +40,7 @@ class DhtProxyClientTester : public CppUnit::TestFixture
     CPPUNIT_TEST(testInvalidPushRevision);
     CPPUNIT_TEST(testRecoveryBackoff);
     CPPUNIT_TEST(testContiguousExpiration);
-    CPPUNIT_TEST(testLegacyPushValidatesRevisions);
+    CPPUNIT_TEST(testRejectsUnrevisionedPushes);
 #endif
     CPPUNIT_TEST_SUITE_END();
 
@@ -75,7 +75,7 @@ public:
     void testInvalidPushRevision();
     void testRecoveryBackoff();
     void testContiguousExpiration();
-    void testLegacyPushValidatesRevisions();
+    void testRejectsUnrevisionedPushes();
 #endif
 };
 

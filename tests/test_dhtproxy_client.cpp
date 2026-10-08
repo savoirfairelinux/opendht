@@ -150,49 +150,50 @@ DhtProxyClientTester::testReadinessCancelsAnotherListener()
 
 #ifdef OPENDHT_PUSH_NOTIFICATIONS
 void
-DhtProxyClientTester::testLegacyPushValidatesRevisions()
+DhtProxyClientTester::testRejectsUnrevisionedPushes()
 {
     DhtProxyClient client({}, {}, [] {}, "", "OpenDHT-Test", "client-id", "push-token");
     client.httpContext_.stop();
     client.httpClientThread_.join();
     client.proxyUrl_ = "http://127.0.0.1:1";
-    auto key = InfoHash::get("legacy-push-validation");
+    auto key = InfoHash::get("unrevisioned-push-rejection");
     client.listen(key, [](const std::vector<Sp<Value>>&, bool) { return true; }, {}, {});
     auto& listener = client.searches_.at(key).listeners.begin()->second;
     auto value = std::make_shared<Value>("obsolete");
     value->id = 42;
     finishSync(client, listener.request, {value}, 5);
-    client.pushNotificationReceived({
-        {"key", key.toString()},
-        {"t",   "10000"       }
-    });
-    auto validation = listener.request;
-    CPPUNIT_ASSERT(validation->header_.method() == restinio::http_method_subscribe());
-    CPPUNIT_ASSERT_EQUAL(size_t(1), client.requests_.size());
-    client.pushNotificationReceived({
+    auto synchronized = listener.request;
+    auto requestCount = client.requests_.size();
+    for (const auto& notification : std::vector<std::map<std::string, std::string>> {
+             {{"key", key.toString()}, {"t", "10000"}},
+             {{"key", key.toString()}, {"expired", "true"}, {"ids", "42"}},
+             {{"key", key.toString()}, {"epoch", "test-epoch"}},
+             {{"key", key.toString()}, {"revision", "6"}}}) {
+        CPPUNIT_ASSERT(client.pushNotificationReceived(notification) == PushNotificationResult::Error);
+        CPPUNIT_ASSERT(listener.request == synchronized);
+        CPPUNIT_ASSERT_EQUAL(requestCount, client.requests_.size());
+        CPPUNIT_ASSERT_EQUAL(uint64_t(5), listener.syncRevision);
+        CPPUNIT_ASSERT(listener.opstate->ok.load());
+        CPPUNIT_ASSERT(client.getLocalById(key, 42));
+    }
+    CPPUNIT_ASSERT(client.pushNotificationReceived({
         {"key",      key.toString()},
         {"epoch",    "test-epoch"  },
         {"revision", "6"           },
         {"expired",  "true"        },
         {"ids",      "42"          }
-    });
+    }) == PushNotificationResult::ValuesExpired);
     client.periodic(nullptr, 0, {}, clock::now());
     CPPUNIT_ASSERT(!client.getLocalById(key, 42));
-    finishSync(client, validation, {value}, 5);
-    CPPUNIT_ASSERT(!client.getLocalById(key, 42));
-    client.handleResubscribe({}, key, 1, listener.opstate);
-    finishSync(client, listener.request, {}, 6);
-    CPPUNIT_ASSERT(listener.opstate->ok.load());
-    CPPUNIT_ASSERT(!client.getLocalById(key, 42));
     client.restartListeners({});
-    validation = listener.request;
-    client.pushNotificationReceived({
+    auto validation = listener.request;
+    CPPUNIT_ASSERT(client.pushNotificationReceived({
         {"key", key.toString()}
-    });
+    }) == PushNotificationResult::Error);
     finishSync(client, validation, {}, 6, true, false);
-    CPPUNIT_ASSERT(listener.request != validation);
-    finishSync(client, listener.request, {}, 6, true, false);
+    CPPUNIT_ASSERT(listener.request == validation);
     CPPUNIT_ASSERT(listener.opstate->ok.load());
+    CPPUNIT_ASSERT(!client.getLocalById(key, 42));
 }
 
 void
