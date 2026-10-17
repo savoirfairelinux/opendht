@@ -139,11 +139,19 @@ NetworkEngine::NetworkEngine(InfoHash& myid,
     , cache(rd)
     , rate_limiter(config.max_req_per_sec)
     , scheduler(scheduler)
-{}
+{
+    if (transport_) {
+        epoch_.key = transport::KeyPair::generate();
+        epochRotation_ = scheduler.add(scheduler.time() + EPOCH_DURATION, std::bind(&NetworkEngine::rotateEpoch, this));
+    }
+}
 
 NetworkEngine::~NetworkEngine()
 {
     clear();
+    scheduler.cancel(epochRotation_);
+    epoch_.wipe();
+    previousEpoch_.wipe();
 }
 
 void
@@ -352,6 +360,11 @@ NetworkEngine::requestStep(Sp<Request> sreq)
     } else if (req.attempt_count == 1) {
         if (req.on_expired)
             req.on_expired(req, false);
+        // The peer may have lost our ephemeral key or credential: retry with an Initial envelope
+        if (const auto& peer = node.getTransport()) {
+            peer->ephemeral.reset();
+            peer->acked = false;
+        }
     }
 
     auto err = send(node,
@@ -510,6 +523,10 @@ NetworkEngine::processMessage(const uint8_t* buf, size_t buflen, SockAddr f)
         if (msg->type != MessageType::ValueData and msg->id != transport::nodeId(envelope->peer->key)) {
             if (logger_)
                 logger_->warn("Dropping encrypted message from {}: node ID doesn't match its key", from.toString());
+            return;
+        }
+        if (envelope->hello) {
+            processHello(*msg, envelope->peer, from);
             return;
         }
         msg->peer = std::move(envelope->peer);
@@ -679,10 +696,11 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
     } else if (msg->type == MessageType::Error or msg->type == MessageType::Reply) {
         if (not trusted)
             return;
-        if (msg->encrypted)
-            node->getTransport()->acked = true;
         auto rsocket = node->getSocket(msg->tid);
         auto req = node->getRequest(msg->tid);
+        // Requests to a bare address were sent in a Hello, not in an envelope with our credential
+        if (msg->encrypted and req)
+            node->getTransport()->acked = true;
 
         /* either response for a request or data for an opened socket */
         if (not req and not rsocket) {
@@ -887,12 +905,91 @@ NetworkEngine::packOptionalFields(msgpack::packer<msgpack::sbuffer>& pk, bool ke
     }
 }
 
-const transport::Key*
-NetworkEngine::sharedKey(transport::Peer& peer) const
+const transport::SessionKeys*
+NetworkEngine::Epoch::find(const transport::Key& peer, const transport::Key& peerEphemeral) const
 {
-    if (not peer.shared)
-        peer.shared = transport::deriveSharedKey(config.transport.key, peer.key, config.network);
-    return peer.shared ? &*peer.shared : nullptr;
+    auto it = sessions.find(peer);
+    return it != sessions.end() and it->second.peerEphemeral == peerEphemeral ? &it->second.keys : nullptr;
+}
+
+void
+NetworkEngine::Epoch::store(const transport::Key& peer,
+                            const transport::Key& peerEphemeral,
+                            const transport::SessionKeys& keys)
+{
+    auto it = sessions.find(peer);
+    if (it != sessions.end())
+        it->second = {peerEphemeral, keys};
+    else if (sessions.size() < MAX_SESSIONS)
+        sessions.emplace(peer, Session {peerEphemeral, keys});
+}
+
+void
+NetworkEngine::Epoch::wipe()
+{
+    for (auto& [peer, session] : sessions) {
+        (void) peer;
+        transport::wipe(session.keys.tx);
+        transport::wipe(session.keys.rx);
+    }
+    sessions.clear();
+    transport::wipe(key.secret);
+    key.pub = {};
+}
+
+void
+NetworkEngine::rotateEpoch()
+{
+    previousEpoch_.wipe();
+    previousEpoch_.key = epoch_.key;
+    previousEpoch_.sessions = std::move(epoch_.sessions);
+    epoch_.sessions.clear();
+    epoch_.key = transport::KeyPair::generate();
+    epochRotation_ = scheduler.add(scheduler.time() + EPOCH_DURATION, std::bind(&NetworkEngine::rotateEpoch, this));
+}
+
+std::optional<transport::SessionKeys>
+NetworkEngine::sessionKeys(const transport::Peer& peer)
+{
+    const auto& peerEphemeral = *peer.ephemeral;
+    if (auto keys = epoch_.find(peer.key, peerEphemeral))
+        return *keys;
+    auto keys = transport::sessionKeys(config.transport.key, epoch_.key, peer.key, peerEphemeral, config.network);
+    if (keys)
+        epoch_.store(peer.key, peerEphemeral, *keys);
+    return keys;
+}
+
+std::optional<Blob>
+NetworkEngine::openSession(const transport::Header& header, const uint8_t* buf, size_t buflen, const SockAddr& from)
+{
+    // The sender uses the last ephemeral key it got from us
+    for (auto* epoch : {&epoch_, &previousEpoch_}) {
+        if (not epoch->key)
+            continue;
+        std::optional<transport::SessionKeys> keys;
+        auto cached = epoch->find(header.sender, header.ephemeral);
+        if (cached) {
+            keys = *cached;
+        } else {
+            // Key agreement is the costly part of an unknown sender
+            if (not rateLimit(from))
+                return std::nullopt;
+            keys = transport::sessionKeys(config.transport.key,
+                                          epoch->key,
+                                          header.sender,
+                                          header.ephemeral,
+                                          config.network);
+            if (not keys)
+                return std::nullopt;
+        }
+        if (auto payload = transport::open(keys->rx, buf, buflen)) {
+            if (not cached)
+                epoch->store(header.sender, header.ephemeral, *keys);
+            return payload;
+        }
+    }
+    return std::nullopt;
 }
 
 Sp<transport::Peer>
@@ -912,8 +1009,8 @@ NetworkEngine::attachPeer(Node& node, const Sp<transport::Peer>& peer)
     } else if (current != peer) {
         // Both keys match the node ID, so they are the same
         current->authorizedUntil = std::max(current->authorizedUntil, peer->authorizedUntil);
-        if (not current->shared)
-            current->shared = peer->shared;
+        if (peer->ephemeral)
+            current->ephemeral = peer->ephemeral;
     }
 }
 
@@ -938,49 +1035,66 @@ NetworkEngine::openEnvelope(const uint8_t* buf, size_t buflen, const SockAddr& f
 {
     using transport::EnvelopeType;
     constexpr size_t CREDENTIAL_SIZE = transport::Credential::PACKED_SIZE;
-    const auto type = static_cast<EnvelopeType>(buf[1]);
-    transport::Key sender;
-    std::copy_n(buf + 2, sender.size(), sender.begin());
-    if (sender == config.transport.key.pub)
+    auto header = transport::parseHeader(buf, buflen);
+    if (not header or header->sender == config.transport.key.pub)
         return std::nullopt;
-
-    Sp<transport::Peer> peer;
-    if (auto node = cache.getNode(transport::nodeId(sender), from.getFamily()))
-        peer = node->getTransport();
-    if (not peer)
-        peer = std::make_shared<transport::Peer>(sender);
-
     const bool isPrivate = config.transport.isPrivate();
-    if (type == EnvelopeType::Hello) {
+
+    if (header->type == EnvelopeType::Hello) {
+        // Unauthenticated: its state is only used to answer, never kept
         constexpr size_t credentialEnd = transport::HEADER_SIZE + CREDENTIAL_SIZE;
+        auto peer = std::make_shared<transport::Peer>(header->sender);
         if (not isPrivate or buflen <= credentialEnd or not rateLimit(from)
             or not authorize(*peer, buf + transport::HEADER_SIZE, CREDENTIAL_SIZE))
             return std::nullopt;
-        return OpenedEnvelope {std::move(peer), Blob(buf + credentialEnd, buf + buflen)};
+        peer->ephemeral = header->ephemeral;
+        return OpenedEnvelope {std::move(peer), Blob(buf + credentialEnd, buf + buflen), true};
     }
-    if (type != EnvelopeType::Data and type != EnvelopeType::DataCredential)
-        return std::nullopt;
 
-    // Key agreement is the costly part of an unknown sender
-    if (not peer->shared and not rateLimit(from))
-        return std::nullopt;
-    auto key = sharedKey(*peer);
-    if (not key)
-        return std::nullopt;
-    auto payload = transport::open(*key, buf, buflen);
+    std::optional<Blob> payload;
+    if (header->type == EnvelopeType::Initial) {
+        if (not rateLimit(from))
+            return std::nullopt;
+        if (auto key = transport::initialReceiveKey(config.transport.key,
+                                                    header->sender,
+                                                    header->ephemeral,
+                                                    config.network))
+            payload = transport::open(*key, buf, buflen);
+    } else {
+        payload = openSession(*header, buf, buflen, from);
+    }
     if (not payload) {
         if (logger_)
             logger_->debug("Unable to decrypt message from {}", from.toString());
         return std::nullopt;
     }
-    if (type == EnvelopeType::DataCredential) {
+
+    Sp<transport::Peer> peer;
+    if (auto node = cache.getNode(transport::nodeId(header->sender), from.getFamily()))
+        peer = node->getTransport();
+    if (not peer)
+        peer = std::make_shared<transport::Peer>(header->sender);
+    if (header->credential) {
         if (payload->size() < CREDENTIAL_SIZE or (isPrivate and not authorize(*peer, payload->data(), CREDENTIAL_SIZE)))
             return std::nullopt;
         payload->erase(payload->begin(), payload->begin() + CREDENTIAL_SIZE);
     } else if (isPrivate and not peer->isAuthorized(std::chrono::system_clock::now())) {
         return std::nullopt;
     }
+    peer->ephemeral = header->ephemeral;
     return OpenedEnvelope {std::move(peer), std::move(*payload)};
+}
+
+void
+NetworkEngine::processHello(const ParsedMessage& msg, const Sp<transport::Peer>& peer, const SockAddr& from)
+{
+    if (msg.type != MessageType::Ping)
+        return;
+    ++in_stats.ping;
+    // Answer without adding the claimed node: only the owner of its key can read the answer
+    Node node(msg.id, from, rd);
+    node.setTransport(peer);
+    sendPong(node, from, msg.tid);
 }
 
 int
@@ -992,22 +1106,36 @@ NetworkEngine::sendRaw(const SockAddr& addr, const uint8_t* buf, size_t len, boo
 int
 NetworkEngine::send(const Node& node, const SockAddr& addr, const char* buf, size_t len, bool confirmed)
 {
+    using transport::EnvelopeType;
     const auto data = (const uint8_t*) buf;
     if (not transport_)
         return sendRaw(addr, data, len, confirmed);
     const bool isPrivate = config.transport.isPrivate();
-    const auto& pub = config.transport.key.pub;
+    const auto& own = config.transport.key;
     if (const auto& peer = node.getTransport()) {
-        if (auto key = sharedKey(*peer)) {
-            auto packet
-                = isPrivate and not peer->acked
-                      ? transport::seal(*key, pub, transport::EnvelopeType::DataCredential, data, len, credential_)
-                      : transport::seal(*key, pub, transport::EnvelopeType::Data, data, len);
+        std::optional<transport::Key> key;
+        auto type = EnvelopeType::Initial;
+        if (peer->ephemeral) {
+            type = EnvelopeType::Session;
+            if (auto keys = sessionKeys(*peer))
+                key = keys->tx;
+        } else {
+            key = transport::initialSendKey(own, epoch_.key, peer->key, config.network);
+        }
+        if (key) {
+            auto packet = transport::seal(*key,
+                                          type,
+                                          own.pub,
+                                          epoch_.key.pub,
+                                          data,
+                                          len,
+                                          isPrivate and not peer->acked ? credential_ : Blob {});
+            transport::wipe(*key);
             return sendRaw(addr, packet.data(), packet.size(), confirmed);
         }
     } else if (isPrivate and not node.id) {
         // ping to an address: introduce ourselves
-        auto packet = transport::hello(pub, credential_, data, len);
+        auto packet = transport::hello(own.pub, epoch_.key.pub, credential_, data, len);
         return sendRaw(addr, packet.data(), packet.size(), confirmed);
     }
     if (isPrivate)

@@ -21,8 +21,8 @@ using Signature = std::array<uint8_t, SIGNATURE_SIZE>;
 using SystemTime = std::chrono::system_clock::time_point;
 
 /**
- * X25519 key pair used to encrypt the DHT protocol.
- * The node ID of a node using transport encryption derives from its public key.
+ * X25519 key pair used to encrypt the DHT protocol: the static key of a node, from which its node ID derives,
+ * or a periodically rotated ephemeral key.
  */
 struct OPENDHT_PUBLIC KeyPair
 {
@@ -74,7 +74,8 @@ struct Peer
         : key(k)
     {}
     const Key key;
-    std::optional<Key> shared {};
+    /** Last authenticated ephemeral key of the peer */
+    std::optional<Key> ephemeral {};
     /** Private networks: expiration of the verified peer credential */
     SystemTime authorizedUntil {};
     /** Private networks: the peer accepted our credential */
@@ -84,15 +85,18 @@ struct Peer
 };
 
 /*
- * Envelope: marker | type | sender public key | nonce | ChaCha20-Poly1305(payload) | tag
+ * Envelope: marker | type | sender static key | sender ephemeral key | nonce | ChaCha20-Poly1305(payload) | tag
  * The marker is never a valid msgpack first byte, so legacy nodes drop envelopes.
- * Hello (private networks only, plaintext): marker | type | sender public key | credential | message
+ * Hello (private networks only, plaintext): marker | type | sender static key | sender ephemeral key | credential | message
  */
 constexpr uint8_t ENVELOPE_MARKER {0xC1};
-enum class EnvelopeType : uint8_t { Data = 1, DataCredential = 2, Hello = 3 };
+/** Initial: the sender doesn't know the receiver ephemeral key. Session: it does. */
+enum class EnvelopeType : uint8_t { Initial = 1, Session = 2, Hello = 3 };
+/** Type flag: the payload starts with the sender credential */
+constexpr uint8_t CREDENTIAL_FLAG {0x80};
 constexpr size_t NONCE_SIZE {12};
 constexpr size_t TAG_SIZE {16};
-constexpr size_t HEADER_SIZE {2 + KEY_SIZE};
+constexpr size_t HEADER_SIZE {2 + 2 * KEY_SIZE};
 constexpr size_t ENVELOPE_OVERHEAD {HEADER_SIZE + NONCE_SIZE + TAG_SIZE};
 constexpr size_t MAX_ENVELOPE_OVERHEAD {ENVELOPE_OVERHEAD + Credential::PACKED_SIZE};
 
@@ -102,17 +106,57 @@ isEnvelope(const uint8_t* data, size_t size)
     return size >= HEADER_SIZE and data[0] == ENVELOPE_MARKER;
 }
 
-/** Symmetric key shared with `peer`, or nullopt for an invalid peer key. */
-OPENDHT_PUBLIC std::optional<Key> deriveSharedKey(const KeyPair& own, const Key& peer, NetId network);
+struct Header
+{
+    EnvelopeType type;
+    bool credential;
+    Key sender;
+    Key ephemeral;
+};
 
-/** Encrypts `prefix || data`, authenticating the envelope header. */
-OPENDHT_PUBLIC Blob seal(
-    const Key& shared, const Key& sender, EnvelopeType type, const uint8_t* data, size_t size, const Blob& prefix = {});
+/** Envelope header, or nullopt if not an envelope of a known type. */
+OPENDHT_PUBLIC std::optional<Header> parseHeader(const uint8_t* data, size_t size);
+
+/** Keys to send to and receive from a peer. */
+struct SessionKeys
+{
+    Key tx;
+    Key rx;
+};
+
+/** Session keys with a peer whose ephemeral key is known, or nullopt for an invalid peer key. */
+OPENDHT_PUBLIC std::optional<SessionKeys> sessionKeys(
+    const KeyPair& own, const KeyPair& ephemeral, const Key& peer, const Key& peerEphemeral, NetId network);
+
+/** Key of an Initial envelope to `peer`, or nullopt for an invalid peer key. */
+OPENDHT_PUBLIC std::optional<Key> initialSendKey(const KeyPair& own,
+                                                 const KeyPair& ephemeral,
+                                                 const Key& peer,
+                                                 NetId network);
+
+/** Key of an Initial envelope from `peer`, or nullopt for an invalid peer key. */
+OPENDHT_PUBLIC std::optional<Key> initialReceiveKey(const KeyPair& own,
+                                                    const Key& peer,
+                                                    const Key& peerEphemeral,
+                                                    NetId network);
+
+/** Encrypts `credential || data`, authenticating the envelope header. */
+OPENDHT_PUBLIC Blob seal(const Key& key,
+                         EnvelopeType type,
+                         const Key& sender,
+                         const Key& ephemeral,
+                         const uint8_t* data,
+                         size_t size,
+                         const Blob& credential = {});
 
 /** Decrypted payload, or nullopt if the envelope is not authentic. */
-OPENDHT_PUBLIC std::optional<Blob> open(const Key& shared, const uint8_t* data, size_t size);
+OPENDHT_PUBLIC std::optional<Blob> open(const Key& key, const uint8_t* data, size_t size);
 
-OPENDHT_PUBLIC Blob hello(const Key& sender, const Blob& credential, const uint8_t* data, size_t size);
+OPENDHT_PUBLIC Blob
+hello(const Key& sender, const Key& ephemeral, const Blob& credential, const uint8_t* data, size_t size);
+
+/** Erases secret key material. */
+OPENDHT_PUBLIC void wipe(Key& key);
 
 } // namespace transport
 

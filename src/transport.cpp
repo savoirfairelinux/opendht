@@ -25,7 +25,7 @@ using namespace std::literals;
 namespace {
 
 constexpr auto NODE_ID_CONTEXT = "opendht-node-id-v1"sv;
-constexpr auto KDF_SALT = "opendht-transport-v1"sv;
+constexpr auto KDF_SALT = "opendht-transport-v2"sv;
 constexpr auto CREDENTIAL_CONTEXT = "opendht-credential-v1"sv;
 constexpr uint8_t CREDENTIAL_VERSION {1};
 
@@ -97,6 +97,65 @@ toSeconds(SystemTime t)
     return s > 0 ? static_cast<uint64_t>(s) : 0;
 }
 
+std::optional<Key>
+dh(const Key& secret, const Key& pub)
+{
+    Key out;
+    curve25519_mul(out.data(), secret.data(), pub.data());
+    if (out == Key {})
+        return std::nullopt;
+    return out;
+}
+
+/* Key derivation input, wiped on destruction */
+struct KdfBuffer
+{
+    std::array<uint8_t, 4 + 1 + 4 * KEY_SIZE + 1> data;
+    size_t size {0};
+
+    KdfBuffer& add(const uint8_t* d, size_t len)
+    {
+        std::memcpy(data.data() + size, d, len);
+        size += len;
+        return *this;
+    }
+    KdfBuffer& add(const Key& k) { return add(k.data(), k.size()); }
+    KdfBuffer& add(uint8_t b) { return add(&b, 1); }
+    KdfBuffer& add(NetId network)
+    {
+        for (int i = 0; i < 4; ++i)
+            add(static_cast<uint8_t>((network >> (24 - 8 * i)) & 0xFF));
+        return *this;
+    }
+    ~KdfBuffer() { gnutls_memset(data.data(), 0, data.size()); }
+};
+
+/* HKDF-SHA256 with a single output block */
+Key
+hkdf(const KdfBuffer& ikm, KdfBuffer info)
+{
+    auto prk = hmacSha256((const uint8_t*) KDF_SALT.data(), KDF_SALT.size(), ikm.data.data(), ikm.size);
+    info.add(uint8_t {1});
+    auto out = hmacSha256(prk.data(), prk.size(), info.data.data(), info.size);
+    wipe(prk);
+    return out;
+}
+
+KdfBuffer
+kdfInfo(NetId network, EnvelopeType type, const Key& sender, const Key& senderEphemeral, const Key& receiver)
+{
+    KdfBuffer info;
+    info.add(network).add(static_cast<uint8_t>(type)).add(sender).add(senderEphemeral).add(receiver);
+    return info;
+}
+
+void
+wipe(std::optional<Key>& k)
+{
+    if (k)
+        transport::wipe(*k);
+}
+
 } // namespace
 
 KeyPair
@@ -104,7 +163,9 @@ KeyPair::generate()
 {
     Key secret;
     randomBytes(secret.data(), secret.size(), GNUTLS_RND_KEY);
-    return fromSecret(secret);
+    auto kp = fromSecret(secret);
+    wipe(secret);
+    return kp;
 }
 
 KeyPair
@@ -171,7 +232,9 @@ Authority::generate()
 {
     Key secret;
     randomBytes(secret.data(), secret.size(), GNUTLS_RND_KEY);
-    return fromSecret(secret);
+    auto a = fromSecret(secret);
+    wipe(secret);
+    return a;
 }
 
 Authority
@@ -194,52 +257,110 @@ Authority::issue(const Key& transportKey, SystemTime expiration) const
     return c;
 }
 
-std::optional<Key>
-deriveSharedKey(const KeyPair& own, const Key& peer, NetId network)
+std::optional<SessionKeys>
+sessionKeys(const KeyPair& own, const KeyPair& ephemeral, const Key& peer, const Key& peerEphemeral, NetId network)
 {
-    Key dh;
-    curve25519_mul(dh.data(), own.secret.data(), peer.data());
-    if (dh == Key {})
-        return std::nullopt;
+    auto ee = dh(ephemeral.secret, peerEphemeral);
+    auto es = dh(ephemeral.secret, peer);
+    auto se = dh(own.secret, peerEphemeral);
+    auto ss = dh(own.secret, peer);
+    std::optional<SessionKeys> keys;
+    if (ee and es and se and ss) {
+        // The DH(sender, receiver) terms in order ee, es, se, ss, seen from each side
+        KdfBuffer tx, rx;
+        tx.add(*ee).add(*es).add(*se).add(*ss);
+        rx.add(*ee).add(*se).add(*es).add(*ss);
+        keys = SessionKeys {
+            hkdf(tx, kdfInfo(network, EnvelopeType::Session, own.pub, ephemeral.pub, peer).add(peerEphemeral)),
+            hkdf(rx, kdfInfo(network, EnvelopeType::Session, peer, peerEphemeral, own.pub).add(ephemeral.pub))};
+    }
+    for (auto* k : {&ee, &es, &se, &ss})
+        wipe(*k);
+    return keys;
+}
 
-    auto prk = hmacSha256((const uint8_t*) KDF_SALT.data(), KDF_SALT.size(), dh.data(), dh.size());
-    std::array<uint8_t, 4 + 2 * KEY_SIZE + 1> info;
-    for (int i = 0; i < 4; ++i)
-        info[i] = (network >> (24 - 8 * i)) & 0xFF;
-    const auto& lo = std::min(own.pub, peer);
-    const auto& hi = std::max(own.pub, peer);
-    std::copy(lo.begin(), lo.end(), info.begin() + 4);
-    std::copy(hi.begin(), hi.end(), info.begin() + 4 + KEY_SIZE);
-    info.back() = 1;
-    return hmacSha256(prk.data(), prk.size(), info.data(), info.size());
+std::optional<Key>
+initialSendKey(const KeyPair& own, const KeyPair& ephemeral, const Key& peer, NetId network)
+{
+    auto es = dh(ephemeral.secret, peer);
+    auto ss = dh(own.secret, peer);
+    std::optional<Key> key;
+    if (es and ss) {
+        KdfBuffer ikm;
+        ikm.add(*es).add(*ss);
+        key = hkdf(ikm, kdfInfo(network, EnvelopeType::Initial, own.pub, ephemeral.pub, peer));
+    }
+    wipe(es);
+    wipe(ss);
+    return key;
+}
+
+std::optional<Key>
+initialReceiveKey(const KeyPair& own, const Key& peer, const Key& peerEphemeral, NetId network)
+{
+    auto es = dh(own.secret, peerEphemeral);
+    auto ss = dh(own.secret, peer);
+    std::optional<Key> key;
+    if (es and ss) {
+        KdfBuffer ikm;
+        ikm.add(*es).add(*ss);
+        key = hkdf(ikm, kdfInfo(network, EnvelopeType::Initial, peer, peerEphemeral, own.pub));
+    }
+    wipe(es);
+    wipe(ss);
+    return key;
+}
+
+std::optional<Header>
+parseHeader(const uint8_t* data, size_t size)
+{
+    if (not isEnvelope(data, size))
+        return std::nullopt;
+    const uint8_t type = data[1] & ~CREDENTIAL_FLAG;
+    if (type < static_cast<uint8_t>(EnvelopeType::Initial) or type > static_cast<uint8_t>(EnvelopeType::Hello))
+        return std::nullopt;
+    Header header;
+    header.type = static_cast<EnvelopeType>(type);
+    header.credential = data[1] & CREDENTIAL_FLAG;
+    std::copy_n(data + 2, KEY_SIZE, header.sender.begin());
+    std::copy_n(data + 2 + KEY_SIZE, KEY_SIZE, header.ephemeral.begin());
+    return header;
 }
 
 Blob
-seal(const Key& shared, const Key& sender, EnvelopeType type, const uint8_t* data, size_t size, const Blob& prefix)
+seal(const Key& key,
+     EnvelopeType type,
+     const Key& sender,
+     const Key& ephemeral,
+     const uint8_t* data,
+     size_t size,
+     const Blob& credential)
 {
-    const size_t len = prefix.size() + size;
+    const size_t len = credential.size() + size;
     Blob out(ENVELOPE_OVERHEAD + len);
     out[0] = ENVELOPE_MARKER;
-    out[1] = static_cast<uint8_t>(type);
+    out[1] = static_cast<uint8_t>(type) | (credential.empty() ? 0 : CREDENTIAL_FLAG);
     std::copy(sender.begin(), sender.end(), out.begin() + 2);
+    std::copy(ephemeral.begin(), ephemeral.end(), out.begin() + 2 + KEY_SIZE);
     auto nonce = out.data() + HEADER_SIZE;
     randomBytes(nonce, NONCE_SIZE, GNUTLS_RND_NONCE);
     auto payload = nonce + NONCE_SIZE;
-    std::copy(prefix.begin(), prefix.end(), payload);
+    std::copy(credential.begin(), credential.end(), payload);
     if (size)
-        std::memcpy(payload + prefix.size(), data, size);
+        std::memcpy(payload + credential.size(), data, size);
 
     struct chacha_poly1305_ctx ctx;
-    chacha_poly1305_set_key(&ctx, shared.data());
+    chacha_poly1305_set_key(&ctx, key.data());
     chacha_poly1305_set_nonce(&ctx, nonce);
     chacha_poly1305_update(&ctx, HEADER_SIZE, out.data());
     chacha_poly1305_encrypt(&ctx, len, payload, payload);
     chachaDigest(&ctx, payload + len);
+    gnutls_memset(&ctx, 0, sizeof(ctx));
     return out;
 }
 
 std::optional<Blob>
-open(const Key& shared, const uint8_t* data, size_t size)
+open(const Key& key, const uint8_t* data, size_t size)
 {
     if (size < ENVELOPE_OVERHEAD or data[0] != ENVELOPE_MARKER)
         return std::nullopt;
@@ -247,29 +368,37 @@ open(const Key& shared, const uint8_t* data, size_t size)
     const auto nonce = data + HEADER_SIZE;
 
     struct chacha_poly1305_ctx ctx;
-    chacha_poly1305_set_key(&ctx, shared.data());
+    chacha_poly1305_set_key(&ctx, key.data());
     chacha_poly1305_set_nonce(&ctx, nonce);
     chacha_poly1305_update(&ctx, HEADER_SIZE, data);
     Blob out(len);
     chacha_poly1305_decrypt(&ctx, len, out.data(), nonce + NONCE_SIZE);
     std::array<uint8_t, TAG_SIZE> tag;
     chachaDigest(&ctx, tag.data());
+    gnutls_memset(&ctx, 0, sizeof(ctx));
     if (not memeql_sec(tag.data(), data + size - TAG_SIZE, TAG_SIZE))
         return std::nullopt;
     return out;
 }
 
 Blob
-hello(const Key& sender, const Blob& credential, const uint8_t* data, size_t size)
+hello(const Key& sender, const Key& ephemeral, const Blob& credential, const uint8_t* data, size_t size)
 {
     Blob out;
     out.reserve(HEADER_SIZE + credential.size() + size);
     out.push_back(ENVELOPE_MARKER);
     out.push_back(static_cast<uint8_t>(EnvelopeType::Hello));
     out.insert(out.end(), sender.begin(), sender.end());
+    out.insert(out.end(), ephemeral.begin(), ephemeral.end());
     out.insert(out.end(), credential.begin(), credential.end());
     out.insert(out.end(), data, data + size);
     return out;
+}
+
+void
+wipe(Key& key)
+{
+    gnutls_memset(key.data(), 0, key.size());
 }
 
 } // namespace transport

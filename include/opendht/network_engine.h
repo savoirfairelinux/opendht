@@ -505,17 +505,45 @@ private:
     static constexpr size_t MAX_MESSAGE_VALUE_SIZE {56 * 1024};
     static constexpr size_t RX_MAX_EARLY_BYTES {MAX_MESSAGE_VALUE_SIZE + MAX_VALUE_SIZE + 32};
     static constexpr size_t RX_MAX_EARLY_PARTS {RX_MAX_EARLY_BYTES / ENCRYPTED_FRAGMENT_SIZE + 2};
+    /* Lifetime of an ephemeral transport key: in use for one period, then accepted for another */
+    static constexpr std::chrono::minutes EPOCH_DURATION {30};
+    /* Cached session keys per epoch */
+    static constexpr size_t MAX_SESSIONS {16 * 1024};
+
+    struct Session
+    {
+        transport::Key peerEphemeral;
+        transport::SessionKeys keys;
+    };
+    /* An ephemeral key and the session keys derived from it, all erased together */
+    struct Epoch
+    {
+        transport::KeyPair key {};
+        std::map<transport::Key, Session> sessions {};
+
+        const transport::SessionKeys* find(const transport::Key& peer, const transport::Key& peerEphemeral) const;
+        void store(const transport::Key& peer, const transport::Key& peerEphemeral, const transport::SessionKeys& keys);
+        void wipe();
+    };
+    void rotateEpoch();
+    std::optional<transport::SessionKeys> sessionKeys(const transport::Peer& peer);
+    std::optional<Blob> openSession(const transport::Header& header,
+                                    const uint8_t* buf,
+                                    size_t buflen,
+                                    const SockAddr& from);
 
     struct OpenedEnvelope
     {
         Sp<transport::Peer> peer;
         Blob payload;
+        /* unauthenticated */
+        bool hello {false};
     };
     std::optional<OpenedEnvelope> openEnvelope(const uint8_t* buf, size_t buflen, const SockAddr& from);
     bool authorize(transport::Peer& peer, const uint8_t* credential, size_t size) const;
-    const transport::Key* sharedKey(transport::Peer& peer) const;
     void attachPeer(Node& node, const Sp<transport::Peer>& peer);
     Sp<transport::Peer> makePeer(const InfoHash& id, const transport::Key& key) const;
+    void processHello(const ParsedMessage& msg, const Sp<transport::Peer>& peer, const SockAddr& from);
 
     /* Advertise our transport key in plaintext messages to nodes not known to support encryption */
     bool advertiseKey(const Node& node) const
@@ -615,6 +643,9 @@ private:
     NetworkConfig config {};
     const bool transport_ {false};
     const Blob credential_ {};
+    Epoch epoch_ {};
+    Epoch previousEpoch_ {};
+    Sp<Scheduler::Job> epochRotation_ {};
     const std::unique_ptr<DatagramSocket> dht_socket;
     Sp<Logger> logger_;
     std::mt19937_64& rd;
