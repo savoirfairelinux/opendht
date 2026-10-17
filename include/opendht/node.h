@@ -18,6 +18,9 @@ struct Request;
 struct Socket;
 struct RequestAnswer;
 } /* namespace net */
+namespace transport {
+struct Peer;
+}
 
 using Tid = uint32_t;
 using SocketCb = std::function<void(const Sp<Node>&, net::RequestAnswer&&)>;
@@ -45,6 +48,10 @@ struct Node
     std::string getAddrStr() const { return addr.toString(); }
     bool isClient() const { return is_client; }
     bool isIncoming() { return time > reply_time; }
+
+    /** Transport encryption state, if the node is known to support it */
+    const Sp<transport::Peer>& getTransport() const { return transport_; }
+    void setTransport(const Sp<transport::Peer>& peer) { transport_ = peer; }
 
     const time_point& getTime() const { return time; }
     const time_point& getReplyTime() const { return reply_time; }
@@ -155,6 +162,7 @@ private:
 
     std::map<Tid, Sp<net::Request>> requests_ {};
     std::map<Tid, Sp<Socket>> sockets_;
+    Sp<transport::Peer> transport_ {};
 };
 
 } // namespace dht

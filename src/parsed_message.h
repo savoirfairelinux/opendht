@@ -4,6 +4,7 @@
 
 #include "infohash.h"
 #include "sockaddr.h"
+#include "transport.h"
 #include "net.h"
 
 #include <algorithm>
@@ -26,6 +27,7 @@ static constexpr auto KEY_NETID = "n"sv;
 static constexpr auto KEY_ISCLIENT = "s"sv;
 static constexpr auto KEY_Q = "q"sv;
 static constexpr auto KEY_A = "a"sv;
+static constexpr auto KEY_TRANSPORT = "k"sv;
 
 static constexpr auto KEY_REQ_SID = "sid"sv;
 static constexpr auto KEY_REQ_ID = "id"sv;
@@ -36,6 +38,8 @@ static constexpr auto KEY_REQ_TOKEN = "token"sv;
 static constexpr auto KEY_REQ_VALUE_ID = "vid"sv;
 static constexpr auto KEY_REQ_NODES4 = "n4"sv;
 static constexpr auto KEY_REQ_NODES6 = "n6"sv;
+static constexpr auto KEY_REQ_KEYS4 = "k4"sv;
+static constexpr auto KEY_REQ_KEYS6 = "k6"sv;
 static constexpr auto KEY_REQ_CREATION = "c"sv;
 static constexpr auto KEY_REQ_ADDRESS = "sa"sv;
 static constexpr auto KEY_REQ_VALUES = "values"sv;
@@ -93,6 +97,8 @@ struct ParsedMessage
     time_point created {time_point::max()};
     /* IPv4 nodes in response to a 'find' request */
     Blob nodes4_raw, nodes6_raw;
+    /* transport keys of the nodes, or zeros if unknown */
+    Blob nodes4_keys, nodes6_keys;
     std::vector<Sp<Node>> nodes4, nodes6;
     /* values to store or retreive request */
     std::vector<Sp<Value>> values;
@@ -129,6 +135,11 @@ struct ParsedMessage
     std::string ua;
     int version {0};
     SockAddr addr;
+    /* transport key advertised by the sender in plaintext */
+    std::optional<transport::Key> transport_key;
+    /* transport state of the sender, if authenticated */
+    Sp<transport::Peer> peer;
+    bool encrypted {false};
     void msgpack_unpack(const msgpack::object& o);
 
     bool append(const ParsedMessage& block);
@@ -229,6 +240,11 @@ ParsedMessage::msgpack_unpack(const msgpack::object& msg)
             parsed.q = o.val.as<std::string_view>();
         else if (key == KEY_A)
             parsed.a = &o.val;
+        else if (key == KEY_TRANSPORT and o.val.type == msgpack::type::BIN
+                 and o.val.via.bin.size == transport::KEY_SIZE) {
+            transport_key.emplace();
+            std::copy_n((const uint8_t*) o.val.via.bin.ptr, transport::KEY_SIZE, transport_key->begin());
+        }
     }
 
     if (parsed.e)
@@ -321,6 +337,10 @@ ParsedMessage::msgpack_unpack(const msgpack::object& msg)
             nodes4_raw = unpackBlob(o.val);
         else if (key == KEY_REQ_NODES6)
             nodes6_raw = unpackBlob(o.val);
+        else if (key == KEY_REQ_KEYS4)
+            nodes4_keys = unpackBlob(o.val);
+        else if (key == KEY_REQ_KEYS6)
+            nodes6_keys = unpackBlob(o.val);
         else if (key == KEY_REQ_ADDRESS)
             parsedReq.sa = &o.val;
         else if (key == KEY_REQ_CREATION)

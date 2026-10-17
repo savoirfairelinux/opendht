@@ -12,6 +12,7 @@
 #include "rate_limiter.h"
 #include "logger.h"
 #include "network_utils.h"
+#include "transport.h"
 
 #include <vector>
 #include <string>
@@ -37,6 +38,8 @@ struct NetworkConfig
     ssize_t max_req_per_sec {0};
     ssize_t max_peer_req_per_sec {0};
     bool is_client {false};
+    /** Transport encryption is used only if enabled and a key is set */
+    TransportConfig transport {};
 };
 
 class DhtProtocolException : public DhtException
@@ -213,6 +216,9 @@ public:
     ~NetworkEngine();
 
     net::DatagramSocket* getSocket() const { return dht_socket.get(); };
+
+    /** Our transport key, or nullptr if transport encryption is disabled */
+    const transport::KeyPair* getTransportKey() const { return transport_ ? &config.transport.key : nullptr; }
 
     void clear();
 
@@ -487,10 +493,35 @@ private:
     static constexpr unsigned BLACKLISTED_MAX {10};
 
     static constexpr size_t MTU {1280};
+    /* Value fragment size for encrypted peers, keeping packets close to the MTU */
+    static constexpr size_t ENCRYPTED_FRAGMENT_SIZE {MTU - transport::MAX_ENVELOPE_OVERHEAD};
     static constexpr size_t MAX_PACKET_VALUE_SIZE {600};
     static constexpr size_t MAX_MESSAGE_VALUE_SIZE {56 * 1024};
     static constexpr size_t RX_MAX_EARLY_BYTES {MAX_MESSAGE_VALUE_SIZE + MAX_VALUE_SIZE + 32};
-    static constexpr size_t RX_MAX_EARLY_PARTS {RX_MAX_EARLY_BYTES / MTU + 2};
+    static constexpr size_t RX_MAX_EARLY_PARTS {RX_MAX_EARLY_BYTES / ENCRYPTED_FRAGMENT_SIZE + 2};
+
+    struct OpenedEnvelope
+    {
+        Sp<transport::Peer> peer;
+        Blob payload;
+    };
+    std::optional<OpenedEnvelope> openEnvelope(const uint8_t* buf, size_t buflen, const SockAddr& from);
+    bool authorize(transport::Peer& peer, const uint8_t* credential, size_t size) const;
+    const transport::Key* sharedKey(transport::Peer& peer) const;
+    void attachPeer(Node& node, const Sp<transport::Peer>& peer);
+    Sp<transport::Peer> makePeer(const InfoHash& id, const transport::Key& key) const;
+
+    /* Advertise our transport key in plaintext messages to nodes not known to support encryption */
+    bool advertiseKey(const Node& node) const
+    {
+        return transport_ and not config.transport.isPrivate() and not node.getTransport();
+    }
+    /* Number of optional top-level fields packed by packOptionalFields */
+    unsigned optionalFields(bool key) const
+    {
+        return (config.network ? 1 : 0) + (config.is_client ? 1 : 0) + (key ? 1 : 0);
+    }
+    void packOptionalFields(msgpack::packer<msgpack::sbuffer>& pk, bool key) const;
 
     void process(std::unique_ptr<ParsedMessage>&&, const SockAddr& from);
     bool isExpectedReply(const ParsedMessage&, const SockAddr& from);
@@ -521,9 +552,11 @@ private:
     };
 
     // basic wrapper for socket sendto function
-    int send(const SockAddr& addr, const char* buf, size_t len, bool confirmed = false);
+    int sendRaw(const SockAddr& addr, const uint8_t* buf, size_t len, bool confirmed = false);
+    // send to a node, encrypted if supported
+    int send(const Node& node, const SockAddr& addr, const char* buf, size_t len, bool confirmed = false);
 
-    void sendValueParts(Tid tid, const std::vector<Blob>& svals, const SockAddr& addr);
+    void sendValueParts(Tid tid, const std::vector<Blob>& svals, const Node& node, const SockAddr& addr);
     std::vector<Blob> packValueHeader(msgpack::sbuffer&,
                                       std::vector<Sp<Value>>::const_iterator,
                                       std::vector<Sp<Value>>::const_iterator) const;
@@ -538,31 +571,44 @@ private:
      *  Answers  *
      *************/
     /* answer to a ping  request */
-    void sendPong(const SockAddr& addr, Tid tid);
+    void sendPong(const Node& node, const SockAddr& addr, Tid tid);
+    struct BufferedNodes
+    {
+        Blob nodes4, nodes6;
+        /* transport keys, aligned with nodes, zeros if unknown. Empty if none is known. */
+        Blob keys4, keys6;
+    };
     /* answer to findnodes/getvalues request */
-    void sendNodesValues(const SockAddr& addr,
+    void sendNodesValues(const Node& node,
+                         const SockAddr& addr,
                          Tid tid,
-                         const Blob& nodes,
-                         const Blob& nodes6,
+                         const BufferedNodes& nodes,
                          const std::vector<Sp<Value>>& st,
                          const Query& query,
                          const Blob& token);
-    Blob bufferNodes(sa_family_t af, const InfoHash& id, std::vector<Sp<Node>>& nodes);
+    std::pair<Blob, Blob> bufferNodes(sa_family_t af, const InfoHash& id, std::vector<Sp<Node>>& nodes);
 
-    std::pair<Blob, Blob> bufferNodes(
+    BufferedNodes bufferNodes(
         sa_family_t af, const InfoHash& id, want_t want, std::vector<Sp<Node>>& nodes, std::vector<Sp<Node>>& nodes6);
     /* answer to a listen request */
-    void sendListenConfirmation(const SockAddr& addr, Tid tid, const Blob& token = {});
+    void sendListenConfirmation(const Node& node, const SockAddr& addr, Tid tid, const Blob& token = {});
     /* answer to put request */
-    void sendValueAnnounced(const SockAddr& addr, Tid, Value::Id);
+    void sendValueAnnounced(const Node& node, const SockAddr& addr, Tid, Value::Id);
     /* answer in case of error */
-    void sendError(const SockAddr& addr, Tid tid, uint16_t code, const std::string& message, bool include_id = false);
+    void sendError(const Node& node,
+                   const SockAddr& addr,
+                   Tid tid,
+                   uint16_t code,
+                   const std::string& message,
+                   bool include_id = false);
 
     void deserializeNodes(ParsedMessage& msg, const SockAddr& from);
 
     /* DHT info */
     const InfoHash& myid;
     const NetworkConfig config {};
+    const bool transport_ {false};
+    const Blob credential_ {};
     const std::unique_ptr<DatagramSocket> dht_socket;
     Sp<Logger> logger_;
     std::mt19937_64& rd;
