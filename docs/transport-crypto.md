@@ -12,13 +12,13 @@ Implementation: [include/opendht/transport.h](../include/opendht/transport.h), [
 - **Authenticated node IDs**: a node can only send encrypted messages under the node ID that derives from its own key.
 - **Backward compatibility**: nodes without this feature keep working with new nodes, in plaintext.
 - **Optional private networks**: when configured, a node only talks to nodes holding a credential signed by a trusted authority.
-- **Low cost**: no handshake round trip, one Diffie-Hellman per peer, 62 bytes of overhead per packet.
+- **Forward secrecy**: recorded traffic stays confidential after a node's long-term key is compromised, once the ephemeral keys used for it are erased (at most one hour later). The first packet to a peer has weaker guarantees ([§5.2](#52-key-schedule)).
+- **Low cost**: no handshake round trip, a few X25519 operations per peer every 30 minutes, 94 bytes of overhead per packet.
 
 ### Non-goals
 
 - **End-to-end protection of values.** Encryption is hop-by-hop. Nodes storing a value see it in clear. Use `SecureDht` (signed or encrypted values) for end-to-end protection. `SecureDht` identities are unrelated to transport keys.
-- **Forward secrecy** (see [§9.2](#92-limitations)).
-- **Hiding metadata**: packet sizes, timing, addresses and the sender's public key are visible.
+- **Hiding metadata**: packet sizes, timing, addresses and the sender's public keys are visible.
 - The REST proxy (`DhtProxyServer`/`DhtProxyClient`) and local peer discovery are not covered.
 
 ## 2. Notation
@@ -28,9 +28,11 @@ Implementation: [include/opendht/transport.h](../include/opendht/transport.h), [
 | `a ‖ b` | Concatenation of byte strings |
 | `"text"` | ASCII bytes, without terminator |
 | `u32be(x)`, `u64be(x)` | Unsigned integer, big-endian, 4 or 8 bytes |
-| `sk_A`, `pk_A` | Transport secret and public key of node A (32 bytes each) |
+| `sk_A`, `pk_A` | Static transport secret and public key of node A |
+| `esk_A`, `epk_A` | Current ephemeral secret and public key of node A |
+| `DH(x, Y)` | `X25519(x, Y)` |
 | `N` | Network ID (`Config::network`, 32-bit, `0` by default) |
-| `K_AB` | Symmetric key shared by A and B |
+| `K_A→B` | Key encrypting envelopes from A to B |
 
 All keys are 32 bytes. Integers on the wire are big-endian.
 
@@ -45,13 +47,13 @@ All keys are 32 bytes. Integers on the wire are big-endian.
 | Credential signature | Ed25519 | RFC 8032 |
 | Randomness | `gnutls_rnd` (`GNUTLS_RND_KEY` for keys, `GNUTLS_RND_NONCE` for nonces) | |
 
-Primitives come from Nettle (libnettle and libhogweed) and GnuTLS, which OpenDHT already depends on. All primitives are used through their standard interfaces with no modification. The authentication tag is compared in constant time.
+Primitives come from Nettle (libnettle and libhogweed) and GnuTLS, which OpenDHT already depends on. All primitives are used through their standard interfaces with no modification. The authentication tag is compared in constant time. Secret keys are erased with `gnutls_memset`.
 
 ## 4. Keys and identities
 
 ### 4.1 Transport key
 
-Each node has a static X25519 key pair:
+Each node has a static X25519 key pair, its long-term identity:
 
 ```
 sk = 32 random bytes
@@ -70,7 +72,7 @@ When transport encryption is enabled, the node ID is derived from the public key
 nodeId(pk) = SHA-256("opendht-node-id-v1" ‖ pk)[0..20)
 ```
 
-`Config::node_id` is ignored in that case. This binding is what authenticates node IDs: a receiver checks that the ID claimed inside a decrypted message equals `nodeId(pk)` of the key that decrypted it (see [§6.5](#65-receiving)). Holding the ID therefore requires holding `sk`.
+`Config::node_id` is ignored in that case. This binding is what authenticates node IDs: a receiver checks that the ID claimed inside a decrypted message equals `nodeId(pk)` of the static key the envelope was authenticated with (see [§6.5](#65-receiving)). Holding the ID therefore requires holding `sk`.
 
 When encryption is disabled (`TransportConfig::enabled = false`), the node uses the legacy behavior: a random ID, or `Config::node_id`.
 
@@ -104,30 +106,54 @@ Credentials are not bound to a network ID. An authority key therefore defines a 
 
 ## 5. Key agreement
 
-Two nodes A and B derive their shared key without exchanging messages, from their static keys and the network ID:
+### 5.1 Ephemeral keys
+
+Each node also has an ephemeral X25519 key pair, replaced every 30 minutes (an *epoch*):
+
+- the node always sends with its **current** ephemeral key;
+- it still accepts envelopes addressed to its **previous** ephemeral key, so peers have one epoch to learn the new key;
+- on rotation, the previous ephemeral secret and every key derived from it are erased.
+
+An ephemeral secret therefore lives at most one hour. Ephemeral keys are never persisted, and a restart starts with a new one.
+
+Nodes learn each other's current ephemeral key from the header of every envelope ([§6.1](#61-envelope)). A node records a peer's ephemeral key only from an envelope it authenticated.
+
+### 5.2 Key schedule
+
+Each envelope from a sender A to a receiver B is encrypted with a key `K_A→B`, derived with HKDF-SHA256 (RFC 5869):
 
 ```
-dh   = X25519(sk_A, pk_B)            (= X25519(sk_B, pk_A))
-     reject if dh is all zeros       (low-order peer key)
-prk  = HMAC-SHA256(key = "opendht-transport-v1", dh)
-info = u32be(N) ‖ min(pk_A, pk_B) ‖ max(pk_A, pk_B)
-K_AB = HMAC-SHA256(key = prk, info ‖ 0x01)
+prk     = HMAC-SHA256(key = "opendht-transport-v2", ikm)
+K_A→B   = HMAC-SHA256(key = prk, info ‖ 0x01)
 ```
 
-This is HKDF-SHA256 (RFC 5869):
-- the salt is `"opendht-transport-v1"`;
-- the input keying material is `dh`;
-- `info` is as above;
-- the output is 32 bytes.
+The input keying material `ikm` and `info` depend on what A knows about B.
 
-The `min` and `max` are lexicographic byte comparisons, so both sides compute the same `info`.
+**Session**: A knows B's ephemeral key `epk_B`:
+
+```
+ikm  = DH(esk_A, epk_B) ‖ DH(esk_A, pk_B) ‖ DH(sk_A, epk_B) ‖ DH(sk_A, pk_B)
+info = u32be(N) ‖ 0x02 ‖ pk_A ‖ epk_A ‖ pk_B ‖ epk_B
+```
+
+**Initial**: A doesn't know B's ephemeral key, typically on first contact:
+
+```
+ikm  = DH(esk_A, pk_B) ‖ DH(sk_A, pk_B)
+info = u32be(N) ‖ 0x01 ‖ pk_A ‖ epk_A ‖ pk_B
+```
+
+B computes the same values with its own secrets, since `DH(x_A, Y_B) = DH(y_B, X_A)`. Any DH result equal to zero (a low-order public key) is rejected.
 
 Properties:
 
-- `K_AB` is the same in both directions, and nonces are random (see [§6.1](#61-envelope)), so the two directions cannot collide by construction.
-- Including `N` separates networks. Nodes with different network IDs derive different keys and cannot decrypt each other's packets.
-- Including both public keys binds the key to the pair of identities.
-- A node caches `K_AB` on its in-memory record of the peer, so X25519 runs once per peer, not once per packet.
+- **Directional keys.** `info` orders the keys as sender, then receiver, so `K_A→B ≠ K_B→A`. Each node derives both from the same four DH values.
+- **Authentication.** Every key includes `DH(sk_A, pk_B)`, so only the holders of `sk_A` or `sk_B` can produce or read the envelope. Every envelope thus proves possession of the sender's static key.
+- **Forward secrecy.** A Session key includes `DH(esk_A, epk_B)`. Once both ephemeral secrets are erased, the key cannot be recomputed, even with both static secrets.
+- **Key-compromise impersonation resistance.** With `sk_B`, an attacker still cannot impersonate A to B in a Session envelope: it cannot compute `DH(sk_A, epk_B)` without `sk_A` or `esk_B`.
+- **Initial keys are weaker**, as for the first message of Noise IK. Without `epk_B`, an Initial key is only forward-secret against a later compromise of `sk_A`, not of `sk_B`. It also allows impersonating A to B with `sk_B`. Initial envelopes are only sent until A learns `epk_B`, usually for a single packet.
+- **Binding.** `info` includes `N`, the envelope type and all public keys involved. Nodes with different network IDs cannot decrypt each other's packets.
+- **Cost.** A Session key costs four X25519 operations and is cached in the epoch, so it is derived once per peer and ephemeral key pair. An Initial key costs two X25519 operations and is not cached. Each epoch caches at most 16384 sessions; beyond that, keys are derived for each packet.
 
 ## 6. Wire protocol
 
@@ -138,20 +164,19 @@ Encrypted packets use this format:
 ```
 offset size        field
 0      1           marker = 0xC1
-1      1           type: 1 = Data, 2 = DataCredential, 3 = Hello
+1      1           type: 1 = Initial, 2 = Session, 3 = Hello; | 0x80 if a credential is included
 2      32          pk_sender
-34     12          nonce (random)
-46     len         ciphertext
-46+len 16          Poly1305 tag
+34     32          epk_sender
+66     12          nonce (random)
+78     len         ciphertext
+78+len 16          Poly1305 tag
 ```
 
-- The ciphertext is `ChaCha20-Poly1305(K, nonce, plaintext, aad = header)`.
-- The header is bytes `[0, 34)`: marker, type and sender key. Because it is the associated data, an attacker cannot change the envelope type or the sender key without the tag check failing.
-- The plaintext is:
-  - for `Data`: the msgpack-encoded DHT message;
-  - for `DataCredential`: the sender's 105-byte credential followed by the msgpack message.
-- The overhead is 62 bytes for `Data` and 167 bytes for `DataCredential`.
-- Nonces are 96 bits from the system CSPRNG. For `n` packets under one key, the probability of a nonce collision is about $n^2 / 2^{97}$. This is negligible for the traffic between two DHT nodes.
+- The ciphertext is `ChaCha20-Poly1305(K_sender→receiver, nonce, plaintext, aad = header)`.
+- The header is bytes `[0, 66)`: marker, type, and both sender keys. Because it is the associated data, an attacker cannot change the type, the credential flag or the sender keys without the tag check failing.
+- The plaintext is the msgpack-encoded DHT message. With the credential flag, it is preceded by the sender's 105-byte credential.
+- The overhead is 94 bytes, or 199 bytes with a credential.
+- Nonces are 96 bits from the system CSPRNG. For `n` packets under one key, the probability of a nonce collision is about $n^2 / 2^{97}$. Keys change at least every epoch, so this is negligible.
 
 `0xC1` is the one byte value that msgpack never uses. Every legacy OpenDHT message is a msgpack map, which starts with `0x80`–`0x8F` or `0xDE`–`0xDF`. This marker therefore unambiguously separates envelopes from plaintext messages:
 - legacy nodes fail to parse an envelope and drop it, without blacklisting the sender;
@@ -162,10 +187,16 @@ offset size        field
 `Hello` introduces a node to a peer whose key is unknown. This happens when pinging a bare address, typically a bootstrap node. A Hello is **not encrypted**:
 
 ```
-0xC1 ‖ 0x03 ‖ pk_sender ‖ credential (105 bytes) ‖ msgpack message
+0xC1 ‖ 0x03 ‖ pk_sender ‖ epk_sender ‖ credential (105 bytes) ‖ msgpack ping
 ```
 
-The message it carries is a ping. The reply is encrypted to `pk_sender` (see [§7.2](#72-private-network)), so only the holder of `sk_sender` can read it.
+The sender cannot encrypt to a key it doesn't know, and X25519 keys cannot sign, so **a Hello proves nothing about its sender**. Its credential travels in clear and can be copied. The receiver therefore:
+
+- answers only a ping, and only if the credential is valid for `pk_sender`;
+- answers with a Session envelope to `pk_sender` and `epk_sender`, so only the holder of `sk_sender` can read the answer;
+- keeps no state from the Hello: it does not add, move or authorize the claimed node.
+
+The sender proves possession of its key with its next envelope.
 
 ### 6.3 Key advertisement in plaintext messages
 
@@ -189,15 +220,19 @@ Rules for using these fields:
 To send a message to node B:
 
 1. If transport encryption is disabled, send plaintext.
-2. If B's key is known (B has a peer record), send an envelope sealed with `K_AB`:
-   - in a private network, as long as B has not yet replied with an encrypted message (`acked` is false), use `DataCredential`;
-   - otherwise use `Data`.
+2. If B's static key is known (B has a peer record), send an envelope with our current ephemeral key:
+   - a Session envelope if B's ephemeral key is known, otherwise an Initial envelope;
+   - in a private network, include our credential until B acknowledges it (`acked`, see [§6.5](#65-receiving)).
 3. Else, in a private network:
    - if B's ID is unknown (a ping to a bare address), send a `Hello`;
    - otherwise refuse to send (`EPERM`).
 4. Else (public network, key unknown), send plaintext, including `k`.
 
-Once a node's key is known, nothing is ever sent to it in plaintext. When value data is fragmented for a node with a known key, fragments are reduced to `1280 − 167 = 1113` bytes, so that each packet still fits in the 1280-byte IPv6 minimum MTU.
+Once a node's key is known, nothing is ever sent to it in plaintext.
+
+**Recovery.** On the first retransmission of a request, the node forgets B's ephemeral key and resets `acked`. The retry is therefore an Initial envelope, with our credential in a private network. This recovers when B no longer has the ephemeral key we used, or our authorization, for example after a restart.
+
+When value data is fragmented for a node with a known key, fragments are reduced to `1280 − 199 = 1081` bytes, so that each packet still fits in the 1280-byte IPv6 minimum MTU.
 
 ### 6.5 Receiving
 
@@ -207,18 +242,19 @@ For each received packet, a node applies the following checks in order:
 
 2. **Envelopes.** If the packet starts with `0xC1`:
    1. If encryption is disabled, drop it.
-   2. If the sender key is our own key, drop it. This rejects reflected packets.
-   3. Look up the peer record using `nodeId(pk_sender)`, or create a new record.
-   4. **Hello:**
-      - Drop it outside private networks.
-      - Drop it if it carries no message.
+   2. Drop it if its type is unknown, or if `pk_sender` is our own key. This rejects reflected packets.
+   3. **Hello:**
+      - Drop it outside private networks, or if it carries no message.
       - Apply the rate limiter, then verify the credential: its key must equal `pk_sender` and it must be valid. Drop the packet on failure.
-      - On success, mark the peer authorized until the credential expires.
-   5. **Data and DataCredential:**
-      - If `K` is not cached yet, apply the rate limiter first, then derive `K`. Drop the packet if the key is invalid.
-      - Decrypt the envelope. Drop it if the tag does not verify.
-      - **DataCredential:** strip the 105-byte credential. In a private network, verify it as for Hello; this check is skipped if the peer is already authorized.
-      - **Data:** in a private network, drop it unless the peer is currently authorized.
+      - Continue with steps 4 and 5, then answer as described in [§6.2](#62-hello-private-networks-only). The Hello is not processed any further.
+   4. **Initial:** apply the rate limiter, derive the Initial key from `pk_sender` and `epk_sender`, and decrypt.
+   5. **Session:** try our current epoch, then the previous one. For each:
+      - use the cached session keys for (`pk_sender`, `epk_sender`), or apply the rate limiter and derive them;
+      - decrypt; on success, cache the keys in that epoch.
+   6. Drop the packet if it was not decrypted.
+   7. **Credential flag:** strip the 105-byte credential. In a private network, verify it as for Hello, unless the peer is already authorized; on success, the peer is authorized until the credential expires.
+      **No credential:** in a private network, drop the packet unless the peer is currently authorized.
+   8. Record `epk_sender` as the peer's ephemeral key.
 
 3. **Plaintext in a private network.** Drop any packet that is not an envelope.
 
@@ -230,7 +266,7 @@ For each received packet, a node applies the following checks in order:
 
 7. **Processing.**
    - An encrypted message moves the sender's node record to the packet's source address, like legacy messages always did.
-   - An encrypted reply or error marks the peer as `acked`.
+   - An encrypted reply to a request sent to a known node ID marks the peer as `acked`: that request was sent in an envelope, with our credential if needed. Requests to a bare address are excluded, because they were sent in a Hello.
 
    A **plaintext** message claiming the ID of a node whose key is known, but coming from a different address than that node's record, is untrusted:
    - it does not move the node record and does not count as activity from that node;
@@ -238,10 +274,11 @@ For each received packet, a node applies the following checks in order:
    - requests are answered, but the answer is encrypted to the known key.
 
 The rate limiter is the existing per-address and global request limiter. It runs before every expensive public-key operation on unauthenticated input:
-- one X25519 operation per packet from a sender with no cached key;
-- one Ed25519 verification per Hello.
+- each Initial envelope (two X25519 operations);
+- each Session envelope from an uncached (`pk_sender`, `epk_sender`) pair (four X25519 operations per epoch tried);
+- each Hello (one Ed25519 verification, and the key derivation of its answer).
 
-Packets from known peers cost one AEAD operation.
+Packets from peers with cached session keys cost one AEAD operation.
 
 ## 7. Message flows
 
@@ -256,15 +293,16 @@ sequenceDiagram
     participant L as L (legacy)
     A->>B: plaintext ping + k = pk_A (B's key unknown)
     Note over B: attaches pk_A to A (nodeId check)
-    B->>A: Data envelope (pong)
-    Note over A: derives K_AB, decrypts, checks ID = nodeId(pk_B)
-    A->>B: Data envelope (all further traffic)
+    B->>A: Initial envelope (pong)
+    Note over A: decrypts, checks ID = nodeId(pk_B), learns epk_B
+    A->>B: Session envelope
+    B->>A: Session envelope (all further traffic)
     A->>L: plaintext + k (ignored by L)
     L->>A: plaintext
 ```
 
-- The first request to a node with an unknown key, typically a bootstrap ping, is in plaintext. Its reply and all later traffic are encrypted.
-- Nodes learned through `k4`/`k6` are encrypted from the first packet.
+- The first request to a node with an unknown key, typically a bootstrap ping, is in plaintext. Its reply is an Initial envelope, and all later traffic uses Session envelopes.
+- Nodes learned through `k4`/`k6` get an Initial envelope as the first packet, and Session envelopes once they have answered.
 - Legacy nodes see plaintext from new nodes and are unaffected.
 
 ### 7.2 Private network
@@ -275,16 +313,19 @@ Only nodes with a credential participate. Nodes never send or accept plaintext.
 sequenceDiagram
     participant A
     participant B as B (bootstrap)
-    A->>B: Hello(pk_A, cred_A, ping)
+    A->>B: Hello(pk_A, epk_A, cred_A, ping)
+    Note over B: verifies cred_A, keeps no state
+    B->>A: Session(cred_B, pong)
+    Note over A: verifies cred_B, authorizes B
+    A->>B: Session(cred_A, request)
     Note over B: verifies cred_A, authorizes A
-    B->>A: DataCredential(cred_B, pong) under K_AB
-    Note over A: decrypts, verifies cred_B, authorizes B, B acked
-    A->>B: Data under K_AB
-    B->>A: DataCredential under K_AB, until A answers a request from B
+    B->>A: Session(cred_B, reply)
+    Note over A: B acked
+    A->>B: Session (without credential)
 ```
 
-- **Credential exchange.** Each side attaches its credential to everything it sends, until it receives an encrypted reply from the peer. From then on it sends plain `Data`.
-- **Authorization lifetime.** A peer stays authorized until its credential expires, according to the local clock. After that, its `Data` packets are dropped.
+- **Credential exchange.** Each side attaches its credential to everything it sends, until the peer answers one of its requests sent in an envelope.
+- **Authorization lifetime.** A peer stays authorized until its credential expires, according to the local clock. After that, its packets without a credential are dropped.
 - **Node lists.** Listed nodes without a valid matching key are discarded.
 - **Startup checks.** The node refuses to start (`DhtException`) if:
   - encryption is disabled while authorities are configured;
@@ -295,7 +336,7 @@ sequenceDiagram
 
 ## 8. Key persistence
 
-If the following conditions all hold, the secret key is saved in the state file as the msgpack field `transport_key` (32 bytes):
+If the following conditions all hold, the static secret key is saved in the state file as the msgpack field `transport_key` (32 bytes):
 - encryption is enabled;
 - no key was configured;
 - `Config::persist_path` is set.
@@ -304,7 +345,7 @@ When the key is saved:
 - the state file's permissions are set to `0600` before any data is written;
 - on start, the key is restored before any packet is exchanged, so the node keeps its ID across restarts.
 
-The node also stores its ID in the state file, so older versions reading this state keep the same ID. A configured key is never written to the state file.
+The node also stores its ID in the state file, so older versions reading this state keep the same ID. A configured key is never written to the state file. Ephemeral keys and session keys are never persisted.
 
 `dhtnode --transport-key <file>` loads the raw 32-byte secret from `<file>`. If the file does not exist, `dhtnode` creates it with mode `0600`.
 
@@ -314,32 +355,32 @@ The node also stores its ID in the state file, so older versions reading this st
 
 Against an attacker who controls the network but holds no node's secret key:
 
-- **Confidentiality and integrity.** Traffic between two nodes that know each other's keys is confidential and integrity-protected. The protection is IND-CCA2 and INT-CTXT, from ChaCha20-Poly1305 under a key derived from X25519.
-- **ID authentication.** An encrypted message under node ID `X` can only be produced by the holder of the secret key behind `X`.
+- **Confidentiality and integrity.** Traffic between two nodes that know each other's keys is confidential and integrity-protected. The protection is IND-CCA2 and INT-CTXT, from ChaCha20-Poly1305 under keys derived from X25519.
+- **ID authentication.** An encrypted message under node ID `X` can only be produced by the holder of the static secret key behind `X`.
   - Producing a key for a given ID requires a SHA-256 preimage on 160 bits.
   - Choosing the first `b` bits of one's own ID costs about $2^b$ key generations. Legacy nodes choose their ID freely.
-- **Address stickiness.** Spoofed plaintext cannot redirect a node record whose key is known (see [§6.5](#65-receiving)).
+- **Forward secrecy.** Session envelopes recorded by the attacker stay confidential if static keys are compromised later, once both ephemeral secrets are erased (at most one hour after use). Initial envelopes stay confidential if the sender's static key is compromised, but not the receiver's.
+- **Key-compromise impersonation.** With a node's static secret, an attacker can decrypt the Initial envelopes sent to it and impersonate other nodes to it in Initial envelopes, but not in Session envelopes.
+- **Address stickiness.** Spoofed plaintext and Hellos cannot redirect a node record whose key is known (see [§6.2](#62-hello-private-networks-only) and [§6.5](#65-receiving)).
 - **Private-network admission.** Without a valid credential and its matching secret key, a node:
   - cannot read any traffic;
   - cannot get answers it can decrypt;
   - is never listed by honest nodes.
 - **Network separation.** Different network IDs derive different keys.
-- **DoS cost.** Unauthenticated packets trigger at most one rate-limited public-key operation each.
+- **DoS cost.** Unauthenticated packets trigger at most one rate-limited key derivation or signature verification each.
 
 ### 9.2 Limitations
 
 - **Public mode is opportunistic.** An active attacker on the path of a first contact can strip or replace `k`. The two nodes then talk in plaintext, or the attacker relays traffic between them as a man-in-the-middle. This is trust on first use, with no downgrade protection.
   - Nodes learned from node lists with keys are not exposed this way, unless the lister itself is malicious or attacked.
   - The first request to a node whose key is unknown, for example a bootstrap ping, is visible.
-- **No forward secrecy.** Keys are static. If `sk_A` is compromised, all recorded traffic between A and any peer can be decrypted. It also allows impersonating any node *to* A (key-compromise impersonation). Rotate a key by changing it, which also changes the node ID.
-- **No replay protection.** The transport layer accepts a captured envelope again, including from another source address. A replayed request is processed again. Because it is authenticated, it also updates the sender's node record to the replayer's address. Replies to the replayer stay encrypted. Transaction IDs limit the effect of replayed replies.
-- **Hello carries no proof of key possession.** A credential travels in clear in a Hello and can be copied. Anyone holding a copy can send Hellos under that node's ID. The reply cannot be read without the secret key. However, the current implementation processes the message inside a Hello as authenticated, so it may update that node's address record.
-- **Stale `acked` after a peer restart (private mode).** A restarted peer has lost its record of our authorization. We keep sending `Data` without a credential, and the peer drops it, until our record of the peer expires.
+- **Static key compromise.** The static secret lets an attacker impersonate its owner from then on, and read the Initial envelopes sent to it, including recorded ones. Rotate a key by changing it, which also changes the node ID.
+- **No replay protection.** The transport layer accepts a captured envelope again while the receiver still has the keys for it: always for Initial envelopes, and up to one hour for Session envelopes. A replayed request is processed again. Because it is authenticated, it also updates the sender's node record to the replayer's address, and may restore an older ephemeral key for the sender; the retry rule ([§6.4](#64-sending)) recovers from the latter. Replies to the replayer stay encrypted. Transaction IDs limit the effect of replayed replies.
 - **No revocation.** A credential remains valid until it expires. Keep validity periods short, or replace the authority key to exclude nodes.
 - **Clock dependence.** Credential expiration is checked against local system clocks. Clock skew shifts when a credential is accepted.
 - **Metadata.** The following are visible to an observer:
-  - the sender public key, and therefore the node ID, in every envelope;
-  - envelope type, packet sizes and timing;
+  - the sender's static key, and therefore its node ID, and its ephemeral key in every envelope;
+  - envelope type, credential flag, packet sizes and timing;
   - the contents of Hello messages and the credentials they carry.
 - **Node state.** The saved node list does not include peer keys. In a private network, saved nodes are only used again once they are learned with their key.
 
@@ -370,11 +411,15 @@ From the library, set `Config::transport` before starting:
 | Name | Value |
 |---|---|
 | Envelope marker | `0xC1` |
-| Envelope types | `Data = 1`, `DataCredential = 2`, `Hello = 3` |
+| Envelope types | `Initial = 1`, `Session = 2`, `Hello = 3` |
+| Credential flag | `0x80` |
 | Key, nonce, tag sizes | 32, 12, 16 bytes |
-| Envelope overhead | 62 bytes (167 with credential) |
+| Envelope header | 66 bytes |
+| Envelope overhead | 94 bytes (199 with credential) |
+| Ephemeral key rotation | 30 minutes, previous key accepted for one more period |
+| Cached sessions per epoch | 16384 |
 | Credential size, version | 105 bytes, `0x01` |
 | Node ID context | `"opendht-node-id-v1"` |
-| HKDF salt | `"opendht-transport-v1"` |
+| HKDF salt | `"opendht-transport-v2"` |
 | Credential signature context | `"opendht-credential-v1"` |
-| Encrypted value fragment size | 1113 bytes |
+| Encrypted value fragment size | 1081 bytes |
