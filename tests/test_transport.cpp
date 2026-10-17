@@ -119,6 +119,28 @@ TransportTester::testNodeId()
 }
 
 void
+TransportTester::testAddressKey()
+{
+    auto secret = randomSecret(), other = randomSecret();
+    CPPUNIT_ASSERT(secret != other);
+    const uint8_t x[] = {127, 0, 0, 2, 0x10, 0x7e};
+    const uint8_t y[] = {127, 0, 0, 2, 0x10, 0x7f};
+
+    auto key = addressKey(secret, x, sizeof(x));
+    CPPUNIT_ASSERT(key);
+    CPPUNIT_ASSERT(key.pub == KeyPair::fromSecret(key.secret).pub);
+    CPPUNIT_ASSERT(key.secret == addressKey(secret, x, sizeof(x)).secret);
+    CPPUNIT_ASSERT(key.secret != addressKey(secret, y, sizeof(y)).secret);
+    CPPUNIT_ASSERT(key.secret != addressKey(other, x, sizeof(x)).secret);
+
+    auto token = addressToken(secret, x, sizeof(x));
+    CPPUNIT_ASSERT(token == addressToken(secret, x, sizeof(x)));
+    CPPUNIT_ASSERT(token != addressToken(secret, y, sizeof(y)));
+    CPPUNIT_ASSERT(token != addressToken(other, x, sizeof(x)));
+    CPPUNIT_ASSERT(token != key.secret and token != key.pub);
+}
+
+void
 TransportTester::testSealOpen()
 {
     auto a = KeyPair::generate(), ea = KeyPair::generate();
