@@ -11,11 +11,13 @@ class TransportTester : public CppUnit::TestFixture
 {
     CPPUNIT_TEST_SUITE(TransportTester);
     CPPUNIT_TEST(testX25519Rfc7748);
-    CPPUNIT_TEST(testSharedKey);
+    CPPUNIT_TEST(testSessionKeys);
+    CPPUNIT_TEST(testInitialKey);
     CPPUNIT_TEST(testRejectsLowOrderKey);
     CPPUNIT_TEST(testNodeId);
     CPPUNIT_TEST(testSealOpen);
     CPPUNIT_TEST(testOpenRejectsTampering);
+    CPPUNIT_TEST(testParseHeader);
     CPPUNIT_TEST(testEnvelopeIsNotMsgpack);
     CPPUNIT_TEST(testHello);
     CPPUNIT_TEST(testCredential);
@@ -27,11 +29,13 @@ public:
     void tearDown() {}
 
     void testX25519Rfc7748();
-    void testSharedKey();
+    void testSessionKeys();
+    void testInitialKey();
     void testRejectsLowOrderKey();
     void testNodeId();
     void testSealOpen();
     void testOpenRejectsTampering();
+    void testParseHeader();
     void testEnvelopeIsNotMsgpack();
     void testHello();
     void testCredential();
