@@ -17,6 +17,7 @@ using namespace std::literals;
 namespace test {
 CPPUNIT_TEST_SUITE_REGISTRATION(DhtRunnerTester);
 CPPUNIT_TEST_SUITE_REGISTRATION(DhtRunnerPushTester);
+CPPUNIT_TEST_SUITE_REGISTRATION(DhtRunnerTransportTester);
 
 namespace {
 #if defined(OPENDHT_PROXY_CLIENT) && defined(OPENDHT_PUSH_NOTIFICATIONS)
@@ -1577,6 +1578,221 @@ DhtRunnerTester::testListenMultiValuePartialExpire()
     }
 
     node1.cancelListen(key, ftoken.get());
+}
+
+namespace {
+
+/* UDP socket recording sent packets */
+class RecordingSocket : public dht::net::DatagramSocket
+{
+public:
+    RecordingSocket()
+        : inner_(std::make_unique<dht::net::UdpSocket>(0))
+    {
+        inner_->setOnReceive([this](dht::net::PacketList&& packets) {
+            onReceived(std::move(packets));
+            return dht::net::PacketList {};
+        });
+    }
+    ~RecordingSocket() { inner_.reset(); }
+
+    int sendTo(const dht::SockAddr& dest, const uint8_t* data, size_t size, bool replied) override
+    {
+        {
+            std::lock_guard lk(sentLock_);
+            sent_.emplace_back(data, data + size);
+        }
+        return inner_->sendTo(dest, data, size, replied);
+    }
+    bool hasIPv4() const override { return inner_->hasIPv4(); }
+    bool hasIPv6() const override { return inner_->hasIPv6(); }
+    const dht::SockAddr& getBoundRef(sa_family_t family = AF_UNSPEC) const override
+    {
+        return inner_->getBoundRef(family);
+    }
+    void stop() override { inner_->stop(); }
+
+    std::vector<dht::Blob> sent() const
+    {
+        std::lock_guard lk(sentLock_);
+        return sent_;
+    }
+
+private:
+    std::unique_ptr<dht::net::UdpSocket> inner_;
+    mutable std::mutex sentLock_;
+    std::vector<dht::Blob> sent_;
+};
+
+dht::DhtRunner::Config
+transportTestConfig(dht::TransportConfig transport = {})
+{
+    dht::DhtRunner::Config config;
+    config.dht_config.node_config.max_peer_req_per_sec = -1;
+    config.dht_config.node_config.max_req_per_sec = -1;
+    config.dht_config.node_config.transport = std::move(transport);
+    return config;
+}
+
+RecordingSocket*
+runRecorded(dht::DhtRunner& node, const dht::DhtRunner::Config& config)
+{
+    auto socket = std::make_unique<RecordingSocket>();
+    auto ptr = socket.get();
+    dht::DhtRunner::Context context;
+    context.sock = std::move(socket);
+    node.run(config, std::move(context));
+    return ptr;
+}
+
+dht::SockAddr
+localBound(const dht::DhtRunner& node)
+{
+    auto bound = node.getBound();
+    if (bound.isUnspecified())
+        bound.setLoopback();
+    return bound;
+}
+
+bool
+isEnvelope(const dht::Blob& packet)
+{
+    return dht::transport::isEnvelope(packet.data(), packet.size());
+}
+
+void
+putGet(dht::DhtRunner& from, dht::DhtRunner& to, const std::string& keyName)
+{
+    auto key = dht::InfoHash::get(keyName);
+    dht::Value val {keyName};
+    auto data = val.data;
+    std::promise<bool> p;
+    auto future = p.get_future();
+    from.put(key, std::move(val), [&](bool ok) { p.set_value(ok); });
+    CPPUNIT_ASSERT(getFutureValue(std::move(future)));
+    auto vals = getFutureValue(to.get(key));
+    CPPUNIT_ASSERT(not vals.empty());
+    CPPUNIT_ASSERT(vals.front()->data == data);
+}
+
+dht::TransportConfig
+privateTransport(const dht::transport::Authority& authority, std::chrono::system_clock::duration validity = 1h)
+{
+    dht::TransportConfig transport;
+    transport.key = dht::transport::KeyPair::generate();
+    transport.authorities = {authority.pub};
+    transport.credential = authority.issue(transport.key.pub, std::chrono::system_clock::now() + validity);
+    return transport;
+}
+
+} // namespace
+
+void
+DhtRunnerTransportTester::testEncryptedByDefault()
+{
+    dht::DhtRunner a, b;
+    auto socketA = runRecorded(a, transportTestConfig());
+    auto socketB = runRecorded(b, transportTestConfig());
+    b.bootstrap(localBound(a));
+    putGet(b, a, "encrypted");
+
+    // a learns b's key from its first request: everything a sends is encrypted
+    auto sentA = socketA->sent();
+    CPPUNIT_ASSERT(not sentA.empty());
+    CPPUNIT_ASSERT(std::all_of(sentA.begin(), sentA.end(), isEnvelope));
+
+    // b sends plaintext only until it learns a's key
+    auto sentB = socketB->sent();
+    auto firstEnvelope = std::find_if(sentB.begin(), sentB.end(), isEnvelope);
+    CPPUNIT_ASSERT(firstEnvelope != sentB.end());
+    CPPUNIT_ASSERT(std::all_of(firstEnvelope, sentB.end(), isEnvelope));
+}
+
+void
+DhtRunnerTransportTester::testLegacyInterop()
+{
+    dht::TransportConfig legacyTransport;
+    legacyTransport.enabled = false;
+    dht::DhtRunner node, legacy;
+    auto socket = runRecorded(node, transportTestConfig());
+    auto legacyConfig = transportTestConfig(legacyTransport);
+    legacy.run(0, legacyConfig);
+    legacy.bootstrap(localBound(node));
+
+    putGet(legacy, node, "legacy to new");
+    putGet(node, legacy, "new to legacy");
+
+    auto sent = socket->sent();
+    CPPUNIT_ASSERT(not sent.empty());
+    CPPUNIT_ASSERT(std::none_of(sent.begin(), sent.end(), isEnvelope));
+}
+
+void
+DhtRunnerTransportTester::testNodeIdFromTransportKey()
+{
+    std::mt19937_64 rd(42);
+    auto configuredId = dht::InfoHash::getRandom(rd);
+
+    dht::TransportConfig transport;
+    transport.key = dht::transport::KeyPair::generate();
+    auto config = transportTestConfig(transport);
+    config.dht_config.node_config.node_id = configuredId;
+    dht::DhtRunner node;
+    node.run(0, config);
+    CPPUNIT_ASSERT_EQUAL(dht::transport::nodeId(transport.key.pub), node.getNodeId());
+
+    transport.enabled = false;
+    config = transportTestConfig(transport);
+    config.dht_config.node_config.node_id = configuredId;
+    dht::DhtRunner legacy;
+    legacy.run(0, config);
+    CPPUNIT_ASSERT_EQUAL(configuredId, legacy.getNodeId());
+}
+
+void
+DhtRunnerTransportTester::testPrivateNetwork()
+{
+    auto authority = dht::transport::Authority::generate();
+    dht::DhtRunner member1, member2, outsider;
+    auto socket1 = runRecorded(member1, transportTestConfig(privateTransport(authority)));
+    auto config2 = transportTestConfig(privateTransport(authority));
+    member2.run(0, config2);
+    auto outsiderConfig = transportTestConfig(privateTransport(dht::transport::Authority::generate()));
+    outsider.run(0, outsiderConfig);
+
+    member2.bootstrap(localBound(member1));
+    putGet(member2, member1, "private");
+
+    outsider.bootstrap(localBound(member1));
+    std::this_thread::sleep_for(2s);
+    CPPUNIT_ASSERT_EQUAL(0u, outsider.getNodesStats(AF_INET).getKnownNodes());
+    CPPUNIT_ASSERT_EQUAL(1u, member1.getNodesStats(AF_INET).getKnownNodes());
+
+    auto sent = socket1->sent();
+    CPPUNIT_ASSERT(not sent.empty());
+    CPPUNIT_ASSERT(std::all_of(sent.begin(), sent.end(), isEnvelope));
+}
+
+void
+DhtRunnerTransportTester::testInvalidPrivateConfig()
+{
+    auto authority = dht::transport::Authority::generate();
+
+    auto otherKey = privateTransport(authority);
+    otherKey.key = dht::transport::KeyPair::generate();
+    dht::DhtRunner node1;
+    auto config = transportTestConfig(otherKey);
+    CPPUNIT_ASSERT_THROW(node1.run(0, config), dht::DhtException);
+
+    dht::DhtRunner node2;
+    config = transportTestConfig(privateTransport(authority, -1s));
+    CPPUNIT_ASSERT_THROW(node2.run(0, config), dht::DhtException);
+
+    auto disabled = privateTransport(authority);
+    disabled.enabled = false;
+    dht::DhtRunner node3;
+    config = transportTestConfig(disabled);
+    CPPUNIT_ASSERT_THROW(node3.run(0, config), dht::DhtException);
 }
 
 } // namespace test

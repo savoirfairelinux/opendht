@@ -27,6 +27,14 @@ class NetworkEngineTester : public CppUnit::TestFixture
     CPPUNIT_TEST(testGetRequestReuse);
     CPPUNIT_TEST(testFilteredProjectionDoesNotWaitForUnrelatedPeer);
     CPPUNIT_TEST(testFindNodeRequestReuse);
+    CPPUNIT_TEST(testTransportDisabledKeepsLegacyWire);
+    CPPUNIT_TEST(testTransportEncryptsAfterKeyExchange);
+    CPPUNIT_TEST(testTransportLegacyPeerStaysPlaintext);
+    CPPUNIT_TEST(testTransportRejectsMismatchedNodeId);
+    CPPUNIT_TEST(testTransportIgnoresForgedNodeListKey);
+    CPPUNIT_TEST(testTransportPlaintextDoesNotMoveKeyedNode);
+    CPPUNIT_TEST(testTransportPrivateNetwork);
+    CPPUNIT_TEST(testTransportPrivateNetworkRejectsOutsiders);
 #endif
     CPPUNIT_TEST_SUITE_END();
 
@@ -51,6 +59,14 @@ public:
     void testGetRequestReuse();
     void testFilteredProjectionDoesNotWaitForUnrelatedPeer();
     void testFindNodeRequestReuse();
+    void testTransportDisabledKeepsLegacyWire();
+    void testTransportEncryptsAfterKeyExchange();
+    void testTransportLegacyPeerStaysPlaintext();
+    void testTransportRejectsMismatchedNodeId();
+    void testTransportIgnoresForgedNodeListKey();
+    void testTransportPlaintextDoesNotMoveKeyedNode();
+    void testTransportPrivateNetwork();
+    void testTransportPrivateNetworkRejectsOutsiders();
 #endif
 };
 
