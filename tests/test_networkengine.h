@@ -20,7 +20,7 @@ class NetworkEngineTester : public CppUnit::TestFixture
     CPPUNIT_TEST(testDropsMalformedCompletedPartialMessage);
     CPPUNIT_TEST(testCompletesPartialSessionFromSameSource);
     CPPUNIT_TEST(testSeparatesPartialSessionsBySource);
-    CPPUNIT_TEST(testListenConfirmationCarriesToken);
+    CPPUNIT_TEST(testPlaintextListenRequiresToken);
     CPPUNIT_TEST(testListenConfirmationUpdatesSearchNodeToken);
     CPPUNIT_TEST(testListenReopensSocketAfterNodeExpiration);
     CPPUNIT_TEST(testUnauthorizedListenFlushClearsListenState);
@@ -35,6 +35,9 @@ class NetworkEngineTester : public CppUnit::TestFixture
     CPPUNIT_TEST(testTransportEpochRotation);
     CPPUNIT_TEST(testTransportPeerRestart);
     CPPUNIT_TEST(testTransportHelloIsUnauthenticated);
+    CPPUNIT_TEST(testTransportSessionAuthorizesWrites);
+    CPPUNIT_TEST(testTransportInitialWriteIsUnauthorized);
+    CPPUNIT_TEST(testTransportEphemeralBoundToAddress);
 #endif
     CPPUNIT_TEST_SUITE_END();
 
@@ -52,7 +55,7 @@ public:
     void testDropsMalformedCompletedPartialMessage();
     void testCompletesPartialSessionFromSameSource();
     void testSeparatesPartialSessionsBySource();
-    void testListenConfirmationCarriesToken();
+    void testPlaintextListenRequiresToken();
     void testListenConfirmationUpdatesSearchNodeToken();
     void testListenReopensSocketAfterNodeExpiration();
     void testUnauthorizedListenFlushClearsListenState();
@@ -67,6 +70,9 @@ public:
     void testTransportEpochRotation();
     void testTransportPeerRestart();
     void testTransportHelloIsUnauthenticated();
+    void testTransportSessionAuthorizesWrites();
+    void testTransportInitialWriteIsUnauthorized();
+    void testTransportEphemeralBoundToAddress();
 #endif
 };
 

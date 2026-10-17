@@ -15,6 +15,7 @@ class TransportTester : public CppUnit::TestFixture
     CPPUNIT_TEST(testInitialKey);
     CPPUNIT_TEST(testRejectsLowOrderKey);
     CPPUNIT_TEST(testNodeId);
+    CPPUNIT_TEST(testAddressKey);
     CPPUNIT_TEST(testSealOpen);
     CPPUNIT_TEST(testOpenRejectsTampering);
     CPPUNIT_TEST(testParseHeader);
@@ -33,6 +34,7 @@ public:
     void testInitialKey();
     void testRejectsLowOrderKey();
     void testNodeId();
+    void testAddressKey();
     void testSealOpen();
     void testOpenRejectsTampering();
     void testParseHeader();

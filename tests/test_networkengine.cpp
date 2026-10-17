@@ -197,6 +197,36 @@ makeListenPacketBlob(const InfoHash& id, const InfoHash& hash, Tid tid, Tid sock
     return {buffer.data(), buffer.data() + buffer.size()};
 }
 
+static Blob
+makeFindPacketBlob(const InfoHash& id, const InfoHash& target, Tid tid)
+{
+    msgpack::sbuffer buffer;
+    msgpack::packer<msgpack::sbuffer> pk(&buffer);
+
+    pk.pack_map(4);
+    pk.pack(KEY_A);
+    pk.pack_map(2);
+    pk.pack(KEY_REQ_ID);
+    pk.pack(id);
+    pk.pack(KEY_REQ_TARGET);
+    pk.pack(target);
+    pk.pack(KEY_Q);
+    pk.pack(QUERY_FIND);
+    pk.pack(KEY_TID);
+    pk.pack(tid);
+    pk.pack(KEY_Y);
+    pk.pack(KEY_Q);
+
+    return {buffer.data(), buffer.data() + buffer.size()};
+}
+
+static void
+parseMessage(ParsedMessage& msg, const Blob& data)
+{
+    auto object = msgpack::unpack((const char*) data.data(), data.size());
+    msg.msgpack_unpack(object.get());
+}
+
 static SockAddr
 makeIPv4(const char* ip, in_port_t port)
 {
@@ -230,11 +260,11 @@ makeEngine(std::unique_ptr<TestDatagramSocket>&& socket,
         [](Sp<Node>) { return net::RequestAnswer {}; },
         [](Sp<Node>, const InfoHash&, want_t) { return net::RequestAnswer {}; },
         [](Sp<Node>, const InfoHash&, want_t, const Query&) { return net::RequestAnswer {}; },
-        [](Sp<Node>, const InfoHash&, const Blob&, Tid, const Query&, int) { return net::RequestAnswer {}; },
-        [](Sp<Node>, const InfoHash&, const Blob&, const std::vector<Sp<Value>>&, const time_point&) {
+        [](Sp<Node>, const InfoHash&, Tid, const Query&, int) { return net::RequestAnswer {}; },
+        [](Sp<Node>, const InfoHash&, const std::vector<Sp<Value>>&, const time_point&) {
             return net::RequestAnswer {};
         },
-        [](Sp<Node>, const InfoHash&, const Blob&, const Value::Id&) { return net::RequestAnswer {}; });
+        [](Sp<Node>, const InfoHash&, const Value::Id&) { return net::RequestAnswer {}; });
 }
 
 static Sp<Node>
@@ -450,16 +480,14 @@ NetworkEngineTester::testSeparatesPartialSessionsBySource()
 }
 
 void
-NetworkEngineTester::testListenConfirmationCarriesToken()
+NetworkEngineTester::testPlaintextListenRequiresToken()
 {
     Scheduler scheduler;
     std::mt19937_64 rd(3);
     InfoHash myid = InfoHash::getRandom(rd);
     InfoHash remoteId = InfoHash::getRandom(rd);
     InfoHash hash = InfoHash::getRandom(rd);
-    Blob requestToken {0x01, 0x02, 0x03, 0x04};
-    Blob responseToken {0xaa, 0xbb, 0xcc, 0xdd, 0xee};
-    int onNewNodeCalls = 0;
+    int listens = 0;
     net::NetworkConfig config {};
     config.max_req_per_sec = -1;
     config.max_peer_req_per_sec = -1;
@@ -474,38 +502,51 @@ NetworkEngineTester::testListenConfirmationCarriesToken()
         rd,
         scheduler,
         [](Sp<net::Request>, net::DhtProtocolException) {},
-        [&onNewNodeCalls](const Sp<Node>&, int) { ++onNewNodeCalls; },
+        [](const Sp<Node>&, int) {},
         [](const InfoHash&, const SockAddr&) {},
         [](Sp<Node>) { return net::RequestAnswer {}; },
         [](Sp<Node>, const InfoHash&, want_t) { return net::RequestAnswer {}; },
         [](Sp<Node>, const InfoHash&, want_t, const Query&) { return net::RequestAnswer {}; },
-        [responseToken](Sp<Node>, const InfoHash&, const Blob&, Tid, const Query&, int) {
-            net::RequestAnswer answer {};
-            answer.ntoken = responseToken;
-            return answer;
-        },
-        [](Sp<Node>, const InfoHash&, const Blob&, const std::vector<Sp<Value>>&, const time_point&) {
+        [&listens](Sp<Node>, const InfoHash&, Tid, const Query&, int) {
+            ++listens;
             return net::RequestAnswer {};
         },
-        [](Sp<Node>, const InfoHash&, const Blob&, const Value::Id&) { return net::RequestAnswer {}; });
+        [](Sp<Node>, const InfoHash&, const std::vector<Sp<Value>>&, const time_point&) {
+            return net::RequestAnswer {};
+        },
+        [](Sp<Node>, const InfoHash&, const Value::Id&) { return net::RequestAnswer {}; });
 
     auto from = makeIPv4("127.0.0.2", 5003);
-    auto packet = makeListenPacketBlob(remoteId, hash, 17, 23, requestToken);
+    auto forged = makeListenPacketBlob(remoteId, hash, 17, 23, Blob(32, 0x42));
+    engine.processMessage(forged.data(), forged.size(), from);
+    CPPUNIT_ASSERT_EQUAL(0, listens);
+    ParsedMessage error;
+    parseMessage(error, socketPtr->sends.at(0).data);
+    CPPUNIT_ASSERT(error.type == MessageType::Error);
+    CPPUNIT_ASSERT_EQUAL(DhtProtocolException::UNAUTHORIZED, error.error_code);
 
-    engine.processMessage(packet.data(), packet.size(), from);
+    // Answers carry a token for the address they are sent to
+    auto find = makeFindPacketBlob(remoteId, hash, 18);
+    engine.processMessage(find.data(), find.size(), from);
+    ParsedMessage answer;
+    parseMessage(answer, socketPtr->sends.at(1).data);
+    CPPUNIT_ASSERT_EQUAL((size_t) 32, answer.token.size());
 
-    CPPUNIT_ASSERT_EQUAL((size_t) 1, socketPtr->sends.size());
+    auto other = makeIPv4("127.0.0.3", 5003);
+    auto stolen = makeListenPacketBlob(InfoHash::getRandom(rd), hash, 19, 23, answer.token);
+    engine.processMessage(stolen.data(), stolen.size(), other);
+    CPPUNIT_ASSERT_EQUAL(0, listens);
 
-    const auto& sent = socketPtr->sends.front();
+    auto listen = makeListenPacketBlob(remoteId, hash, 20, 23, answer.token);
+    engine.processMessage(listen.data(), listen.size(), from);
+    CPPUNIT_ASSERT_EQUAL(1, listens);
+    const auto& sent = socketPtr->sends.back();
     CPPUNIT_ASSERT(sent.dest == from);
-
-    auto replyObject = msgpack::unpack((const char*) sent.data.data(), sent.data.size());
     ParsedMessage reply;
-    reply.msgpack_unpack(replyObject.get());
-
+    parseMessage(reply, sent.data);
     CPPUNIT_ASSERT(reply.type == MessageType::Reply);
     CPPUNIT_ASSERT_EQUAL(myid, reply.id);
-    CPPUNIT_ASSERT(reply.token == responseToken);
+    CPPUNIT_ASSERT(reply.token == answer.token);
 }
 
 void
@@ -540,7 +581,7 @@ NetworkEngineTester::testListenConfirmationUpdatesSearchNodeToken()
                                      std::forward_as_tuple(valueCallback, dht::SyncCallback {}, socketId));
     auto* searchNodePtr = sr->nodes.emplace_back(std::move(searchNode)).get();
 
-    CPPUNIT_ASSERT(searchNodePtr->token.empty());
+    CPPUNIT_ASSERT(not searchNodePtr->token);
     CPPUNIT_ASSERT(!searchNodePtr->isSynced(localDht.scheduler.time()));
 
     net::RequestAnswer answer {};
@@ -658,7 +699,7 @@ NetworkEngineTester::testUnauthorizedListenFlushClearsListenState()
                      net::DhtProtocolException {net::DhtProtocolException::UNAUTHORIZED,
                                                 net::DhtProtocolException::LISTEN_WRONG_TOKEN});
 
-    CPPUNIT_ASSERT(searchNodePtr->token.empty());
+    CPPUNIT_ASSERT(not searchNodePtr->token);
     CPPUNIT_ASSERT(searchNodePtr->last_get_reply == time_point::min());
 
     auto listenStatusIt = searchNodePtr->listenStatus.find(query);
@@ -700,11 +741,14 @@ struct TransportTestNode
             [](Sp<Node>) { return net::RequestAnswer {}; },
             [](Sp<Node>, const InfoHash&, want_t) { return net::RequestAnswer {}; },
             [](Sp<Node>, const InfoHash&, want_t, const Query&) { return net::RequestAnswer {}; },
-            [](Sp<Node>, const InfoHash&, const Blob&, Tid, const Query&, int) { return net::RequestAnswer {}; },
-            [](Sp<Node>, const InfoHash&, const Blob&, const std::vector<Sp<Value>>&, const time_point&) {
+            [this](Sp<Node>, const InfoHash&, Tid, const Query&, int) {
+                ++listens;
                 return net::RequestAnswer {};
             },
-            [](Sp<Node>, const InfoHash&, const Blob&, const Value::Id&) { return net::RequestAnswer {}; });
+            [](Sp<Node>, const InfoHash&, const std::vector<Sp<Value>>&, const time_point&) {
+                return net::RequestAnswer {};
+            },
+            [](Sp<Node>, const InfoHash&, const Value::Id&) { return net::RequestAnswer {}; });
     }
 
     std::vector<TestDatagramSocket::SentPacket> takeSent() { return std::exchange(socket->sends, {}); }
@@ -737,6 +781,7 @@ struct TransportTestNode
     TestDatagramSocket* socket;
     std::unique_ptr<net::NetworkEngine> engine;
     int newNodes {0};
+    int listens {0};
     /* held by the routing table in a Dht */
     std::vector<Sp<Node>> known;
 };
@@ -1242,6 +1287,109 @@ NetworkEngineTester::testTransportHelloIsUnauthenticated()
     pk.pack(KEY_Q);
     forge({buffer.data(), buffer.data() + buffer.size()});
     CPPUNIT_ASSERT(b.socket->sends.empty());
+}
+
+void
+NetworkEngineTester::testTransportSessionAuthorizesWrites()
+{
+    TransportTestNode a("127.0.0.2", {}, 1);
+    TransportTestNode b("127.0.0.3", {}, 2);
+    bool done = false;
+    a.ping(b.addr, done);
+    a.deliverTo(b);
+    b.deliverTo(a);
+    CPPUNIT_ASSERT(done);
+
+    // No token: a got b's ephemeral key for its address
+    std::mt19937_64 rd(4);
+    std::optional<Blob> token;
+    a.engine->sendListen(a.node(b),
+                         InfoHash::getRandom(rd),
+                         {},
+                         {},
+                         1,
+                         [&token](const net::Request&, net::RequestAnswer&& answer) {
+                             token = std::move(answer.ntoken);
+                         },
+                         {});
+    CPPUNIT_ASSERT(isEnvelope(a.socket->sends.at(0), transport::EnvelopeType::Session));
+    a.deliverTo(b);
+    CPPUNIT_ASSERT_EQUAL(1, b.listens);
+    b.deliverTo(a);
+    CPPUNIT_ASSERT(token and token->empty());
+}
+
+void
+NetworkEngineTester::testTransportInitialWriteIsUnauthorized()
+{
+    TransportTestNode b("127.0.0.3", {}, 2);
+    auto from = makeIPv4("127.0.0.4", 4222);
+    auto sender = transport::KeyPair::generate();
+    auto ephemeral = transport::KeyPair::generate();
+    std::mt19937_64 rd(5);
+    auto listen = makeListenPacketBlob(transport::nodeId(sender.pub), InfoHash::getRandom(rd), 1, 2, {});
+
+    // Anyone can send an Initial envelope from any address
+    auto initial = transport::seal(*transport::initialSendKey(sender, ephemeral, b.key.pub, 0),
+                                   transport::EnvelopeType::Initial,
+                                   sender.pub,
+                                   ephemeral.pub,
+                                   listen.data(),
+                                   listen.size());
+    b.engine->processMessage(initial.data(), initial.size(), from);
+    CPPUNIT_ASSERT_EQUAL(0, b.listens);
+
+    auto reply = b.takeSent().at(0);
+    CPPUNIT_ASSERT(reply.dest == from);
+    CPPUNIT_ASSERT(isEnvelope(reply, transport::EnvelopeType::Session));
+    auto keys = *transport::sessionKeys(sender, ephemeral, b.key.pub, ephemeralKey(reply), 0);
+    auto payload = transport::open(keys.rx, reply.data.data(), reply.data.size());
+    CPPUNIT_ASSERT(payload);
+    ParsedMessage error;
+    parseMessage(error, *payload);
+    CPPUNIT_ASSERT(error.type == MessageType::Error);
+    CPPUNIT_ASSERT_EQUAL(DhtProtocolException::UNAUTHORIZED, error.error_code);
+
+    // The error reached the sender's address: the retry is accepted
+    auto session = transport::seal(keys.tx,
+                                   transport::EnvelopeType::Session,
+                                   sender.pub,
+                                   ephemeral.pub,
+                                   listen.data(),
+                                   listen.size());
+    b.engine->processMessage(session.data(), session.size(), from);
+    CPPUNIT_ASSERT_EQUAL(1, b.listens);
+}
+
+void
+NetworkEngineTester::testTransportEphemeralBoundToAddress()
+{
+    TransportTestNode a("127.0.0.2", {}, 1);
+    TransportTestNode b("127.0.0.3", {}, 2);
+    TransportTestNode c("127.0.0.66", {}, 3);
+    bool done = false;
+    a.ping(b.addr, done);
+    a.deliverTo(b);
+    auto toA = b.socket->sends.at(0);
+    b.deliverTo(a);
+    c.ping(b.addr, done);
+    c.deliverTo(b);
+    CPPUNIT_ASSERT(ephemeralKey(b.socket->sends.at(0)) != ephemeralKey(toA));
+    b.deliverTo(c);
+
+    a.ping(a.node(b), done);
+    auto fromA = a.socket->sends.at(0);
+    c.ping(c.node(b), done);
+    auto fromC = c.socket->sends.at(0);
+    CPPUNIT_ASSERT(isEnvelope(fromA, transport::EnvelopeType::Session));
+    CPPUNIT_ASSERT(isEnvelope(fromC, transport::EnvelopeType::Session));
+
+    // A Session envelope only opens from the address that received b's ephemeral key
+    b.engine->processMessage(fromC.data.data(), fromC.data.size(), a.addr);
+    b.engine->processMessage(fromA.data.data(), fromA.data.size(), c.addr);
+    CPPUNIT_ASSERT(b.socket->sends.empty());
+    b.engine->processMessage(fromA.data.data(), fromA.data.size(), a.addr);
+    CPPUNIT_ASSERT_EQUAL((size_t) 1, b.socket->sends.size());
 }
 
 } // namespace test
