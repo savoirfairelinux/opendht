@@ -41,6 +41,7 @@ class NetworkEngineTester : public CppUnit::TestFixture
     CPPUNIT_TEST(testTransportSessionAuthorizesWrites);
     CPPUNIT_TEST(testTransportInitialWriteIsUnauthorized);
     CPPUNIT_TEST(testTransportEphemeralBoundToAddress);
+    CPPUNIT_TEST(testTransportRestartedPeerReconnects);
 #endif
     CPPUNIT_TEST_SUITE_END();
 
@@ -79,6 +80,7 @@ public:
     void testTransportSessionAuthorizesWrites();
     void testTransportInitialWriteIsUnauthorized();
     void testTransportEphemeralBoundToAddress();
+    void testTransportRestartedPeerReconnects();
 #endif
 };
 
