@@ -364,8 +364,6 @@ private:
 
     static constexpr std::chrono::seconds BOOTSTRAP_PERIOD {10};
 
-    static constexpr size_t TOKEN_SIZE {32};
-
     // internal structures
     struct SearchNode;
     struct Get;
@@ -383,9 +381,6 @@ private:
     std::mt19937_64 rd;
 
     InfoHash myid {};
-
-    uint64_t secret {};
-    uint64_t oldsecret {};
 
     // registred types
     TypeStore types;
@@ -454,11 +449,6 @@ private:
     {
         return public_stable ? LISTEN_EXPIRE_TIME_PUBLIC : LISTEN_EXPIRE_TIME;
     }
-
-    void rotateSecrets();
-
-    Blob makeToken(const SockAddr&, bool old) const;
-    bool tokenMatch(const Blob& token, const SockAddr&) const;
 
     void reportedAddr(const SockAddr&);
 
@@ -630,15 +620,14 @@ private:
     void onGetValuesDone(const Sp<Node>& status, net::RequestAnswer& a, Sp<Search>& sr, const Sp<Query>& orig_query);
     /* when we receive a listen request */
     net::RequestAnswer onListen(
-        Sp<Node> node, const InfoHash& hash, const Blob& token, size_t socket_id, const Query& query, int version = 0);
+        Sp<Node> node, const InfoHash& hash, size_t socket_id, const Query& query, int version = 0);
     void onListenDone(const Sp<Node>& node, net::RequestAnswer& a, Sp<Search>& sr);
     /* when we receive an announce request */
     net::RequestAnswer onAnnounce(Sp<Node> node,
                                   const InfoHash& hash,
-                                  const Blob& token,
                                   const std::vector<Sp<Value>>& v,
                                   const time_point& created);
-    net::RequestAnswer onRefresh(Sp<Node> node, const InfoHash& hash, const Blob& token, const Value::Id& vid);
+    net::RequestAnswer onRefresh(Sp<Node> node, const InfoHash& hash, const Value::Id& vid);
     void onAnnounceDone(const Sp<Node>& status, net::RequestAnswer& a, Sp<Search>& sr);
 };
 

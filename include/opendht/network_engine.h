@@ -86,7 +86,8 @@ struct ParsedMessage;
  */
 struct RequestAnswer
 {
-    Blob ntoken {};
+    /* Write token of the node; empty if it needs none (encrypted), nullopt if not granted. */
+    std::optional<Blob> ntoken {};
     Value::Id vid {};
     std::vector<Sp<Value>> values {};
     std::vector<Value::Id> refreshed_values {};
@@ -163,34 +164,31 @@ private:
      */
     std::function<RequestAnswer(Sp<Node>, const InfoHash&, want_t, const Query&)> onGetValues {};
     /**
-     * Called on listen request.
+     * Called on listen request, from a node proven to receive at its address.
      *
      * @param node (type: Sp<Node>) the requesting node.
      * @param h (type: InfoHash) hash of the value of interest.
-     * @param token (type: Blob) security token.
      * @param rid (type: uint16_t) request id.
      */
-    std::function<RequestAnswer(Sp<Node>, const InfoHash&, const Blob&, Tid, const Query&, int)> onListen {};
+    std::function<RequestAnswer(Sp<Node>, const InfoHash&, Tid, const Query&, int)> onListen {};
     /**
-     * Called on announce request.
+     * Called on announce request, from a node proven to receive at its address.
      *
      * @param node (type: Sp<Node>) the requesting node.
      * @param h (type: InfoHash) hash of the value of interest.
-     * @param token (type: Blob) security token.
      * @param values (type: std::vector<Sp<Value>>) values to store.
      * @param created (type: time_point) time when the value was created.
      */
-    std::function<RequestAnswer(Sp<Node>, const InfoHash&, const Blob&, const std::vector<Sp<Value>>&, const time_point&)>
+    std::function<RequestAnswer(Sp<Node>, const InfoHash&, const std::vector<Sp<Value>>&, const time_point&)>
         onAnnounce {};
     /**
-     * Called on refresh request.
+     * Called on refresh request, from a node proven to receive at its address.
      *
      * @param node (type: Sp<Node>) the requesting node.
      * @param h (type: InfoHash) hash of the value of interest.
-     * @param token (type: Blob) security token.
      * @param vid (type: Value::id) the value id.
      */
-    std::function<RequestAnswer(Sp<Node>, const InfoHash&, const Blob&, const Value::Id&)> onRefresh {};
+    std::function<RequestAnswer(Sp<Node>, const InfoHash&, const Value::Id&)> onRefresh {};
 
 public:
     using RequestCb = std::function<void(const Request&, RequestAnswer&&)>;
@@ -237,7 +235,6 @@ public:
      * @param socket_id  The tid to use to write to the request socket.
      * @param hash        The hash key of the value.
      * @param want        Wether to send ipv4 and/or ipv6 nodes.
-     * @param ntoken      Listen security token.
      * @param nodes       The ipv4 closest nodes.
      * @param nodes6      The ipv6 closest nodes.
      * @param values      The values to send.
@@ -247,7 +244,6 @@ public:
                       Tid socket_id,
                       const InfoHash& hash,
                       want_t want,
-                      const Blob& ntoken,
                       std::vector<Sp<Node>>&& nodes,
                       std::vector<Sp<Node>>&& nodes6,
                       std::vector<Sp<Value>>&& values,
@@ -257,13 +253,11 @@ public:
     void tellListenerRefreshed(const Sp<Node>& n,
                                Tid socket_id,
                                const InfoHash& hash,
-                               const Blob& ntoken,
                                const std::vector<Value::Id>& values,
                                int version);
     void tellListenerExpired(const Sp<Node>& n,
                              Tid socket_id,
                              const InfoHash& hash,
-                             const Blob& ntoken,
                              const std::vector<Value::Id>& values,
                              int version);
 
@@ -505,28 +499,36 @@ private:
     static constexpr size_t MAX_MESSAGE_VALUE_SIZE {56 * 1024};
     static constexpr size_t RX_MAX_EARLY_BYTES {MAX_MESSAGE_VALUE_SIZE + MAX_VALUE_SIZE + 32};
     static constexpr size_t RX_MAX_EARLY_PARTS {RX_MAX_EARLY_BYTES / ENCRYPTED_FRAGMENT_SIZE + 2};
-    /* Lifetime of an ephemeral transport key: in use for one period, then accepted for another */
+    /* Lifetime of ephemeral transport keys and write tokens: in use for one period, then accepted for another */
     static constexpr std::chrono::minutes EPOCH_DURATION {30};
     /* Cached session keys per epoch */
     static constexpr size_t MAX_SESSIONS {16 * 1024};
+    static constexpr size_t TOKEN_SIZE {transport::KEY_SIZE};
 
     struct Session
     {
+        /* our ephemeral key for the peer address */
+        transport::Key ephemeral;
+        transport::Key peer;
         transport::Key peerEphemeral;
         transport::SessionKeys keys;
     };
-    /* An ephemeral key and the session keys derived from it, all erased together */
+    /* The secret from which ephemeral keys and tokens derive, and session keys, all erased together */
     struct Epoch
     {
-        transport::KeyPair key {};
-        std::map<transport::Key, Session> sessions {};
+        transport::Key secret {};
+        std::map<SockAddr, Session> sessions {};
 
-        const transport::SessionKeys* find(const transport::Key& peer, const transport::Key& peerEphemeral) const;
-        void store(const transport::Key& peer, const transport::Key& peerEphemeral, const transport::SessionKeys& keys);
+        explicit operator bool() const { return secret != transport::Key {}; }
+        transport::KeyPair ephemeral(const SockAddr& addr) const;
+        Blob token(const SockAddr& addr) const;
+        const Session* find(const SockAddr& addr, const transport::Key& peer, const transport::Key& peerEphemeral) const;
+        void store(const SockAddr& addr, const Session& session);
         void wipe();
     };
     void rotateEpoch();
-    std::optional<transport::SessionKeys> sessionKeys(const transport::Peer& peer);
+    /* Session with the peer at `addr`, or nullopt for an invalid peer key */
+    std::optional<Session> session(const transport::Peer& peer, const SockAddr& addr);
     std::optional<Blob> openSession(const transport::Header& header,
                                     const uint8_t* buf,
                                     size_t buflen,
@@ -538,6 +540,8 @@ private:
         Blob payload;
         /* unauthenticated */
         bool hello {false};
+        /* Session envelope: the sender got our ephemeral key for its address */
+        bool session {false};
     };
     std::optional<OpenedEnvelope> openEnvelope(const uint8_t* buf, size_t buflen, const SockAddr& from);
     bool authorize(transport::Peer& peer, const uint8_t* credential, size_t size) const;
@@ -550,6 +554,13 @@ private:
     {
         return transport_ and not config.transport.isPrivate() and not node.getTransport();
     }
+    /* Messages to the node are encrypted */
+    bool encrypts(const Node& node) const { return transport_ and node.getTransport(); }
+    /* Token granting writes to a plaintext node. Encrypted nodes need none. */
+    Blob writeToken(const Node& node) const { return encrypts(node) ? Blob {} : epoch_.token(node.getAddr()); }
+    bool tokenMatch(const Blob& token, const SockAddr& addr) const;
+    /* Writes need proof that the sender receives at its address: a Session envelope, or else a token */
+    void authorizeWrite(const ParsedMessage& msg, const Node& node, const std::string& error) const;
     /* Number of optional top-level fields packed by packOptionalFields */
     unsigned optionalFields(bool key) const
     {

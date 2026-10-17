@@ -92,7 +92,8 @@ struct Dht::SearchNode
     NodeListenerStatus listenStatus {}; /* listen status */
     AnnounceStatusMap acked {};         /* announcement status for a given value id */
 
-    Blob token {};                                 /* last token the node sent to us after a get request */
+    /* write token the node sent us after a get request: empty if it needs none (encrypted) */
+    std::optional<Blob> token {};
     time_point last_get_reply {time_point::min()}; /* last time received valid token */
     Sp<Scheduler::Job> syncJob {};
     bool candidate {false}; /* A search node is candidate if the search is/was synced and this
@@ -123,12 +124,12 @@ struct Dht::SearchNode
      */
     bool isSynced(const time_point& now) const
     {
-        return not node->isExpired() and not token.empty() and last_get_reply >= now - Node::NODE_EXPIRE_TIME;
+        return not node->isExpired() and token and last_get_reply >= now - Node::NODE_EXPIRE_TIME;
     }
 
     time_point getSyncTime(const time_point& now) const
     {
-        if (node->isExpired() or token.empty())
+        if (node->isExpired() or not token)
             return now;
         return last_get_reply + Node::NODE_EXPIRE_TIME;
     }
@@ -139,7 +140,7 @@ struct Dht::SearchNode
      */
     void refreshToken(const Blob& tok)
     {
-        if (not tok.empty() and tok.size() <= 64)
+        if (tok.size() <= 64)
             token = tok;
     }
 
@@ -499,7 +500,7 @@ struct Dht::Search
     /**
      * @returns true if the node was not present and added to the search
      */
-    bool insertNode(const Sp<Node>& n, time_point now, const Blob& token = {});
+    bool insertNode(const Sp<Node>& n, time_point now, const std::optional<Blob>& token = {});
 
     SearchNode* getNode(const Sp<Node>& n)
     {
@@ -854,7 +855,7 @@ struct Dht::Search
    target.  We just got a new candidate, insert it at the right spot or
    discard it. */
 bool
-Dht::Search::insertNode(const Sp<Node>& snode, time_point now, const Blob& token)
+Dht::Search::insertNode(const Sp<Node>& snode, time_point now, const std::optional<Blob>& token)
 {
     auto& node = *snode;
     const auto& nid = node.id;
@@ -933,10 +934,10 @@ Dht::Search::insertNode(const Sp<Node>& snode, time_point now, const Blob& token
     }
     if (n == nodes.end() or not *n)
         return false;
-    if (not token.empty()) {
+    if (token) {
         (*n)->candidate = false;
         (*n)->last_get_reply = now;
-        if (token.size() <= 64)
+        if (token->size() <= 64)
             (*n)->token = token;
         expired = false;
     }

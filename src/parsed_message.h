@@ -140,6 +140,8 @@ struct ParsedMessage
     /* transport state of the sender, if authenticated */
     Sp<transport::Peer> peer;
     bool encrypted {false};
+    /* received in a Session envelope: the sender receives at its address */
+    bool session {false};
     void msgpack_unpack(const msgpack::object& o);
 
     bool append(const ParsedMessage& block);
