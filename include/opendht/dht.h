@@ -277,9 +277,6 @@ public:
     std::vector<ValuesExport> exportValues() const override;
     void importValues(const std::vector<ValuesExport>&) override;
 
-    void saveState(const std::string& path) const;
-    void loadState(const std::string& path);
-
     NodeStats getNodesStats(sa_family_t af) const override;
 
     std::string getStorageLog() const override;
@@ -379,6 +376,10 @@ private:
     Dht(const Dht&) = delete;
     Dht& operator=(const Dht&) = delete;
 
+    void saveState(const std::string& path) const;
+    /* Only called on construction: may replace the transport key */
+    void loadState(const std::string& path);
+
     std::mt19937_64 rd;
 
     InfoHash myid {};
@@ -438,6 +439,8 @@ private:
     net::NetworkEngine network_engine;
 
     std::string persistPath;
+    /* The transport key was generated: keep it in the persisted state */
+    bool persistTransportKey {false};
 
     // are we a bootstrap node ?
     // note: Any running node can be used as a bootstrap node.

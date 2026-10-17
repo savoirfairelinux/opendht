@@ -124,7 +124,7 @@ struct TransportConfig
 {
     /** Advertise our key and encrypt traffic with nodes supporting it. Disabling uses a legacy random node ID. */
     bool enabled {true};
-    /** Transport key, generated on start if empty. The node ID derives from it. */
+    /** Transport key. If empty, generated on start, and kept in the persisted state if Config::persist_path is set. */
     transport::KeyPair key {};
     /** Network authorities. If set, only nodes with a credential issued by one of them are accepted. */
     std::vector<transport::Key> authorities {};

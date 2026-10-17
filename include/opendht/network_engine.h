@@ -219,6 +219,12 @@ public:
 
     /** Our transport key, or nullptr if transport encryption is disabled */
     const transport::KeyPair* getTransportKey() const { return transport_ ? &config.transport.key : nullptr; }
+    /** Replaces our transport key. Only valid before any message is exchanged. */
+    void setTransportKey(const transport::KeyPair& key)
+    {
+        if (transport_)
+            config.transport.key = key;
+    }
 
     void clear();
 
@@ -606,7 +612,7 @@ private:
 
     /* DHT info */
     const InfoHash& myid;
-    const NetworkConfig config {};
+    NetworkConfig config {};
     const bool transport_ {false};
     const Blob credential_ {};
     const std::unique_ptr<DatagramSocket> dht_socket;

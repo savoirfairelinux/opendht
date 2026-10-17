@@ -135,7 +135,8 @@ Disable rate limiting (allows unlimited requests and storage).
 Enable public stable mode.
 .TP
 \fB\-f\fP \fIpath\fP, \fB\-\-persist\fP \fIpath\fP
-Specify a file path to persist/load the node state (routing table and values).
+Specify a file path to persist/load the node state (routing table, values and
+generated transport key).
 .TP
 \fB\-n\fP \fInetwork_id\fP, \fB\-\-net\fP \fInetwork_id\fP
 Specify the network id. This lets you connect to distinct networks and prevents
@@ -186,7 +187,8 @@ Disable protocol encryption, using a random node ID like older versions.
 .TP
 \fB\-\-transport\-key\fP \fIfile\fP
 Load the transport key from \fIfile\fP, or create it if it doesn't exist.
-Keeps the same node ID across restarts. Otherwise, a new key is generated on each start.
+Keeps the same node ID across restarts. Otherwise, a key is generated and kept
+in the node state if \fB\-\-persist\fP is used, or generated on each start.
 .TP
 \fB\-\-network\-authority\fP \fIkey\fP
 Join a private network: only accept nodes with a credential issued by the
