@@ -13,7 +13,8 @@ Implementation: [include/opendht/transport.h](../include/opendht/transport.h), [
 - **Backward compatibility**: nodes without this feature keep working with new nodes, in plaintext.
 - **Optional private networks**: when configured, a node only talks to nodes holding a credential signed by a trusted authority.
 - **Forward secrecy**: recorded traffic stays confidential after a node's long-term key is compromised, once the ephemeral keys used for it are erased (at most one hour later). The first packet to a peer has weaker guarantees ([§5.2](#52-key-schedule)).
-- **Low cost**: no handshake round trip, a few X25519 operations per peer every 30 minutes, 94 bytes of overhead per packet.
+- **Address validation**: a Session envelope proves that its sender receives packets at its source address. It replaces the legacy write tokens between encrypted nodes ([§6.6](#66-write-authorization)).
+- **Low cost**: no handshake round trip, a few X25519 operations per peer every 30 minutes, 94 bytes of overhead per packet, minus the 40-byte token in messages that carried one.
 
 ### Non-goals
 
@@ -29,7 +30,7 @@ Implementation: [include/opendht/transport.h](../include/opendht/transport.h), [
 | `"text"` | ASCII bytes, without terminator |
 | `u32be(x)`, `u64be(x)` | Unsigned integer, big-endian, 4 or 8 bytes |
 | `sk_A`, `pk_A` | Static transport secret and public key of node A |
-| `esk_A`, `epk_A` | Current ephemeral secret and public key of node A |
+| `esk_A`, `epk_A` | Ephemeral secret and public key of node A for the address of its peer |
 | `DH(x, Y)` | `X25519(x, Y)` |
 | `N` | Network ID (`Config::network`, 32-bit, `0` by default) |
 | `K_A→B` | Key encrypting envelopes from A to B |
@@ -108,15 +109,23 @@ Credentials are not bound to a network ID. An authority key therefore defines a 
 
 ### 5.1 Ephemeral keys
 
-Each node also has an ephemeral X25519 key pair, replaced every 30 minutes (an *epoch*):
+Each node has an epoch secret `S`: 32 random bytes, replaced every 30 minutes (an *epoch*). Its ephemeral key for a peer at address `addr` derives from it:
 
-- the node always sends with its **current** ephemeral key;
-- it still accepts envelopes addressed to its **previous** ephemeral key, so peers have one epoch to learn the new key;
-- on rotation, the previous ephemeral secret and every key derived from it are erased.
+```
+addr      = IP (4 bytes for IPv4, including IPv4-mapped IPv6, else 16 bytes) ‖ port (2 bytes, network order)
+esk(addr) = HMAC-SHA256(key = S, "opendht-address-key-v1" ‖ addr)
+epk(addr) = X25519(esk(addr), 9)
+```
 
-An ephemeral secret therefore lives at most one hour. Ephemeral keys are never persisted, and a restart starts with a new one.
+- The node always sends to `addr` with `epk(addr)` from its **current** epoch.
+- It still accepts envelopes addressed to its key from the **previous** epoch, so peers have one epoch to learn the new key.
+- On rotation, the previous epoch secret and every key derived from it are erased.
 
-Nodes learn each other's current ephemeral key from the header of every envelope ([§6.1](#61-envelope)). A node records a peer's ephemeral key only from an envelope it authenticated.
+An ephemeral secret therefore lives at most one hour. Epoch secrets are never persisted, and a restart starts with a new one.
+
+Nodes learn each other's ephemeral key from the header of every envelope ([§6.1](#61-envelope)). A node records a peer's ephemeral key only from an envelope it authenticated.
+
+`epk(addr)` is only ever sent to `addr`. Learning it therefore requires receiving packets at `addr`, or observing the path to it. This is what makes a Session envelope a proof of address ([§6.6](#66-write-authorization)). Deriving keys per address costs one more X25519 base-point multiplication per new address, and nothing per packet.
 
 ### 5.2 Key schedule
 
@@ -153,7 +162,7 @@ Properties:
 - **Key-compromise impersonation resistance.** With `sk_B`, an attacker still cannot impersonate A to B in a Session envelope: it cannot compute `DH(sk_A, epk_B)` without `sk_A` or `esk_B`.
 - **Initial keys are weaker**, as for the first message of Noise IK. Without `epk_B`, an Initial key is only forward-secret against a later compromise of `sk_A`, not of `sk_B`. It also allows impersonating A to B with `sk_B`. Initial envelopes are only sent until A learns `epk_B`, usually for a single packet.
 - **Binding.** `info` includes `N`, the envelope type and all public keys involved. Nodes with different network IDs cannot decrypt each other's packets.
-- **Cost.** A Session key costs four X25519 operations and is cached in the epoch, so it is derived once per peer and ephemeral key pair. An Initial key costs two X25519 operations and is not cached. Each epoch caches at most 16384 sessions; beyond that, keys are derived for each packet.
+- **Cost.** A Session key costs four X25519 operations, plus one for our ephemeral key. It is cached in the epoch, so it is derived once per peer address and ephemeral key pair. An Initial key costs two X25519 operations, plus one for our ephemeral key, and is not cached. Each epoch caches at most 16384 sessions; beyond that, keys are derived for each packet.
 
 ## 6. Wire protocol
 
@@ -220,7 +229,7 @@ Rules for using these fields:
 To send a message to node B:
 
 1. If transport encryption is disabled, send plaintext.
-2. If B's static key is known (B has a peer record), send an envelope with our current ephemeral key:
+2. If B's static key is known (B has a peer record), send an envelope with our ephemeral key for B's address:
    - a Session envelope if B's ephemeral key is known, otherwise an Initial envelope;
    - in a private network, include our credential until B acknowledges it (`acked`, see [§6.5](#65-receiving)).
 3. Else, in a private network:
@@ -248,9 +257,7 @@ For each received packet, a node applies the following checks in order:
       - Apply the rate limiter, then verify the credential: its key must equal `pk_sender` and it must be valid. Drop the packet on failure.
       - Continue with steps 4 and 5, then answer as described in [§6.2](#62-hello-private-networks-only). The Hello is not processed any further.
    4. **Initial:** apply the rate limiter, derive the Initial key from `pk_sender` and `epk_sender`, and decrypt.
-   5. **Session:** try our current epoch, then the previous one. For each:
-      - use the cached session keys for (`pk_sender`, `epk_sender`), or apply the rate limiter and derive them;
-      - decrypt; on success, cache the keys in that epoch.
+   5. **Session:** first try the keys cached in each epoch for (source address, `pk_sender`, `epk_sender`). Otherwise, for our current epoch then the previous one: apply the rate limiter, derive the keys with our ephemeral key for the source address, and decrypt; on success, cache the keys in that epoch.
    6. Drop the packet if it was not decrypted.
    7. **Credential flag:** strip the 105-byte credential. In a private network, verify it as for Hello, unless the peer is already authorized; on success, the peer is authorized until the credential expires.
       **No credential:** in a private network, drop the packet unless the peer is currently authorized.
@@ -275,10 +282,25 @@ For each received packet, a node applies the following checks in order:
 
 The rate limiter is the existing per-address and global request limiter. It runs before every expensive public-key operation on unauthenticated input:
 - each Initial envelope (two X25519 operations);
-- each Session envelope from an uncached (`pk_sender`, `epk_sender`) pair (four X25519 operations per epoch tried);
+- each Session envelope from an uncached (address, `pk_sender`, `epk_sender`) triple (five X25519 operations per epoch tried);
 - each Hello (one Ed25519 verification, and the key derivation of its answer).
 
 Packets from peers with cached session keys cost one AEAD operation.
+
+### 6.6 Write authorization
+
+`put`, `refresh` and `listen` create state on the receiver, and `listen` makes it send value updates to the requester's address. The receiver therefore requires proof that the requester receives packets at its source address. Without it, an attacker could spoof a victim's address to fill its storage quota, or direct update traffic to it.
+
+- **Encrypted requests** must arrive in a **Session** envelope. Our ephemeral key for the source address is only sent to that address ([§5.1](#51-ephemeral-keys)), so opening the envelope proves the sender received one of our packets there. Requests in Initial envelopes are refused with error `401`. The requester then forgets its sync state with us and sends a new `get`. The answer carries our ephemeral key for its address, and the request is retried in a Session envelope.
+- **Plaintext requests** must carry a token, as in the legacy protocol. The token is sent in answers to `find`, `get` and `listen`, and in value updates, to the address of the node record:
+
+  ```
+  token(addr) = HMAC-SHA256(key = S, "opendht-address-token-v1" ‖ addr)
+  ```
+
+  A token is accepted in the epoch it was issued and the next one. Legacy nodes treat tokens as opaque, so changing their derivation keeps compatibility.
+
+Messages to and from encrypted nodes carry no token. This saves 40 bytes in each answer to `find`, `get` and `listen`, and in each `put`, `refresh`, `listen` and value update. A node that receives an encrypted answer may write to its sender.
 
 ## 7. Message flows
 
@@ -362,6 +384,7 @@ Against an attacker who controls the network but holds no node's secret key:
 - **Forward secrecy.** Session envelopes recorded by the attacker stay confidential if static keys are compromised later, once both ephemeral secrets are erased (at most one hour after use). Initial envelopes stay confidential if the sender's static key is compromised, but not the receiver's.
 - **Key-compromise impersonation.** With a node's static secret, an attacker can decrypt the Initial envelopes sent to it and impersonate other nodes to it in Initial envelopes, but not in Session envelopes.
 - **Address stickiness.** Spoofed plaintext and Hellos cannot redirect a node record whose key is known (see [§6.2](#62-hello-private-networks-only) and [§6.5](#65-receiving)).
+- **Address validation.** A Session envelope only opens from the address our ephemeral key was sent to. An off-path attacker cannot send one from a spoofed address, even with its own valid static key, so it cannot `put`, `refresh` or `listen` on behalf of another address.
 - **Private-network admission.** Without a valid credential and its matching secret key, a node:
   - cannot read any traffic;
   - cannot get answers it can decrypt;
@@ -375,7 +398,13 @@ Against an attacker who controls the network but holds no node's secret key:
   - Nodes learned from node lists with keys are not exposed this way, unless the lister itself is malicious or attacked.
   - The first request to a node whose key is unknown, for example a bootstrap ping, is visible.
 - **Static key compromise.** The static secret lets an attacker impersonate its owner from then on, and read the Initial envelopes sent to it, including recorded ones. Rotate a key by changing it, which also changes the node ID.
-- **No replay protection.** The transport layer accepts a captured envelope again while the receiver still has the keys for it: always for Initial envelopes, and up to one hour for Session envelopes. A replayed request is processed again. Because it is authenticated, it also updates the sender's node record to the replayer's address, and may restore an older ephemeral key for the sender; the retry rule ([§6.4](#64-sending)) recovers from the latter. Replies to the replayer stay encrypted. Transaction IDs limit the effect of replayed replies.
+- **No replay protection.** The transport layer accepts a captured envelope again while the receiver still has the keys for it:
+  - Initial envelopes from any address, at any time. A replayed Initial request is processed again, except writes ([§6.6](#66-write-authorization)). Because it is authenticated, it also moves the sender's node record to the replayer's address, and may restore an older ephemeral key for the sender; the retry rule ([§6.4](#64-sending)) recovers from the latter. Replies to the replayer stay encrypted.
+  - Session envelopes only from their original source address, for up to one hour.
+
+  Transaction IDs limit the effect of replayed replies.
+- **On-path attackers** can learn the ephemeral key sent to an address, and therefore write on its behalf. This is the same exposure as legacy tokens.
+- **Address changes.** A peer whose address or port changes, for example after a NAT rebinding, can no longer use our ephemeral key. Its next retry starts over with an Initial envelope.
 - **No revocation.** A credential remains valid until it expires. Keep validity periods short, or replace the authority key to exclude nodes.
 - **Clock dependence.** Credential expiration is checked against local system clocks. Clock skew shifts when a credential is accepted.
 - **Metadata.** The following are visible to an observer:
@@ -416,10 +445,12 @@ From the library, set `Config::transport` before starting:
 | Key, nonce, tag sizes | 32, 12, 16 bytes |
 | Envelope header | 66 bytes |
 | Envelope overhead | 94 bytes (199 with credential) |
-| Ephemeral key rotation | 30 minutes, previous key accepted for one more period |
+| Epoch (ephemeral keys and tokens) | 30 minutes, previous epoch accepted for one more period |
 | Cached sessions per epoch | 16384 |
 | Credential size, version | 105 bytes, `0x01` |
 | Node ID context | `"opendht-node-id-v1"` |
 | HKDF salt | `"opendht-transport-v2"` |
 | Credential signature context | `"opendht-credential-v1"` |
+| Ephemeral key, token contexts | `"opendht-address-key-v1"`, `"opendht-address-token-v1"` |
+| Token size | 32 bytes |
 | Encrypted value fragment size | 1081 bytes |
