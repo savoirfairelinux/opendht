@@ -10,6 +10,7 @@
 #include <mutex>
 #include <condition_variable>
 #include <fstream>
+#include <filesystem>
 #include <cstdio>
 using namespace std::chrono_literals;
 using namespace std::literals;
@@ -1747,6 +1748,43 @@ DhtRunnerTransportTester::testNodeIdFromTransportKey()
     dht::DhtRunner legacy;
     legacy.run(0, config);
     CPPUNIT_ASSERT_EQUAL(configuredId, legacy.getNodeId());
+}
+
+void
+DhtRunnerTransportTester::testPersistedTransportKey()
+{
+    const std::string path = "/tmp/opendht_test_transport_state";
+    std::remove(path.c_str());
+    auto runNode = [&](const dht::TransportConfig& transport) {
+        auto config = transportTestConfig(transport);
+        config.dht_config.node_config.persist_path = path;
+        dht::DhtRunner node;
+        node.run(0, config);
+        auto id = node.getNodeId();
+        std::promise<void> stopped;
+        node.shutdown([&] { stopped.set_value(); });
+        stopped.get_future().wait();
+        node.join();
+        return id;
+    };
+
+    // A generated key is persisted, keeping the node ID
+    auto generatedId = runNode({});
+    CPPUNIT_ASSERT_EQUAL(generatedId, runNode({}));
+    auto perms = std::filesystem::status(path).permissions();
+    CPPUNIT_ASSERT((perms & (std::filesystem::perms::group_all | std::filesystem::perms::others_all))
+                   == std::filesystem::perms::none);
+
+    // A configured key takes precedence and isn't persisted
+    dht::TransportConfig configured;
+    configured.key = dht::transport::KeyPair::generate();
+    CPPUNIT_ASSERT_EQUAL(dht::transport::nodeId(configured.key.pub), runNode(configured));
+    auto newId = runNode({});
+    CPPUNIT_ASSERT(newId != generatedId);
+    CPPUNIT_ASSERT(newId != dht::transport::nodeId(configured.key.pub));
+    CPPUNIT_ASSERT_EQUAL(newId, runNode({}));
+
+    std::remove(path.c_str());
 }
 
 void
