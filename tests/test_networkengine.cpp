@@ -1446,6 +1446,33 @@ NetworkEngineTester::testTransportEphemeralBoundToAddress()
     CPPUNIT_ASSERT_EQUAL((size_t) 1, b.socket->sends.size());
 }
 
+void
+NetworkEngineTester::testTransportRestartedPeerReconnects()
+{
+    TransportConfig configA;
+    configA.key = transport::KeyPair::generate();
+    auto a = std::make_unique<TransportTestNode>("127.0.0.2", configA, 1);
+    TransportTestNode b("127.0.0.3", {}, 2);
+    bool done = false;
+    a->ping(b.addr, done);
+    a->deliverTo(b);
+    b.deliverTo(*a);
+    for (int i = 0; i < 2; i++) {
+        a->ping(a->node(b), done);
+        a->deliverTo(b);
+        b.deliverTo(*a);
+    }
+
+    // a restarts with the same key, and contacts b by address: b must forget a's ephemeral key
+    a = std::make_unique<TransportTestNode>("127.0.0.2", configA, 3);
+    done = false;
+    a->ping(b.addr, done);
+    a->deliverTo(b);
+    CPPUNIT_ASSERT(isEnvelope(b.socket->sends.at(0), transport::EnvelopeType::Initial));
+    b.deliverTo(*a);
+    CPPUNIT_ASSERT(done);
+}
+
 } // namespace test
 
 #endif
