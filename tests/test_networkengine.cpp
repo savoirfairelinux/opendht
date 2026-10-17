@@ -761,9 +761,16 @@ privateTransport(const transport::Authority& authority,
 }
 
 static bool
-isEnvelope(const TestDatagramSocket::SentPacket& p, transport::EnvelopeType type)
+isEnvelope(const TestDatagramSocket::SentPacket& p, transport::EnvelopeType type, bool credential = false)
 {
-    return transport::isEnvelope(p.data.data(), p.data.size()) and p.data[1] == static_cast<uint8_t>(type);
+    auto header = transport::parseHeader(p.data.data(), p.data.size());
+    return header and header->type == type and header->credential == credential;
+}
+
+static transport::Key
+ephemeralKey(const TestDatagramSocket::SentPacket& p)
+{
+    return transport::parseHeader(p.data.data(), p.data.size())->ephemeral;
 }
 
 static std::optional<transport::Key>
@@ -829,20 +836,20 @@ NetworkEngineTester::testTransportEncryptsAfterKeyExchange()
     CPPUNIT_ASSERT(key and *key == a.key.pub);
     a.deliverTo(b);
 
-    // The reply is encrypted
+    // The reply is encrypted, before b knows our ephemeral key
     CPPUNIT_ASSERT_EQUAL((size_t) 1, b.socket->sends.size());
-    CPPUNIT_ASSERT(isEnvelope(b.socket->sends[0], transport::EnvelopeType::Data));
+    CPPUNIT_ASSERT(isEnvelope(b.socket->sends[0], transport::EnvelopeType::Initial));
     b.deliverTo(a);
     CPPUNIT_ASSERT(done);
     CPPUNIT_ASSERT(a.node(b)->getTransport());
     CPPUNIT_ASSERT(b.node(a)->getTransport());
 
-    // Following requests are encrypted both ways
+    // Following requests use ephemeral keys both ways
     done = false;
     a.ping(a.node(b), done);
-    CPPUNIT_ASSERT(isEnvelope(a.socket->sends.at(0), transport::EnvelopeType::Data));
+    CPPUNIT_ASSERT(isEnvelope(a.socket->sends.at(0), transport::EnvelopeType::Session));
     a.deliverTo(b);
-    CPPUNIT_ASSERT(isEnvelope(b.socket->sends.at(0), transport::EnvelopeType::Data));
+    CPPUNIT_ASSERT(isEnvelope(b.socket->sends.at(0), transport::EnvelopeType::Session));
     b.deliverTo(a);
     CPPUNIT_ASSERT(done);
 }
@@ -878,17 +885,21 @@ NetworkEngineTester::testTransportRejectsMismatchedNodeId()
     TransportTestNode b("127.0.0.3", {}, 2);
     auto from = makeIPv4("127.0.0.4", 4222);
     auto sender = transport::KeyPair::generate();
-    auto shared = *transport::deriveSharedKey(sender, b.key.pub, 0);
+    auto ephemeral = transport::KeyPair::generate();
+    auto key = *transport::initialSendKey(sender, ephemeral, b.key.pub, 0);
+    auto seal = [&](const Blob& msg) {
+        return transport::seal(key, transport::EnvelopeType::Initial, sender.pub, ephemeral.pub, msg.data(), msg.size());
+    };
 
     std::mt19937_64 rd(3);
     auto spoofed = makePingPacketBlob(InfoHash::getRandom(rd), 1);
-    auto envelope = transport::seal(shared, sender.pub, transport::EnvelopeType::Data, spoofed.data(), spoofed.size());
+    auto envelope = seal(spoofed);
     b.engine->processMessage(envelope.data(), envelope.size(), from);
     CPPUNIT_ASSERT(b.socket->sends.empty());
     CPPUNIT_ASSERT_EQUAL(0, b.newNodes);
 
     auto genuine = makePingPacketBlob(transport::nodeId(sender.pub), 2);
-    envelope = transport::seal(shared, sender.pub, transport::EnvelopeType::Data, genuine.data(), genuine.size());
+    envelope = seal(genuine);
     b.engine->processMessage(envelope.data(), envelope.size(), from);
     CPPUNIT_ASSERT_EQUAL((size_t) 1, b.socket->sends.size());
 
@@ -994,7 +1005,7 @@ NetworkEngineTester::testTransportPlaintextDoesNotMoveKeyedNode()
     // Answered, but only readable by the owner of the key
     CPPUNIT_ASSERT_EQUAL((size_t) 1, a.socket->sends.size());
     CPPUNIT_ASSERT(a.socket->sends[0].dest == attacker);
-    CPPUNIT_ASSERT(isEnvelope(a.socket->sends[0], transport::EnvelopeType::Data));
+    CPPUNIT_ASSERT(isEnvelope(a.socket->sends[0], transport::EnvelopeType::Session));
 }
 
 void
@@ -1009,19 +1020,31 @@ NetworkEngineTester::testTransportPrivateNetwork()
     a.ping(b.addr, done);
     CPPUNIT_ASSERT(isEnvelope(a.socket->sends.at(0), transport::EnvelopeType::Hello));
     a.deliverTo(b);
-    CPPUNIT_ASSERT(isEnvelope(b.socket->sends.at(0), transport::EnvelopeType::DataCredential));
+    // the hello gave b our ephemeral key
+    CPPUNIT_ASSERT(isEnvelope(b.socket->sends.at(0), transport::EnvelopeType::Session, true));
     b.deliverTo(a);
     CPPUNIT_ASSERT(done);
     auto peerB = a.node(b)->getTransport();
-    CPPUNIT_ASSERT(peerB and peerB->acked and peerB->isAuthorized(std::chrono::system_clock::now()));
+    CPPUNIT_ASSERT(peerB and peerB->isAuthorized(std::chrono::system_clock::now()));
+    // b only saw our credential in the unauthenticated hello
+    CPPUNIT_ASSERT(not peerB->acked);
+
+    done = false;
+    a.ping(a.node(b), done);
+    CPPUNIT_ASSERT(isEnvelope(a.socket->sends.at(0), transport::EnvelopeType::Session, true));
+    a.deliverTo(b);
+    CPPUNIT_ASSERT(isEnvelope(b.socket->sends.at(0), transport::EnvelopeType::Session, true));
+    b.deliverTo(a);
+    CPPUNIT_ASSERT(done);
+    CPPUNIT_ASSERT(peerB->acked);
 
     // b accepted our credential: no need to send it anymore
     done = false;
     a.ping(a.node(b), done);
-    CPPUNIT_ASSERT(isEnvelope(a.socket->sends.at(0), transport::EnvelopeType::Data));
+    CPPUNIT_ASSERT(isEnvelope(a.socket->sends.at(0), transport::EnvelopeType::Session));
     a.deliverTo(b);
     // we haven't replied to b yet: it still sends its credential
-    CPPUNIT_ASSERT(isEnvelope(b.socket->sends.at(0), transport::EnvelopeType::DataCredential));
+    CPPUNIT_ASSERT(isEnvelope(b.socket->sends.at(0), transport::EnvelopeType::Session, true));
     b.deliverTo(a);
     CPPUNIT_ASSERT(done);
 }
@@ -1055,10 +1078,12 @@ NetworkEngineTester::testTransportPrivateNetworkRejectsOutsiders()
 
     // encrypted, without credential
     auto sender = transport::KeyPair::generate();
+    auto ephemeral = transport::KeyPair::generate();
     auto ping = makePingPacketBlob(transport::nodeId(sender.pub), 1);
-    auto envelope = transport::seal(*transport::deriveSharedKey(sender, member.key.pub, 0),
+    auto envelope = transport::seal(*transport::initialSendKey(sender, ephemeral, member.key.pub, 0),
+                                    transport::EnvelopeType::Initial,
                                     sender.pub,
-                                    transport::EnvelopeType::Data,
+                                    ephemeral.pub,
                                     ping.data(),
                                     ping.size());
     member.engine->processMessage(envelope.data(), envelope.size(), makeIPv4("127.0.0.6", 4222));
@@ -1070,6 +1095,153 @@ NetworkEngineTester::testTransportPrivateNetworkRejectsOutsiders()
     CPPUNIT_ASSERT(open.socket->sends.empty());
     CPPUNIT_ASSERT(not done);
     CPPUNIT_ASSERT_EQUAL(0, member.newNodes);
+}
+
+static void
+advance(TransportTestNode& n, std::chrono::steady_clock::duration d)
+{
+    n.scheduler.syncTime(n.scheduler.time() + d);
+    n.scheduler.run();
+}
+
+void
+NetworkEngineTester::testTransportEpochRotation()
+{
+    TransportTestNode a("127.0.0.2", {}, 1);
+    TransportTestNode b("127.0.0.3", {}, 2);
+    bool done = false;
+    a.ping(b.addr, done);
+    a.deliverTo(b);
+    b.deliverTo(a);
+    a.ping(a.node(b), done);
+    auto captured = a.socket->sends.at(0);
+    CPPUNIT_ASSERT(isEnvelope(captured, transport::EnvelopeType::Session));
+    a.deliverTo(b);
+    b.deliverTo(a);
+
+    advance(a, std::chrono::minutes(30));
+    advance(b, std::chrono::minutes(30));
+    a.takeSent();
+    b.takeSent();
+
+    // a uses a new ephemeral key, with the one b used before rotating
+    done = false;
+    a.ping(a.node(b), done);
+    CPPUNIT_ASSERT(isEnvelope(a.socket->sends.at(0), transport::EnvelopeType::Session));
+    CPPUNIT_ASSERT(ephemeralKey(a.socket->sends.at(0)) != ephemeralKey(captured));
+    a.deliverTo(b);
+    CPPUNIT_ASSERT(isEnvelope(b.socket->sends.at(0), transport::EnvelopeType::Session));
+    b.deliverTo(a);
+    CPPUNIT_ASSERT(done);
+
+    // The previous ephemeral key is still accepted for one period
+    b.engine->processMessage(captured.data.data(), captured.data.size(), a.addr);
+    CPPUNIT_ASSERT_EQUAL((size_t) 1, b.takeSent().size());
+
+    // then erased
+    advance(b, std::chrono::minutes(30));
+    b.takeSent();
+    b.engine->processMessage(captured.data.data(), captured.data.size(), a.addr);
+    CPPUNIT_ASSERT(b.socket->sends.empty());
+}
+
+void
+NetworkEngineTester::testTransportPeerRestart()
+{
+    auto authority = transport::Authority::generate();
+    auto configB = privateTransport(authority);
+    TransportTestNode a("127.0.0.2", privateTransport(authority), 1);
+    auto b = std::make_unique<TransportTestNode>("127.0.0.3", configB, 2);
+    bool done = false;
+    a.ping(b->addr, done);
+    a.deliverTo(*b);
+    b->deliverTo(a);
+    for (int i = 0; i < 2; i++) {
+        done = false;
+        a.ping(a.node(*b), done);
+        a.deliverTo(*b);
+        b->deliverTo(a);
+        CPPUNIT_ASSERT(done);
+    }
+    CPPUNIT_ASSERT(a.node(*b)->getTransport()->acked);
+
+    // b restarts with the same key: it knows neither our ephemeral key nor our credential
+    b = std::make_unique<TransportTestNode>("127.0.0.3", configB, 3);
+    done = false;
+    a.ping(a.node(*b), done);
+    CPPUNIT_ASSERT(isEnvelope(a.socket->sends.at(0), transport::EnvelopeType::Session));
+    a.deliverTo(*b);
+    CPPUNIT_ASSERT(b->socket->sends.empty());
+
+    // The retry starts over
+    advance(a, std::chrono::seconds(2));
+    CPPUNIT_ASSERT_EQUAL((size_t) 1, a.socket->sends.size());
+    CPPUNIT_ASSERT(isEnvelope(a.socket->sends.at(0), transport::EnvelopeType::Initial, true));
+    a.deliverTo(*b);
+    CPPUNIT_ASSERT(isEnvelope(b->socket->sends.at(0), transport::EnvelopeType::Session, true));
+    b->deliverTo(a);
+    CPPUNIT_ASSERT(done);
+}
+
+void
+NetworkEngineTester::testTransportHelloIsUnauthenticated()
+{
+    auto authority = transport::Authority::generate();
+    auto configA = privateTransport(authority);
+    TransportTestNode a("127.0.0.2", configA, 1);
+    TransportTestNode b("127.0.0.3", privateTransport(authority), 2);
+    bool done = false;
+    a.ping(b.addr, done);
+    a.deliverTo(b);
+    b.deliverTo(a);
+    a.ping(a.node(b), done);
+    a.deliverTo(b);
+    b.deliverTo(a);
+    auto nodeA = b.node(a);
+    auto newNodes = b.newNodes;
+
+    // Anyone can replay a's credential in a hello
+    auto attacker = makeIPv4("127.0.0.66", 4222);
+    auto ephemeral = transport::KeyPair::generate();
+    auto credential = configA.credential.pack();
+    auto forge = [&](const Blob& msg) {
+        auto hello = transport::hello(a.key.pub, ephemeral.pub, credential, msg.data(), msg.size());
+        b.engine->processMessage(hello.data(), hello.size(), attacker);
+    };
+    forge(makePingPacketBlob(a.id, 9));
+
+    // Answered, but only readable by the owner of the key
+    CPPUNIT_ASSERT_EQUAL((size_t) 1, b.socket->sends.size());
+    CPPUNIT_ASSERT(b.socket->sends[0].dest == attacker);
+    CPPUNIT_ASSERT(isEnvelope(b.socket->sends[0], transport::EnvelopeType::Session, true));
+    b.takeSent();
+    // without changing what b knows about a
+    CPPUNIT_ASSERT(nodeA->getAddr() == a.addr);
+    CPPUNIT_ASSERT_EQUAL(newNodes, b.newNodes);
+    done = false;
+    a.ping(a.node(b), done);
+    a.deliverTo(b);
+    b.deliverTo(a);
+    CPPUNIT_ASSERT(done);
+
+    // Only pings are answered
+    msgpack::sbuffer buffer;
+    msgpack::packer<msgpack::sbuffer> pk(&buffer);
+    pk.pack_map(4);
+    pk.pack(KEY_A);
+    pk.pack_map(2);
+    pk.pack(KEY_REQ_ID);
+    pk.pack(a.id);
+    pk.pack(KEY_REQ_TARGET);
+    pk.pack(b.id);
+    pk.pack(KEY_Q);
+    pk.pack(QUERY_FIND);
+    pk.pack(KEY_TID);
+    pk.pack(10);
+    pk.pack(KEY_Y);
+    pk.pack(KEY_Q);
+    forge({buffer.data(), buffer.data() + buffer.size()});
+    CPPUNIT_ASSERT(b.socket->sends.empty());
 }
 
 } // namespace test

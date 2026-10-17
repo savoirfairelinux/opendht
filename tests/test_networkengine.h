@@ -32,6 +32,9 @@ class NetworkEngineTester : public CppUnit::TestFixture
     CPPUNIT_TEST(testTransportPlaintextDoesNotMoveKeyedNode);
     CPPUNIT_TEST(testTransportPrivateNetwork);
     CPPUNIT_TEST(testTransportPrivateNetworkRejectsOutsiders);
+    CPPUNIT_TEST(testTransportEpochRotation);
+    CPPUNIT_TEST(testTransportPeerRestart);
+    CPPUNIT_TEST(testTransportHelloIsUnauthenticated);
 #endif
     CPPUNIT_TEST_SUITE_END();
 
@@ -61,6 +64,9 @@ public:
     void testTransportPlaintextDoesNotMoveKeyedNode();
     void testTransportPrivateNetwork();
     void testTransportPrivateNetworkRejectsOutsiders();
+    void testTransportEpochRotation();
+    void testTransportPeerRestart();
+    void testTransportHelloIsUnauthenticated();
 #endif
 };
 
