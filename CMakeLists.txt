@@ -865,6 +865,8 @@ if (BUILD_TESTING)
         tests/test_value.cpp
         tests/test_crypto.h
         tests/test_crypto.cpp
+        tests/test_transport.h
+        tests/test_transport.cpp
         tests/test_dhtrunner.h
         tests/test_dhtrunner.cpp
         tests/test_storage.h

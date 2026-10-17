@@ -321,6 +321,14 @@ if get_option('tests').enabled()
     )
     test('Crypto', test_crypto, timeout: 60)
 
+    test_transport = executable(
+        'test_transport',
+        'tests/test_transport.cpp',
+        'tests/tests_runner.cpp',
+        dependencies: [opendht_dep, cppunit, jsoncpp, fmt, openssl, msgpack],
+    )
+    test('Transport', test_transport)
+
     test_dhtrunner = executable(
         'test_dhtrunner',
         'tests/test_dhtrunner.cpp',
