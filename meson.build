@@ -12,6 +12,7 @@ project(
 
 gnutls = dependency('gnutls')
 nettle = dependency('nettle')
+hogweed = dependency('hogweed', version: '>=3.1')
 msgpack = dependency('msgpack-cxx', required: false)
 argon2 = dependency('libargon2')
 fmt = dependency('fmt')
@@ -38,6 +39,7 @@ deps = [
     fmt,
     gnutls,
     nettle,
+    hogweed,
     msgpack,
     argon2,
     openssl,
@@ -84,6 +86,7 @@ opendht_src = [
     'src/routing_table.cpp',
     'src/node_cache.cpp',
     'src/network_engine.cpp',
+    'src/transport.cpp',
     'src/securedht.cpp',
     'src/dhtrunner.cpp',
     'src/log.cpp',
