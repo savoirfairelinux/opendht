@@ -363,10 +363,8 @@ NetworkEngine::requestStep(Sp<Request> sreq)
         if (req.on_expired)
             req.on_expired(req, false);
         // The peer may have lost our ephemeral key or credential: retry with an Initial envelope
-        if (const auto& peer = node.getTransport()) {
+        if (const auto& peer = node.getTransport())
             peer->ephemeral.reset();
-            peer->acked = false;
-        }
     }
 
     auto err = send(node,
@@ -701,9 +699,12 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
             return;
         auto rsocket = node->getSocket(msg->tid);
         auto req = node->getRequest(msg->tid);
-        // Requests to a bare address were sent in a Hello, not in an envelope with our credential
-        if (msg->encrypted and req)
-            node->getTransport()->acked = true;
+        // Our request reached the peer in an envelope it accepted, and it answered with the session keys
+        if (msg->session and req) {
+            const auto& peer = node->getTransport();
+            if (auto s = peer and peer->ephemeral ? epoch_.find(from, peer->key, *peer->ephemeral) : nullptr)
+                s->confirmed = true;
+        }
 
         /* either response for a request or data for an opened socket */
         if (not req and not rsocket) {
@@ -953,24 +954,37 @@ NetworkEngine::Epoch::token(const SockAddr& addr) const
     return {t.begin(), t.end()};
 }
 
-const NetworkEngine::Session*
-NetworkEngine::Epoch::find(const SockAddr& addr, const transport::Key& peer, const transport::Key& peerEphemeral) const
+NetworkEngine::Session*
+NetworkEngine::Epoch::find(const SockAddr& addr)
 {
     auto it = sessions.find(addr);
-    return it != sessions.end() and it->second.peer == peer and it->second.peerEphemeral == peerEphemeral ? &it->second
-                                                                                                          : nullptr;
+    return it != sessions.end() ? &it->second : nullptr;
+}
+
+NetworkEngine::Session*
+NetworkEngine::Epoch::find(const SockAddr& addr, const transport::Key& peer, const transport::Key& peerEphemeral)
+{
+    auto s = find(addr);
+    return s and s->peer == peer and s->peerEphemeral == peerEphemeral ? s : nullptr;
 }
 
 void
 NetworkEngine::Epoch::store(const SockAddr& addr, const Session& session)
 {
     auto it = sessions.find(addr);
-    if (it != sessions.end()) {
-        transport::wipe(it->second.keys.tx);
-        transport::wipe(it->second.keys.rx);
-        it->second = session;
-    } else if (sessions.size() < MAX_SESSIONS)
+    if (it == sessions.end()) {
+        // A peer we sent keys to must keep them, or its Data envelopes are lost
+        if (sessions.size() >= MAX_SESSIONS) {
+            transport::wipe(sessions.begin()->second.keys.tx);
+            transport::wipe(sessions.begin()->second.keys.rx);
+            sessions.erase(sessions.begin());
+        }
         sessions.emplace(addr, session);
+        return;
+    }
+    transport::wipe(it->second.keys.tx);
+    transport::wipe(it->second.keys.rx);
+    it->second = session;
 }
 
 void
@@ -1042,6 +1056,25 @@ NetworkEngine::openSession(const transport::Header& header, const uint8_t* buf, 
         }
         transport::wipe(keys->tx);
         transport::wipe(keys->rx);
+    }
+    return std::nullopt;
+}
+
+std::optional<Blob>
+NetworkEngine::openData(transport::Header& header, const uint8_t* buf, size_t buflen, const SockAddr& from)
+{
+    for (auto* epoch : {&epoch_, &previousEpoch_}) {
+        auto s = epoch->find(from);
+        if (not s)
+            continue;
+        if (auto payload = transport::open(s->keys.rx, buf, buflen)) {
+            // The peer only sends Data once it got our answer: it has the keys and accepted us
+            if (epoch == &epoch_)
+                s->confirmed = true;
+            header.sender = s->peer;
+            header.ephemeral = s->peerEphemeral;
+            return payload;
+        }
     }
     return std::nullopt;
 }
@@ -1132,6 +1165,12 @@ NetworkEngine::openEnvelope(const uint8_t* buf, size_t buflen, const SockAddr& f
                                                     header->ephemeral,
                                                     config.network))
             payload = transport::open(*key, buf, buflen);
+        // The sender lost our ephemeral key, and maybe the session
+        if (payload)
+            if (auto s = epoch_.find(from))
+                s->confirmed = false;
+    } else if (header->type == EnvelopeType::Data) {
+        payload = openData(*header, buf, buflen, from);
     } else {
         payload = openSession(*header, buf, buflen, from);
     }
@@ -1154,7 +1193,7 @@ NetworkEngine::openEnvelope(const uint8_t* buf, size_t buflen, const SockAddr& f
         return std::nullopt;
     }
     peer->ephemeral = header->ephemeral;
-    return OpenedEnvelope {std::move(peer), std::move(*payload), false, header->type == EnvelopeType::Session};
+    return OpenedEnvelope {std::move(peer), std::move(*payload), false, header->type != EnvelopeType::Initial};
 }
 
 void
@@ -1185,34 +1224,35 @@ NetworkEngine::send(const Node& node, const SockAddr& addr, const char* buf, siz
     const bool isPrivate = config.transport.isPrivate();
     const auto& own = config.transport.key;
     if (const auto& peer = node.getTransport()) {
-        std::optional<transport::Key> key;
-        transport::Key ephemeral;
-        auto type = EnvelopeType::Initial;
-        if (peer->ephemeral) {
-            type = EnvelopeType::Session;
-            if (auto s = session(*peer, addr)) {
-                key = s->keys.tx;
-                ephemeral = s->ephemeral;
-                transport::wipe(s->keys.tx);
-                transport::wipe(s->keys.rx);
-            }
-        } else {
+        // Keys travel until the peer confirms the session, and the credential with them
+        Blob packet;
+        if (not peer->ephemeral) {
             auto e = epoch_.ephemeral(addr);
-            key = transport::initialSendKey(own, e, peer->key, config.network);
-            ephemeral = e.pub;
+            if (auto key = transport::initialSendKey(own, e, peer->key, config.network)) {
+                packet = transport::seal(*key,
+                                         EnvelopeType::Initial,
+                                         own.pub,
+                                         e.pub,
+                                         data,
+                                         len,
+                                         isPrivate ? credential_ : Blob {});
+                transport::wipe(*key);
+            }
             transport::wipe(e.secret);
+        } else if (auto s = session(*peer, addr)) {
+            packet = s->confirmed ? transport::sealData(s->keys.tx, data, len)
+                                  : transport::seal(s->keys.tx,
+                                                    EnvelopeType::Session,
+                                                    own.pub,
+                                                    s->ephemeral,
+                                                    data,
+                                                    len,
+                                                    isPrivate ? credential_ : Blob {});
+            transport::wipe(s->keys.tx);
+            transport::wipe(s->keys.rx);
         }
-        if (key) {
-            auto packet = transport::seal(*key,
-                                          type,
-                                          own.pub,
-                                          ephemeral,
-                                          data,
-                                          len,
-                                          isPrivate and not peer->acked ? credential_ : Blob {});
-            transport::wipe(*key);
+        if (not packet.empty())
             return sendRaw(addr, packet.data(), packet.size(), confirmed);
-        }
     } else if (isPrivate and not node.id) {
         // ping to an address: introduce ourselves
         auto e = epoch_.ephemeral(addr);

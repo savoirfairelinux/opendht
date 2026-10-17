@@ -512,6 +512,8 @@ private:
         transport::Key peer;
         transport::Key peerEphemeral;
         transport::SessionKeys keys;
+        /* the peer has these keys and accepted us: send Data envelopes */
+        bool confirmed {false};
     };
     /* The secret from which ephemeral keys and tokens derive, and session keys, all erased together */
     struct Epoch
@@ -522,7 +524,8 @@ private:
         explicit operator bool() const { return secret != transport::Key {}; }
         transport::KeyPair ephemeral(const SockAddr& addr) const;
         Blob token(const SockAddr& addr) const;
-        const Session* find(const SockAddr& addr, const transport::Key& peer, const transport::Key& peerEphemeral) const;
+        Session* find(const SockAddr& addr);
+        Session* find(const SockAddr& addr, const transport::Key& peer, const transport::Key& peerEphemeral);
         void store(const SockAddr& addr, const Session& session);
         void wipe();
     };
@@ -533,6 +536,8 @@ private:
                                     const uint8_t* buf,
                                     size_t buflen,
                                     const SockAddr& from);
+    /* Fills the sender keys of `header` from the session */
+    std::optional<Blob> openData(transport::Header& header, const uint8_t* buf, size_t buflen, const SockAddr& from);
 
     struct OpenedEnvelope
     {
@@ -540,7 +545,7 @@ private:
         Blob payload;
         /* unauthenticated */
         bool hello {false};
-        /* Session envelope: the sender got our ephemeral key for its address */
+        /* Session or Data envelope: the sender got our ephemeral key for its address */
         bool session {false};
     };
     std::optional<OpenedEnvelope> openEnvelope(const uint8_t* buf, size_t buflen, const SockAddr& from);

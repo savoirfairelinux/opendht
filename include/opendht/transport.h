@@ -87,38 +87,40 @@ struct Peer
     std::optional<Key> ephemeral {};
     /** Private networks: expiration of the verified peer credential */
     SystemTime authorizedUntil {};
-    /** Private networks: the peer accepted our credential */
-    bool acked {false};
 
     bool isAuthorized(SystemTime now) const { return now < authorizedUntil; }
 };
 
 /*
  * Envelope: marker | type | sender static key | sender ephemeral key | nonce | ChaCha20-Poly1305(payload) | tag
+ * Data envelope: marker | type | nonce | ChaCha20-Poly1305(payload) | tag, keys found from the source address.
  * The marker is never a valid msgpack first byte, so legacy nodes drop envelopes.
  * Hello (private networks only, plaintext): marker | type | sender static key | sender ephemeral key | credential | message
  */
 constexpr uint8_t ENVELOPE_MARKER {0xC1};
-/** Initial: the sender doesn't know the receiver ephemeral key. Session: it does. */
-enum class EnvelopeType : uint8_t { Initial = 1, Session = 2, Hello = 3 };
+/** Initial: the sender doesn't know the receiver ephemeral key. Session: it does. Data: the receiver has the session. */
+enum class EnvelopeType : uint8_t { Initial = 1, Session = 2, Hello = 3, Data = 4 };
 /** Type flag: the payload starts with the sender credential */
 constexpr uint8_t CREDENTIAL_FLAG {0x80};
 constexpr size_t NONCE_SIZE {12};
 constexpr size_t TAG_SIZE {16};
 constexpr size_t HEADER_SIZE {2 + 2 * KEY_SIZE};
+constexpr size_t DATA_HEADER_SIZE {2};
 constexpr size_t ENVELOPE_OVERHEAD {HEADER_SIZE + NONCE_SIZE + TAG_SIZE};
+constexpr size_t DATA_ENVELOPE_OVERHEAD {DATA_HEADER_SIZE + NONCE_SIZE + TAG_SIZE};
 constexpr size_t MAX_ENVELOPE_OVERHEAD {ENVELOPE_OVERHEAD + Credential::PACKED_SIZE};
 
 inline bool
 isEnvelope(const uint8_t* data, size_t size)
 {
-    return size >= HEADER_SIZE and data[0] == ENVELOPE_MARKER;
+    return size >= DATA_HEADER_SIZE and data[0] == ENVELOPE_MARKER;
 }
 
 struct Header
 {
     EnvelopeType type;
     bool credential;
+    /* not in Data envelopes */
     Key sender;
     Key ephemeral;
 };
@@ -157,6 +159,9 @@ OPENDHT_PUBLIC Blob seal(const Key& key,
                          const uint8_t* data,
                          size_t size,
                          const Blob& credential = {});
+
+/** Encrypts `data` in a Data envelope. */
+OPENDHT_PUBLIC Blob sealData(const Key& key, const uint8_t* data, size_t size);
 
 /** Decrypted payload, or nullopt if the envelope is not authentic. */
 OPENDHT_PUBLIC std::optional<Blob> open(const Key& key, const uint8_t* data, size_t size);

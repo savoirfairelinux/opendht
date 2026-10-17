@@ -359,15 +359,50 @@ parseHeader(const uint8_t* data, size_t size)
     if (not isEnvelope(data, size))
         return std::nullopt;
     const uint8_t type = data[1] & ~CREDENTIAL_FLAG;
-    if (type < static_cast<uint8_t>(EnvelopeType::Initial) or type > static_cast<uint8_t>(EnvelopeType::Hello))
-        return std::nullopt;
-    Header header;
-    header.type = static_cast<EnvelopeType>(type);
+    Header header {};
     header.credential = data[1] & CREDENTIAL_FLAG;
+    if (type == static_cast<uint8_t>(EnvelopeType::Data)) {
+        if (header.credential)
+            return std::nullopt;
+        header.type = EnvelopeType::Data;
+        return header;
+    }
+    if (type < static_cast<uint8_t>(EnvelopeType::Initial) or type > static_cast<uint8_t>(EnvelopeType::Hello)
+        or size < HEADER_SIZE)
+        return std::nullopt;
+    header.type = static_cast<EnvelopeType>(type);
     std::copy_n(data + 2, KEY_SIZE, header.sender.begin());
     std::copy_n(data + 2 + KEY_SIZE, KEY_SIZE, header.ephemeral.begin());
     return header;
 }
+
+namespace {
+
+/* Appends the nonce and the encryption of `credential || data` to the authenticated header in `out` */
+Blob
+sealWith(const Key& key, Blob out, const Blob& credential, const uint8_t* data, size_t size)
+{
+    const size_t headerSize = out.size();
+    const size_t len = credential.size() + size;
+    out.resize(headerSize + NONCE_SIZE + len + TAG_SIZE);
+    auto nonce = out.data() + headerSize;
+    randomBytes(nonce, NONCE_SIZE, GNUTLS_RND_NONCE);
+    auto payload = nonce + NONCE_SIZE;
+    std::copy(credential.begin(), credential.end(), payload);
+    if (size)
+        std::memcpy(payload + credential.size(), data, size);
+
+    struct chacha_poly1305_ctx ctx;
+    chacha_poly1305_set_key(&ctx, key.data());
+    chacha_poly1305_set_nonce(&ctx, nonce);
+    chacha_poly1305_update(&ctx, headerSize, out.data());
+    chacha_poly1305_encrypt(&ctx, len, payload, payload);
+    chachaDigest(&ctx, payload + len);
+    gnutls_memset(&ctx, 0, sizeof(ctx));
+    return out;
+}
+
+} // namespace
 
 Blob
 seal(const Key& key,
@@ -378,41 +413,41 @@ seal(const Key& key,
      size_t size,
      const Blob& credential)
 {
-    const size_t len = credential.size() + size;
-    Blob out(ENVELOPE_OVERHEAD + len);
-    out[0] = ENVELOPE_MARKER;
-    out[1] = static_cast<uint8_t>(type) | (credential.empty() ? 0 : CREDENTIAL_FLAG);
-    std::copy(sender.begin(), sender.end(), out.begin() + 2);
-    std::copy(ephemeral.begin(), ephemeral.end(), out.begin() + 2 + KEY_SIZE);
-    auto nonce = out.data() + HEADER_SIZE;
-    randomBytes(nonce, NONCE_SIZE, GNUTLS_RND_NONCE);
-    auto payload = nonce + NONCE_SIZE;
-    std::copy(credential.begin(), credential.end(), payload);
-    if (size)
-        std::memcpy(payload + credential.size(), data, size);
+    Blob header;
+    header.reserve(MAX_ENVELOPE_OVERHEAD + size);
+    header.push_back(ENVELOPE_MARKER);
+    header.push_back(static_cast<uint8_t>(type) | (credential.empty() ? 0 : CREDENTIAL_FLAG));
+    header.insert(header.end(), sender.begin(), sender.end());
+    header.insert(header.end(), ephemeral.begin(), ephemeral.end());
+    return sealWith(key, std::move(header), credential, data, size);
+}
 
-    struct chacha_poly1305_ctx ctx;
-    chacha_poly1305_set_key(&ctx, key.data());
-    chacha_poly1305_set_nonce(&ctx, nonce);
-    chacha_poly1305_update(&ctx, HEADER_SIZE, out.data());
-    chacha_poly1305_encrypt(&ctx, len, payload, payload);
-    chachaDigest(&ctx, payload + len);
-    gnutls_memset(&ctx, 0, sizeof(ctx));
-    return out;
+Blob
+sealData(const Key& key, const uint8_t* data, size_t size)
+{
+    Blob header;
+    header.reserve(DATA_ENVELOPE_OVERHEAD + size);
+    header.push_back(ENVELOPE_MARKER);
+    header.push_back(static_cast<uint8_t>(EnvelopeType::Data));
+    return sealWith(key, std::move(header), {}, data, size);
 }
 
 std::optional<Blob>
 open(const Key& key, const uint8_t* data, size_t size)
 {
-    if (size < ENVELOPE_OVERHEAD or data[0] != ENVELOPE_MARKER)
+    auto header = parseHeader(data, size);
+    if (not header or header->type == EnvelopeType::Hello)
         return std::nullopt;
-    const size_t len = size - ENVELOPE_OVERHEAD;
-    const auto nonce = data + HEADER_SIZE;
+    const size_t headerSize = header->type == EnvelopeType::Data ? DATA_HEADER_SIZE : HEADER_SIZE;
+    if (size < headerSize + NONCE_SIZE + TAG_SIZE)
+        return std::nullopt;
+    const size_t len = size - headerSize - NONCE_SIZE - TAG_SIZE;
+    const auto nonce = data + headerSize;
 
     struct chacha_poly1305_ctx ctx;
     chacha_poly1305_set_key(&ctx, key.data());
     chacha_poly1305_set_nonce(&ctx, nonce);
-    chacha_poly1305_update(&ctx, HEADER_SIZE, data);
+    chacha_poly1305_update(&ctx, headerSize, data);
     Blob out(len);
     chacha_poly1305_decrypt(&ctx, len, out.data(), nonce + NONCE_SIZE);
     std::array<uint8_t, TAG_SIZE> tag;
