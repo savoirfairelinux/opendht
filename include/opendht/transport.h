@@ -37,6 +37,15 @@ struct OPENDHT_PUBLIC KeyPair
 /** Node ID of a node using the transport public key `pub`. */
 OPENDHT_PUBLIC InfoHash nodeId(const Key& pub);
 
+/** Secret from the system CSPRNG. */
+OPENDHT_PUBLIC Key randomSecret();
+
+/** Ephemeral key pair used with the peer at `address` (IP and port), derived from an epoch secret. */
+OPENDHT_PUBLIC KeyPair addressKey(const Key& epochSecret, const uint8_t* address, size_t size);
+
+/** Write token of the plaintext peer at `address` (IP and port), derived from an epoch secret. */
+OPENDHT_PUBLIC Key addressToken(const Key& epochSecret, const uint8_t* address, size_t size);
+
 /** Authority-signed binding of a transport public key to a private network. */
 struct OPENDHT_PUBLIC Credential
 {

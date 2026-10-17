@@ -27,6 +27,8 @@ namespace {
 constexpr auto NODE_ID_CONTEXT = "opendht-node-id-v1"sv;
 constexpr auto KDF_SALT = "opendht-transport-v2"sv;
 constexpr auto CREDENTIAL_CONTEXT = "opendht-credential-v1"sv;
+constexpr auto ADDRESS_KEY_CONTEXT = "opendht-address-key-v1"sv;
+constexpr auto ADDRESS_TOKEN_CONTEXT = "opendht-address-token-v1"sv;
 constexpr uint8_t CREDENTIAL_VERSION {1};
 
 void
@@ -48,6 +50,24 @@ hmacSha256(const uint8_t* key, size_t keyLen, const uint8_t* data, size_t dataLe
 #else
     hmac_sha256_digest(&ctx, out.size(), out.data());
 #endif
+    return out;
+}
+
+/* HMAC-SHA256(secret, context || address) */
+Key
+addressPrf(const Key& secret, std::string_view context, const uint8_t* address, size_t size)
+{
+    struct hmac_sha256_ctx ctx;
+    hmac_sha256_set_key(&ctx, secret.size(), secret.data());
+    hmac_sha256_update(&ctx, context.size(), (const uint8_t*) context.data());
+    hmac_sha256_update(&ctx, size, address);
+    Key out;
+#if NETTLE_VERSION_MAJOR >= 4
+    hmac_sha256_digest(&ctx, out.data());
+#else
+    hmac_sha256_digest(&ctx, out.size(), out.data());
+#endif
+    gnutls_memset(&ctx, 0, sizeof(ctx));
     return out;
 }
 
@@ -161,8 +181,7 @@ wipe(std::optional<Key>& k)
 KeyPair
 KeyPair::generate()
 {
-    Key secret;
-    randomBytes(secret.data(), secret.size(), GNUTLS_RND_KEY);
+    Key secret = randomSecret();
     auto kp = fromSecret(secret);
     wipe(secret);
     return kp;
@@ -191,6 +210,29 @@ nodeId(const Key& pub)
     sha256_digest(&ctx, digest.size(), digest.data());
 #endif
     return InfoHash(digest.data(), HASH_LEN);
+}
+
+Key
+randomSecret()
+{
+    Key secret;
+    randomBytes(secret.data(), secret.size(), GNUTLS_RND_KEY);
+    return secret;
+}
+
+KeyPair
+addressKey(const Key& epochSecret, const uint8_t* address, size_t size)
+{
+    auto secret = addressPrf(epochSecret, ADDRESS_KEY_CONTEXT, address, size);
+    auto kp = KeyPair::fromSecret(secret);
+    wipe(secret);
+    return kp;
+}
+
+Key
+addressToken(const Key& epochSecret, const uint8_t* address, size_t size)
+{
+    return addressPrf(epochSecret, ADDRESS_TOKEN_CONTEXT, address, size);
 }
 
 Blob

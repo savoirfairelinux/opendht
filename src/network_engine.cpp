@@ -96,14 +96,18 @@ packToken(msgpack::packer<msgpack::sbuffer>& pk, const Blob& token)
 }
 
 RequestAnswer::RequestAnswer(ParsedMessage&& msg)
-    : ntoken(std::move(msg.token))
-    , values(std::move(msg.values))
+    : values(std::move(msg.values))
     , refreshed_values(std::move(msg.refreshed_values))
     , expired_values(std::move(msg.expired_values))
     , fields(std::move(msg.fields))
     , nodes4(std::move(msg.nodes4))
     , nodes6(std::move(msg.nodes6))
-{}
+{
+    if (msg.encrypted)
+        ntoken.emplace();
+    else if (not msg.token.empty())
+        ntoken = std::move(msg.token);
+}
 
 NetworkEngine::NetworkEngine(InfoHash& myid,
                              NetworkConfig c,
@@ -140,10 +144,8 @@ NetworkEngine::NetworkEngine(InfoHash& myid,
     , rate_limiter(config.max_req_per_sec)
     , scheduler(scheduler)
 {
-    if (transport_) {
-        epoch_.key = transport::KeyPair::generate();
-        epochRotation_ = scheduler.add(scheduler.time() + EPOCH_DURATION, std::bind(&NetworkEngine::rotateEpoch, this));
-    }
+    epoch_.secret = transport::randomSecret();
+    epochRotation_ = scheduler.add(scheduler.time() + EPOCH_DURATION, std::bind(&NetworkEngine::rotateEpoch, this));
 }
 
 NetworkEngine::~NetworkEngine()
@@ -159,7 +161,6 @@ NetworkEngine::tellListener(const Sp<Node>& node,
                             Tid socket_id,
                             const InfoHash& hash,
                             want_t want,
-                            const Blob& ntoken,
                             std::vector<Sp<Node>>&& nodes,
                             std::vector<Sp<Node>>&& nodes6,
                             std::vector<Sp<Value>>&& values,
@@ -167,6 +168,7 @@ NetworkEngine::tellListener(const Sp<Node>& node,
                             int version)
 {
     auto nnodes = bufferNodes(node->getFamily(), hash, want, nodes, nodes6);
+    auto ntoken = writeToken(*node);
     try {
         if (version >= 1) {
             sendUpdateValues(node, hash, std::move(values), scheduler.time(), ntoken, socket_id);
@@ -183,13 +185,13 @@ void
 NetworkEngine::tellListenerRefreshed(const Sp<Node>& n,
                                      Tid socket_id,
                                      const InfoHash&,
-                                     const Blob& token,
                                      const std::vector<Value::Id>& values,
                                      int version)
 {
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
     bool advertise = advertiseKey(*n);
+    auto token = writeToken(*n);
 
     pk.pack_map(4 + (version >= 1 ? 1 : 0) + optionalFields(advertise));
 
@@ -248,13 +250,13 @@ void
 NetworkEngine::tellListenerExpired(const Sp<Node>& n,
                                    Tid socket_id,
                                    const InfoHash&,
-                                   const Blob& token,
                                    const std::vector<Value::Id>& values,
                                    int version)
 {
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
     bool advertise = advertiseKey(*n);
+    auto token = writeToken(*n);
 
     pk.pack_map(4 + (version >= 1 ? 1 : 0) + optionalFields(advertise));
 
@@ -531,6 +533,7 @@ NetworkEngine::processMessage(const uint8_t* buf, size_t buflen, SockAddr f)
         }
         msg->peer = std::move(envelope->peer);
         msg->encrypted = true;
+        msg->session = envelope->session;
     } else if (transport_ and msg->transport_key) {
         msg->peer = makePeer(msg->id, *msg->transport_key);
     }
@@ -803,7 +806,7 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
                 ++in_stats.find;
                 RequestAnswer answer = onFindNode(node, msg->target, msg->want);
                 auto nnodes = bufferNodes(from.getFamily(), msg->target, msg->want, answer.nodes4, answer.nodes6);
-                sendNodesValues(*node, from, msg->tid, nnodes, {}, {}, answer.ntoken);
+                sendNodesValues(*node, from, msg->tid, nnodes, {}, {}, writeToken(*node));
                 break;
             }
             case MessageType::GetValues: {
@@ -813,14 +816,15 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
                 ++in_stats.get;
                 RequestAnswer answer = onGetValues(node, msg->info_hash, msg->want, msg->query);
                 auto nnodes = bufferNodes(from.getFamily(), msg->info_hash, msg->want, answer.nodes4, answer.nodes6);
-                sendNodesValues(*node, from, msg->tid, nnodes, answer.values, msg->query, answer.ntoken);
+                sendNodesValues(*node, from, msg->tid, nnodes, answer.values, msg->query, writeToken(*node));
                 break;
             }
             case MessageType::AnnounceValue: {
                 if (logIncoming_ and logger_)
                     logger_->debug("[node {}] got 'put' request for {}", node->toString(), msg->info_hash.toString());
                 ++in_stats.put;
-                onAnnounce(node, msg->info_hash, msg->token, msg->values, msg->created);
+                authorizeWrite(*msg, *node, DhtProtocolException::PUT_WRONG_TOKEN);
+                onAnnounce(node, msg->info_hash, msg->values, msg->created);
 
                 /* Note that if storageStore failed, we lie to the requestor.
                    This is to prevent them from backtracking, and hence
@@ -835,7 +839,8 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
                     logger_->debug("[node {}] got 'refresh' request for {}",
                                    node->toString(),
                                    msg->info_hash.toString());
-                onRefresh(node, msg->info_hash, msg->token, msg->value_id);
+                authorizeWrite(*msg, *node, DhtProtocolException::PUT_WRONG_TOKEN);
+                onRefresh(node, msg->info_hash, msg->value_id);
                 /* Same note as above in MessageType::AnnounceValue applies. */
                 sendValueAnnounced(*node, from, msg->tid, msg->value_id);
                 break;
@@ -843,10 +848,14 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
                 if (logIncoming_ and logger_)
                     logger_->debug("[node {}] got 'listen' request for {}", node->toString(), msg->info_hash.toString());
                 ++in_stats.listen;
-                RequestAnswer answer
-                    = onListen(node, msg->info_hash, msg->token, msg->socket_id, std::move(msg->query), msg->version);
+                authorizeWrite(*msg, *node, DhtProtocolException::LISTEN_WRONG_TOKEN);
+                RequestAnswer answer = onListen(node,
+                                                msg->info_hash,
+                                                msg->socket_id,
+                                                std::move(msg->query),
+                                                msg->version);
                 auto nnodes = bufferNodes(from.getFamily(), msg->info_hash, msg->want, answer.nodes4, answer.nodes6);
-                sendListenConfirmation(*node, from, msg->tid, answer.ntoken);
+                sendListenConfirmation(*node, from, msg->tid, writeToken(*node));
                 break;
             }
             case MessageType::UpdateValue: {
@@ -905,91 +914,154 @@ NetworkEngine::packOptionalFields(msgpack::packer<msgpack::sbuffer>& pk, bool ke
     }
 }
 
-const transport::SessionKeys*
-NetworkEngine::Epoch::find(const transport::Key& peer, const transport::Key& peerEphemeral) const
+/* IP and port: what ephemeral keys and tokens are bound to */
+static Blob
+addressBytes(const SockAddr& sa)
 {
-    auto it = sessions.find(peer);
-    return it != sessions.end() and it->second.peerEphemeral == peerEphemeral ? &it->second.keys : nullptr;
+    auto addr = SockAddr(sa).getMappedIPv4();
+    Blob b;
+    in_port_t port;
+    if (addr.getFamily() == AF_INET) {
+        const auto& sin = addr.getIPv4();
+        b.assign((const uint8_t*) &sin.sin_addr, (const uint8_t*) &sin.sin_addr + sizeof(in_addr));
+        port = sin.sin_port;
+    } else if (addr.getFamily() == AF_INET6) {
+        const auto& sin6 = addr.getIPv6();
+        b.assign((const uint8_t*) &sin6.sin6_addr, (const uint8_t*) &sin6.sin6_addr + sizeof(in6_addr));
+        port = sin6.sin6_port;
+    } else {
+        return b;
+    }
+    b.insert(b.end(), (const uint8_t*) &port, (const uint8_t*) &port + sizeof(port));
+    return b;
+}
+
+transport::KeyPair
+NetworkEngine::Epoch::ephemeral(const SockAddr& addr) const
+{
+    auto a = addressBytes(addr);
+    return transport::addressKey(secret, a.data(), a.size());
+}
+
+Blob
+NetworkEngine::Epoch::token(const SockAddr& addr) const
+{
+    auto a = addressBytes(addr);
+    if (a.empty())
+        return {};
+    auto t = transport::addressToken(secret, a.data(), a.size());
+    return {t.begin(), t.end()};
+}
+
+const NetworkEngine::Session*
+NetworkEngine::Epoch::find(const SockAddr& addr, const transport::Key& peer, const transport::Key& peerEphemeral) const
+{
+    auto it = sessions.find(addr);
+    return it != sessions.end() and it->second.peer == peer and it->second.peerEphemeral == peerEphemeral ? &it->second
+                                                                                                          : nullptr;
 }
 
 void
-NetworkEngine::Epoch::store(const transport::Key& peer,
-                            const transport::Key& peerEphemeral,
-                            const transport::SessionKeys& keys)
+NetworkEngine::Epoch::store(const SockAddr& addr, const Session& session)
 {
-    auto it = sessions.find(peer);
-    if (it != sessions.end())
-        it->second = {peerEphemeral, keys};
-    else if (sessions.size() < MAX_SESSIONS)
-        sessions.emplace(peer, Session {peerEphemeral, keys});
+    auto it = sessions.find(addr);
+    if (it != sessions.end()) {
+        transport::wipe(it->second.keys.tx);
+        transport::wipe(it->second.keys.rx);
+        it->second = session;
+    } else if (sessions.size() < MAX_SESSIONS)
+        sessions.emplace(addr, session);
 }
 
 void
 NetworkEngine::Epoch::wipe()
 {
-    for (auto& [peer, session] : sessions) {
-        (void) peer;
+    for (auto& [addr, session] : sessions) {
+        (void) addr;
         transport::wipe(session.keys.tx);
         transport::wipe(session.keys.rx);
     }
     sessions.clear();
-    transport::wipe(key.secret);
-    key.pub = {};
+    transport::wipe(secret);
 }
 
 void
 NetworkEngine::rotateEpoch()
 {
     previousEpoch_.wipe();
-    previousEpoch_.key = epoch_.key;
+    previousEpoch_.secret = epoch_.secret;
     previousEpoch_.sessions = std::move(epoch_.sessions);
     epoch_.sessions.clear();
-    epoch_.key = transport::KeyPair::generate();
+    epoch_.secret = transport::randomSecret();
     epochRotation_ = scheduler.add(scheduler.time() + EPOCH_DURATION, std::bind(&NetworkEngine::rotateEpoch, this));
 }
 
-std::optional<transport::SessionKeys>
-NetworkEngine::sessionKeys(const transport::Peer& peer)
+std::optional<NetworkEngine::Session>
+NetworkEngine::session(const transport::Peer& peer, const SockAddr& addr)
 {
     const auto& peerEphemeral = *peer.ephemeral;
-    if (auto keys = epoch_.find(peer.key, peerEphemeral))
-        return *keys;
-    auto keys = transport::sessionKeys(config.transport.key, epoch_.key, peer.key, peerEphemeral, config.network);
-    if (keys)
-        epoch_.store(peer.key, peerEphemeral, *keys);
-    return keys;
+    if (auto s = epoch_.find(addr, peer.key, peerEphemeral))
+        return *s;
+    auto ephemeral = epoch_.ephemeral(addr);
+    std::optional<Session> s;
+    if (auto keys = transport::sessionKeys(config.transport.key, ephemeral, peer.key, peerEphemeral, config.network)) {
+        s = Session {ephemeral.pub, peer.key, peerEphemeral, *keys};
+        epoch_.store(addr, *s);
+    }
+    transport::wipe(ephemeral.secret);
+    return s;
 }
 
 std::optional<Blob>
 NetworkEngine::openSession(const transport::Header& header, const uint8_t* buf, size_t buflen, const SockAddr& from)
 {
-    // The sender uses the last ephemeral key it got from us
-    for (auto* epoch : {&epoch_, &previousEpoch_}) {
-        if (not epoch->key)
+    // The sender uses the last ephemeral key we sent to its address
+    const std::array<Epoch*, 2> epochs {&epoch_, &previousEpoch_};
+    for (auto* epoch : epochs)
+        if (auto cached = epoch->find(from, header.sender, header.ephemeral))
+            if (auto payload = transport::open(cached->keys.rx, buf, buflen))
+                return payload;
+    for (auto* epoch : epochs) {
+        if (not *epoch or epoch->find(from, header.sender, header.ephemeral))
             continue;
-        std::optional<transport::SessionKeys> keys;
-        auto cached = epoch->find(header.sender, header.ephemeral);
-        if (cached) {
-            keys = *cached;
-        } else {
-            // Key agreement is the costly part of an unknown sender
-            if (not rateLimit(from))
-                return std::nullopt;
-            keys = transport::sessionKeys(config.transport.key,
-                                          epoch->key,
-                                          header.sender,
-                                          header.ephemeral,
-                                          config.network);
-            if (not keys)
-                return std::nullopt;
-        }
+        // Key agreement is the costly part of an unknown sender
+        if (not rateLimit(from))
+            return std::nullopt;
+        auto ephemeral = epoch->ephemeral(from);
+        auto keys = transport::sessionKeys(config.transport.key,
+                                           ephemeral,
+                                           header.sender,
+                                           header.ephemeral,
+                                           config.network);
+        transport::wipe(ephemeral.secret);
+        if (not keys)
+            return std::nullopt;
         if (auto payload = transport::open(keys->rx, buf, buflen)) {
-            if (not cached)
-                epoch->store(header.sender, header.ephemeral, *keys);
+            epoch->store(from, Session {ephemeral.pub, header.sender, header.ephemeral, *keys});
             return payload;
         }
+        transport::wipe(keys->tx);
+        transport::wipe(keys->rx);
     }
     return std::nullopt;
+}
+
+bool
+NetworkEngine::tokenMatch(const Blob& token, const SockAddr& addr) const
+{
+    if (not addr or token.size() != TOKEN_SIZE)
+        return false;
+    return token == epoch_.token(addr) or (previousEpoch_ and token == previousEpoch_.token(addr));
+}
+
+void
+NetworkEngine::authorizeWrite(const ParsedMessage& msg, const Node& node, const std::string& error) const
+{
+    if (msg.encrypted ? msg.session : tokenMatch(msg.token, node.getAddr()))
+        return;
+    if (logger_)
+        logger_->warn("[node {}] {}", node.toString(), error);
+    throw DhtProtocolException {DhtProtocolException::UNAUTHORIZED, error};
 }
 
 Sp<transport::Peer>
@@ -1082,7 +1154,7 @@ NetworkEngine::openEnvelope(const uint8_t* buf, size_t buflen, const SockAddr& f
         return std::nullopt;
     }
     peer->ephemeral = header->ephemeral;
-    return OpenedEnvelope {std::move(peer), std::move(*payload)};
+    return OpenedEnvelope {std::move(peer), std::move(*payload), false, header->type == EnvelopeType::Session};
 }
 
 void
@@ -1114,19 +1186,27 @@ NetworkEngine::send(const Node& node, const SockAddr& addr, const char* buf, siz
     const auto& own = config.transport.key;
     if (const auto& peer = node.getTransport()) {
         std::optional<transport::Key> key;
+        transport::Key ephemeral;
         auto type = EnvelopeType::Initial;
         if (peer->ephemeral) {
             type = EnvelopeType::Session;
-            if (auto keys = sessionKeys(*peer))
-                key = keys->tx;
+            if (auto s = session(*peer, addr)) {
+                key = s->keys.tx;
+                ephemeral = s->ephemeral;
+                transport::wipe(s->keys.tx);
+                transport::wipe(s->keys.rx);
+            }
         } else {
-            key = transport::initialSendKey(own, epoch_.key, peer->key, config.network);
+            auto e = epoch_.ephemeral(addr);
+            key = transport::initialSendKey(own, e, peer->key, config.network);
+            ephemeral = e.pub;
+            transport::wipe(e.secret);
         }
         if (key) {
             auto packet = transport::seal(*key,
                                           type,
                                           own.pub,
-                                          epoch_.key.pub,
+                                          ephemeral,
                                           data,
                                           len,
                                           isPrivate and not peer->acked ? credential_ : Blob {});
@@ -1135,7 +1215,9 @@ NetworkEngine::send(const Node& node, const SockAddr& addr, const char* buf, siz
         }
     } else if (isPrivate and not node.id) {
         // ping to an address: introduce ourselves
-        auto packet = transport::hello(own.pub, epoch_.key.pub, credential_, data, len);
+        auto e = epoch_.ephemeral(addr);
+        transport::wipe(e.secret);
+        auto packet = transport::hello(own.pub, e.pub, credential_, data, len);
         return sendRaw(addr, packet.data(), packet.size(), confirmed);
     }
     if (isPrivate)
@@ -1623,15 +1705,17 @@ NetworkEngine::sendListen(const Sp<Node>& n,
 
     auto has_query = not query.where.empty() or not query.select.empty();
     pk.pack(KEY_A);
-    pk.pack_map(5 + has_query);
+    pk.pack_map(4 + has_query + (not token.empty() ? 1 : 0));
     pk.pack(KEY_REQ_ID);
     pk.pack(myid);
     pk.pack(KEY_VERSION);
     pk.pack(1);
     pk.pack(KEY_REQ_H);
     pk.pack(hash);
-    pk.pack(KEY_REQ_TOKEN);
-    packToken(pk, token);
+    if (not token.empty()) {
+        pk.pack(KEY_REQ_TOKEN);
+        packToken(pk, token);
+    }
     pk.pack(KEY_REQ_SID);
     pk.pack(socketId);
     if (has_query) {
@@ -1711,7 +1795,7 @@ NetworkEngine::sendAnnounceValue(const Sp<Node>& n,
 
     bool add_created = created < scheduler.time();
     pk.pack(KEY_A);
-    pk.pack_map(add_created ? 5 : 4);
+    pk.pack_map(3 + (add_created ? 1 : 0) + (not token.empty() ? 1 : 0));
     pk.pack(KEY_REQ_ID);
     pk.pack(myid);
     pk.pack(KEY_REQ_H);
@@ -1721,8 +1805,10 @@ NetworkEngine::sendAnnounceValue(const Sp<Node>& n,
         pk.pack(KEY_REQ_CREATION);
         pk.pack(to_time_t(created));
     }
-    pk.pack(KEY_REQ_TOKEN);
-    pk.pack(token);
+    if (not token.empty()) {
+        pk.pack(KEY_REQ_TOKEN);
+        pk.pack(token);
+    }
 
     pk.pack(KEY_Q);
     pk.pack(QUERY_PUT);
@@ -1802,7 +1888,7 @@ NetworkEngine::sendUpdateValues(const Sp<Node>& n,
     pk.pack_map(5 + optionalFields(advertise));
 
     pk.pack(KEY_A);
-    pk.pack_map((created < scheduler.time() ? 7 : 6));
+    pk.pack_map(5 + (created < scheduler.time() ? 1 : 0) + (not token.empty() ? 1 : 0));
     pk.pack(KEY_REQ_ID);
     pk.pack(myid);
     pk.pack(KEY_VERSION);
@@ -1816,8 +1902,10 @@ NetworkEngine::sendUpdateValues(const Sp<Node>& n,
         pk.pack(KEY_REQ_CREATION);
         pk.pack(to_time_t(created));
     }
-    pk.pack(KEY_REQ_TOKEN);
-    pk.pack(token);
+    if (not token.empty()) {
+        pk.pack(KEY_REQ_TOKEN);
+        pk.pack(token);
+    }
 
     pk.pack(KEY_Q);
     pk.pack(QUERY_UPDATE);
@@ -1858,15 +1946,17 @@ NetworkEngine::sendRefreshValue(const Sp<Node>& n,
     pk.pack_map(5 + optionalFields(advertise));
 
     pk.pack(KEY_A);
-    pk.pack_map(4);
+    pk.pack_map(3 + (not token.empty() ? 1 : 0));
     pk.pack(KEY_REQ_ID);
     pk.pack(myid);
     pk.pack(KEY_REQ_H);
     pk.pack(infohash);
     pk.pack(KEY_REQ_VALUE_ID);
     pk.pack(vid);
-    pk.pack(KEY_REQ_TOKEN);
-    pk.pack(token);
+    if (not token.empty()) {
+        pk.pack(KEY_REQ_TOKEN);
+        pk.pack(token);
+    }
 
     pk.pack(KEY_Q);
     pk.pack(QUERY_REFRESH);
