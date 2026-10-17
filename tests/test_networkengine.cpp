@@ -667,6 +667,411 @@ NetworkEngineTester::testUnauthorizedListenFlushClearsListenState()
     CPPUNIT_ASSERT(!listenStatusIt->second.refresh);
 }
 
+/* A NetworkEngine with its own socket, delivering its packets to other engines */
+struct TransportTestNode
+{
+    TransportTestNode(const char* ip, TransportConfig transport, uint64_t seed)
+        : rd(seed)
+        , addr(makeIPv4(ip, 4222))
+    {
+        net::NetworkConfig config {};
+        config.max_req_per_sec = -1;
+        config.max_peer_req_per_sec = -1;
+        if (transport.enabled and not transport.key)
+            transport.key = transport::KeyPair::generate();
+        config.transport = transport;
+        key = transport.key;
+        id = transport.enabled ? transport::nodeId(key.pub) : InfoHash::getRandom(rd);
+        auto s = std::make_unique<TestDatagramSocket>();
+        socket = s.get();
+        engine = std::make_unique<net::NetworkEngine>(
+            id,
+            config,
+            std::move(s),
+            Sp<Logger> {},
+            rd,
+            scheduler,
+            [](Sp<net::Request>, net::DhtProtocolException) {},
+            [this](const Sp<Node>& n, int) {
+                ++newNodes;
+                known.emplace_back(n);
+            },
+            [](const InfoHash&, const SockAddr&) {},
+            [](Sp<Node>) { return net::RequestAnswer {}; },
+            [](Sp<Node>, const InfoHash&, want_t) { return net::RequestAnswer {}; },
+            [](Sp<Node>, const InfoHash&, want_t, const Query&) { return net::RequestAnswer {}; },
+            [](Sp<Node>, const InfoHash&, const Blob&, Tid, const Query&, int) { return net::RequestAnswer {}; },
+            [](Sp<Node>, const InfoHash&, const Blob&, const std::vector<Sp<Value>>&, const time_point&) {
+                return net::RequestAnswer {};
+            },
+            [](Sp<Node>, const InfoHash&, const Blob&, const Value::Id&) { return net::RequestAnswer {}; });
+    }
+
+    std::vector<TestDatagramSocket::SentPacket> takeSent() { return std::exchange(socket->sends, {}); }
+
+    size_t deliverTo(TransportTestNode& to, const SockAddr& from)
+    {
+        auto sent = takeSent();
+        for (const auto& p : sent)
+            to.engine->processMessage(p.data.data(), p.data.size(), from);
+        return sent.size();
+    }
+    size_t deliverTo(TransportTestNode& to) { return deliverTo(to, addr); }
+
+    Sp<Request> ping(const SockAddr& dest, bool& done)
+    {
+        return engine->sendPing(SockAddr(dest), [&done](const net::Request&, net::RequestAnswer&&) { done = true; }, {});
+    }
+    Sp<Request> ping(const Sp<Node>& dest, bool& done)
+    {
+        return engine->sendPing(dest, [&done](const net::Request&, net::RequestAnswer&&) { done = true; }, {});
+    }
+
+    Sp<Node> node(const TransportTestNode& other) { return engine->insertNode(other.id, other.addr); }
+
+    Scheduler scheduler;
+    std::mt19937_64 rd;
+    SockAddr addr;
+    InfoHash id;
+    transport::KeyPair key;
+    TestDatagramSocket* socket;
+    std::unique_ptr<net::NetworkEngine> engine;
+    int newNodes {0};
+    /* held by the routing table in a Dht */
+    std::vector<Sp<Node>> known;
+};
+
+static TransportConfig
+legacyTransport()
+{
+    TransportConfig c;
+    c.enabled = false;
+    return c;
+}
+
+static TransportConfig
+privateTransport(const transport::Authority& authority,
+                 std::chrono::system_clock::duration validity = std::chrono::hours(1))
+{
+    TransportConfig c;
+    c.key = transport::KeyPair::generate();
+    c.authorities = {authority.pub};
+    c.credential = authority.issue(c.key.pub, std::chrono::system_clock::now() + validity);
+    return c;
+}
+
+static bool
+isEnvelope(const TestDatagramSocket::SentPacket& p, transport::EnvelopeType type)
+{
+    return transport::isEnvelope(p.data.data(), p.data.size()) and p.data[1] == static_cast<uint8_t>(type);
+}
+
+static std::optional<transport::Key>
+advertisedKey(const TestDatagramSocket::SentPacket& p)
+{
+    ParsedMessage msg;
+    msgpack::unpacked res = msgpack::unpack((const char*) p.data.data(), p.data.size());
+    msg.msgpack_unpack(res.get());
+    return msg.transport_key;
+}
+
+static Blob
+makePingPacketBlob(const InfoHash& id, Tid tid, const std::optional<transport::Key>& key = {})
+{
+    msgpack::sbuffer buffer;
+    msgpack::packer<msgpack::sbuffer> pk(&buffer);
+    pk.pack_map(4 + (key ? 1 : 0));
+    pk.pack(KEY_A);
+    pk.pack_map(1);
+    pk.pack(KEY_REQ_ID);
+    pk.pack(id);
+    pk.pack(KEY_Q);
+    pk.pack(QUERY_PING);
+    pk.pack(KEY_TID);
+    pk.pack(tid);
+    pk.pack(KEY_Y);
+    pk.pack(KEY_Q);
+    if (key) {
+        pk.pack(KEY_TRANSPORT);
+        pk.pack_bin(key->size());
+        pk.pack_bin_body((const char*) key->data(), key->size());
+    }
+    return {buffer.data(), buffer.data() + buffer.size()};
+}
+
+void
+NetworkEngineTester::testTransportDisabledKeepsLegacyWire()
+{
+    TransportTestNode legacy("127.0.0.2", legacyTransport(), 1);
+    TransportTestNode other("127.0.0.3", legacyTransport(), 2);
+    CPPUNIT_ASSERT(not legacy.engine->getTransportKey());
+
+    bool done = false;
+    legacy.ping(other.addr, done);
+    auto sent = legacy.takeSent();
+    CPPUNIT_ASSERT_EQUAL((size_t) 1, sent.size());
+    CPPUNIT_ASSERT(not transport::isEnvelope(sent[0].data.data(), sent[0].data.size()));
+    CPPUNIT_ASSERT(not advertisedKey(sent[0]));
+}
+
+void
+NetworkEngineTester::testTransportEncryptsAfterKeyExchange()
+{
+    TransportTestNode a("127.0.0.2", {}, 1);
+    TransportTestNode b("127.0.0.3", {}, 2);
+    CPPUNIT_ASSERT_EQUAL(transport::nodeId(a.engine->getTransportKey()->pub), a.id);
+
+    // First contact: plaintext advertising our key
+    bool done = false;
+    a.ping(b.addr, done);
+    CPPUNIT_ASSERT_EQUAL((size_t) 1, a.socket->sends.size());
+    auto key = advertisedKey(a.socket->sends[0]);
+    CPPUNIT_ASSERT(key and *key == a.key.pub);
+    a.deliverTo(b);
+
+    // The reply is encrypted
+    CPPUNIT_ASSERT_EQUAL((size_t) 1, b.socket->sends.size());
+    CPPUNIT_ASSERT(isEnvelope(b.socket->sends[0], transport::EnvelopeType::Data));
+    b.deliverTo(a);
+    CPPUNIT_ASSERT(done);
+    CPPUNIT_ASSERT(a.node(b)->getTransport());
+    CPPUNIT_ASSERT(b.node(a)->getTransport());
+
+    // Following requests are encrypted both ways
+    done = false;
+    a.ping(a.node(b), done);
+    CPPUNIT_ASSERT(isEnvelope(a.socket->sends.at(0), transport::EnvelopeType::Data));
+    a.deliverTo(b);
+    CPPUNIT_ASSERT(isEnvelope(b.socket->sends.at(0), transport::EnvelopeType::Data));
+    b.deliverTo(a);
+    CPPUNIT_ASSERT(done);
+}
+
+void
+NetworkEngineTester::testTransportLegacyPeerStaysPlaintext()
+{
+    TransportTestNode a("127.0.0.2", {}, 1);
+    TransportTestNode legacy("127.0.0.3", legacyTransport(), 2);
+
+    bool done = false;
+    a.ping(legacy.addr, done);
+    a.deliverTo(legacy);
+    CPPUNIT_ASSERT_EQUAL((size_t) 1, legacy.socket->sends.size());
+    CPPUNIT_ASSERT(not transport::isEnvelope(legacy.socket->sends[0].data.data(), legacy.socket->sends[0].data.size()));
+    legacy.deliverTo(a);
+    CPPUNIT_ASSERT(done);
+    CPPUNIT_ASSERT(not a.node(legacy)->getTransport());
+
+    // Requests from the legacy node are answered in plaintext
+    done = false;
+    legacy.ping(legacy.node(a), done);
+    legacy.deliverTo(a);
+    CPPUNIT_ASSERT_EQUAL((size_t) 1, a.socket->sends.size());
+    CPPUNIT_ASSERT(not transport::isEnvelope(a.socket->sends[0].data.data(), a.socket->sends[0].data.size()));
+    a.deliverTo(legacy);
+    CPPUNIT_ASSERT(done);
+}
+
+void
+NetworkEngineTester::testTransportRejectsMismatchedNodeId()
+{
+    TransportTestNode b("127.0.0.3", {}, 2);
+    auto from = makeIPv4("127.0.0.4", 4222);
+    auto sender = transport::KeyPair::generate();
+    auto shared = *transport::deriveSharedKey(sender, b.key.pub, 0);
+
+    std::mt19937_64 rd(3);
+    auto spoofed = makePingPacketBlob(InfoHash::getRandom(rd), 1);
+    auto envelope = transport::seal(shared, sender.pub, transport::EnvelopeType::Data, spoofed.data(), spoofed.size());
+    b.engine->processMessage(envelope.data(), envelope.size(), from);
+    CPPUNIT_ASSERT(b.socket->sends.empty());
+    CPPUNIT_ASSERT_EQUAL(0, b.newNodes);
+
+    auto genuine = makePingPacketBlob(transport::nodeId(sender.pub), 2);
+    envelope = transport::seal(shared, sender.pub, transport::EnvelopeType::Data, genuine.data(), genuine.size());
+    b.engine->processMessage(envelope.data(), envelope.size(), from);
+    CPPUNIT_ASSERT_EQUAL((size_t) 1, b.socket->sends.size());
+
+    // A plaintext key that doesn't match the node ID is ignored: the reply stays plaintext
+    auto other = makeIPv4("127.0.0.5", 4222);
+    auto fake = makePingPacketBlob(InfoHash::getRandom(rd), 3, sender.pub);
+    b.takeSent();
+    b.engine->processMessage(fake.data(), fake.size(), other);
+    CPPUNIT_ASSERT_EQUAL((size_t) 1, b.socket->sends.size());
+    CPPUNIT_ASSERT(not transport::isEnvelope(b.socket->sends[0].data.data(), b.socket->sends[0].data.size()));
+}
+
+void
+NetworkEngineTester::testTransportIgnoresForgedNodeListKey()
+{
+    TransportTestNode a("127.0.0.2", {}, 1);
+    auto remote = makeIPv4("127.0.0.3", 4222);
+    std::mt19937_64 rd(5);
+    auto remoteId = InfoHash::getRandom(rd);
+    auto remoteNode = a.engine->insertNode(remoteId, remote);
+
+    std::vector<Sp<Node>> answerNodes;
+    auto req = a.engine->sendFindNode(remoteNode,
+                                      InfoHash::getRandom(rd),
+                                      -1,
+                                      [&](const net::Request&, net::RequestAnswer&& answer) {
+                                          answerNodes = std::move(answer.nodes4);
+                                      });
+    a.takeSent();
+
+    auto forgedKey = transport::KeyPair::generate().pub;
+    auto forgedId = InfoHash::getRandom(rd);
+    auto validKey = transport::KeyPair::generate().pub;
+    auto validId = transport::nodeId(validKey);
+
+    struct Listed
+    {
+        InfoHash id;
+        transport::Key key;
+        const char* ip;
+    };
+    Blob nodes4, keys4;
+    for (const auto& listed : {
+             Listed {forgedId, forgedKey, "127.0.0.6"},
+              Listed {validId,  validKey,  "127.0.0.7"}
+    }) {
+        auto addr = makeIPv4(listed.ip, 5000);
+        nodes4.insert(nodes4.end(), listed.id.data(), listed.id.data() + listed.id.size());
+        auto sin = addr.getIPv4();
+        nodes4.insert(nodes4.end(), (uint8_t*) &sin.sin_addr, (uint8_t*) &sin.sin_addr + sizeof(in_addr));
+        nodes4.insert(nodes4.end(), (uint8_t*) &sin.sin_port, (uint8_t*) &sin.sin_port + sizeof(in_port_t));
+        keys4.insert(keys4.end(), listed.key.begin(), listed.key.end());
+    }
+
+    msgpack::sbuffer buffer;
+    msgpack::packer<msgpack::sbuffer> pk(&buffer);
+    pk.pack_map(3);
+    pk.pack(KEY_R);
+    pk.pack_map(3);
+    pk.pack(KEY_REQ_ID);
+    pk.pack(remoteId);
+    pk.pack(KEY_REQ_NODES4);
+    pk.pack_bin(nodes4.size());
+    pk.pack_bin_body((const char*) nodes4.data(), nodes4.size());
+    pk.pack(KEY_REQ_KEYS4);
+    pk.pack_bin(keys4.size());
+    pk.pack_bin_body((const char*) keys4.data(), keys4.size());
+    pk.pack(KEY_TID);
+    pk.pack(req->getTid());
+    pk.pack(KEY_Y);
+    pk.pack(KEY_R);
+    a.engine->processMessage((const uint8_t*) buffer.data(), buffer.size(), remote);
+
+    CPPUNIT_ASSERT_EQUAL((size_t) 2, answerNodes.size());
+    for (const auto& n : answerNodes) {
+        if (n->id == forgedId)
+            CPPUNIT_ASSERT(not n->getTransport());
+        else
+            CPPUNIT_ASSERT(n->getTransport() and n->getTransport()->key == validKey);
+    }
+}
+
+void
+NetworkEngineTester::testTransportPlaintextDoesNotMoveKeyedNode()
+{
+    TransportTestNode a("127.0.0.2", {}, 1);
+    TransportTestNode b("127.0.0.3", {}, 2);
+    bool done = false;
+    a.ping(b.addr, done);
+    a.deliverTo(b);
+    b.deliverTo(a);
+    CPPUNIT_ASSERT(done);
+    auto nodeB = a.node(b);
+    CPPUNIT_ASSERT(nodeB->getTransport());
+    auto newNodes = a.newNodes;
+
+    auto attacker = makeIPv4("127.0.0.66", 4222);
+    auto spoofed = makePingPacketBlob(b.id, 7);
+    a.engine->processMessage(spoofed.data(), spoofed.size(), attacker);
+
+    CPPUNIT_ASSERT(nodeB->getAddr() == b.addr);
+    CPPUNIT_ASSERT_EQUAL(newNodes, a.newNodes);
+    // Answered, but only readable by the owner of the key
+    CPPUNIT_ASSERT_EQUAL((size_t) 1, a.socket->sends.size());
+    CPPUNIT_ASSERT(a.socket->sends[0].dest == attacker);
+    CPPUNIT_ASSERT(isEnvelope(a.socket->sends[0], transport::EnvelopeType::Data));
+}
+
+void
+NetworkEngineTester::testTransportPrivateNetwork()
+{
+    auto authority = transport::Authority::generate();
+    TransportTestNode a("127.0.0.2", privateTransport(authority), 1);
+    TransportTestNode b("127.0.0.3", privateTransport(authority), 2);
+
+    // Ping to an address: plaintext hello with our credential, never a plaintext message
+    bool done = false;
+    a.ping(b.addr, done);
+    CPPUNIT_ASSERT(isEnvelope(a.socket->sends.at(0), transport::EnvelopeType::Hello));
+    a.deliverTo(b);
+    CPPUNIT_ASSERT(isEnvelope(b.socket->sends.at(0), transport::EnvelopeType::DataCredential));
+    b.deliverTo(a);
+    CPPUNIT_ASSERT(done);
+    auto peerB = a.node(b)->getTransport();
+    CPPUNIT_ASSERT(peerB and peerB->acked and peerB->isAuthorized(std::chrono::system_clock::now()));
+
+    // b accepted our credential: no need to send it anymore
+    done = false;
+    a.ping(a.node(b), done);
+    CPPUNIT_ASSERT(isEnvelope(a.socket->sends.at(0), transport::EnvelopeType::Data));
+    a.deliverTo(b);
+    // we haven't replied to b yet: it still sends its credential
+    CPPUNIT_ASSERT(isEnvelope(b.socket->sends.at(0), transport::EnvelopeType::DataCredential));
+    b.deliverTo(a);
+    CPPUNIT_ASSERT(done);
+}
+
+void
+NetworkEngineTester::testTransportPrivateNetworkRejectsOutsiders()
+{
+    auto authority = transport::Authority::generate();
+    TransportTestNode member("127.0.0.2", privateTransport(authority), 1);
+
+    // plaintext
+    TransportTestNode open("127.0.0.3", {}, 2);
+    bool done = false;
+    open.ping(member.addr, done);
+    open.deliverTo(member);
+    CPPUNIT_ASSERT(member.socket->sends.empty());
+
+    // credential from another authority
+    auto rogue = privateTransport(transport::Authority::generate());
+    rogue.authorities = {authority.pub};
+    TransportTestNode outsider("127.0.0.4", rogue, 3);
+    outsider.ping(member.addr, done);
+    CPPUNIT_ASSERT_EQUAL((size_t) 1, outsider.deliverTo(member));
+    CPPUNIT_ASSERT(member.socket->sends.empty());
+
+    // expired credential
+    TransportTestNode expired("127.0.0.5", privateTransport(authority, -std::chrono::seconds(1)), 4);
+    expired.ping(member.addr, done);
+    CPPUNIT_ASSERT_EQUAL((size_t) 1, expired.deliverTo(member));
+    CPPUNIT_ASSERT(member.socket->sends.empty());
+
+    // encrypted, without credential
+    auto sender = transport::KeyPair::generate();
+    auto ping = makePingPacketBlob(transport::nodeId(sender.pub), 1);
+    auto envelope = transport::seal(*transport::deriveSharedKey(sender, member.key.pub, 0),
+                                    sender.pub,
+                                    transport::EnvelopeType::Data,
+                                    ping.data(),
+                                    ping.size());
+    member.engine->processMessage(envelope.data(), envelope.size(), makeIPv4("127.0.0.6", 4222));
+    CPPUNIT_ASSERT(member.socket->sends.empty());
+
+    // members don't talk to open nodes, nor accept their hello
+    member.ping(open.addr, done);
+    CPPUNIT_ASSERT_EQUAL((size_t) 1, member.deliverTo(open));
+    CPPUNIT_ASSERT(open.socket->sends.empty());
+    CPPUNIT_ASSERT(not done);
+    CPPUNIT_ASSERT_EQUAL(0, member.newNodes);
+}
+
 } // namespace test
 
 #endif

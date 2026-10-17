@@ -24,6 +24,14 @@ class NetworkEngineTester : public CppUnit::TestFixture
     CPPUNIT_TEST(testListenConfirmationUpdatesSearchNodeToken);
     CPPUNIT_TEST(testListenReopensSocketAfterNodeExpiration);
     CPPUNIT_TEST(testUnauthorizedListenFlushClearsListenState);
+    CPPUNIT_TEST(testTransportDisabledKeepsLegacyWire);
+    CPPUNIT_TEST(testTransportEncryptsAfterKeyExchange);
+    CPPUNIT_TEST(testTransportLegacyPeerStaysPlaintext);
+    CPPUNIT_TEST(testTransportRejectsMismatchedNodeId);
+    CPPUNIT_TEST(testTransportIgnoresForgedNodeListKey);
+    CPPUNIT_TEST(testTransportPlaintextDoesNotMoveKeyedNode);
+    CPPUNIT_TEST(testTransportPrivateNetwork);
+    CPPUNIT_TEST(testTransportPrivateNetworkRejectsOutsiders);
 #endif
     CPPUNIT_TEST_SUITE_END();
 
@@ -45,6 +53,14 @@ public:
     void testListenConfirmationUpdatesSearchNodeToken();
     void testListenReopensSocketAfterNodeExpiration();
     void testUnauthorizedListenFlushClearsListenState();
+    void testTransportDisabledKeepsLegacyWire();
+    void testTransportEncryptsAfterKeyExchange();
+    void testTransportLegacyPeerStaysPlaintext();
+    void testTransportRejectsMismatchedNodeId();
+    void testTransportIgnoresForgedNodeListKey();
+    void testTransportPlaintextDoesNotMoveKeyedNode();
+    void testTransportPrivateNetwork();
+    void testTransportPrivateNetworkRejectsOutsiders();
 #endif
 };
 

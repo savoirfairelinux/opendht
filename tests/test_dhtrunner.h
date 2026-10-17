@@ -26,6 +26,24 @@ public:
     void testPushWhileRunning();
 };
 
+class DhtRunnerTransportTester : public CppUnit::TestFixture
+{
+    CPPUNIT_TEST_SUITE(DhtRunnerTransportTester);
+    CPPUNIT_TEST(testEncryptedByDefault);
+    CPPUNIT_TEST(testLegacyInterop);
+    CPPUNIT_TEST(testNodeIdFromTransportKey);
+    CPPUNIT_TEST(testPrivateNetwork);
+    CPPUNIT_TEST(testInvalidPrivateConfig);
+    CPPUNIT_TEST_SUITE_END();
+
+public:
+    void testEncryptedByDefault();
+    void testLegacyInterop();
+    void testNodeIdFromTransportKey();
+    void testPrivateNetwork();
+    void testInvalidPrivateConfig();
+};
+
 class DhtRunnerTester : public CppUnit::TestFixture
 {
     CPPUNIT_TEST_SUITE(DhtRunnerTester);
