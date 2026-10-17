@@ -48,34 +48,64 @@ TransportTester::testX25519Rfc7748()
 }
 
 void
-TransportTester::testSharedKey()
+TransportTester::testSessionKeys()
 {
-    auto a = KeyPair::generate();
-    auto b = KeyPair::generate();
+    auto a = KeyPair::generate(), ea = KeyPair::generate();
+    auto b = KeyPair::generate(), eb = KeyPair::generate();
     CPPUNIT_ASSERT(a);
     CPPUNIT_ASSERT(a.pub != b.pub);
 
-    auto ab = deriveSharedKey(a, b.pub, 0);
-    auto ba = deriveSharedKey(b, a.pub, 0);
+    auto ab = sessionKeys(a, ea, b.pub, eb.pub, 0);
+    auto ba = sessionKeys(b, eb, a.pub, ea.pub, 0);
     CPPUNIT_ASSERT(ab and ba);
-    CPPUNIT_ASSERT(*ab == *ba);
-
-    auto otherNetwork = deriveSharedKey(a, b.pub, 42);
-    CPPUNIT_ASSERT(otherNetwork);
-    CPPUNIT_ASSERT(*otherNetwork != *ab);
+    CPPUNIT_ASSERT(ab->tx == ba->rx);
+    CPPUNIT_ASSERT(ab->rx == ba->tx);
+    CPPUNIT_ASSERT(ab->tx != ab->rx);
 
     auto c = KeyPair::generate();
-    CPPUNIT_ASSERT(*deriveSharedKey(a, c.pub, 0) != *ab);
+    for (const auto& other : {sessionKeys(a, ea, b.pub, eb.pub, 42),
+                              sessionKeys(a, c, b.pub, eb.pub, 0),
+                              sessionKeys(a, ea, b.pub, c.pub, 0),
+                              sessionKeys(a, ea, c.pub, eb.pub, 0),
+                              sessionKeys(c, ea, b.pub, eb.pub, 0)}) {
+        CPPUNIT_ASSERT(other);
+        CPPUNIT_ASSERT(other->tx != ab->tx and other->rx != ab->rx);
+    }
+}
+
+void
+TransportTester::testInitialKey()
+{
+    auto a = KeyPair::generate(), ea = KeyPair::generate();
+    auto b = KeyPair::generate(), eb = KeyPair::generate();
+
+    auto sent = initialSendKey(a, ea, b.pub, 0);
+    auto received = initialReceiveKey(b, a.pub, ea.pub, 0);
+    CPPUNIT_ASSERT(sent and received);
+    CPPUNIT_ASSERT(*sent == *received);
+
+    auto session = sessionKeys(a, ea, b.pub, eb.pub, 0);
+    CPPUNIT_ASSERT(*sent != session->tx and *sent != session->rx);
+    CPPUNIT_ASSERT(*initialSendKey(a, ea, b.pub, 42) != *sent);
+    CPPUNIT_ASSERT(*initialSendKey(a, eb, b.pub, 0) != *sent);
+    // directional
+    CPPUNIT_ASSERT(*initialSendKey(b, ea, a.pub, 0) != *sent);
 }
 
 void
 TransportTester::testRejectsLowOrderKey()
 {
-    auto a = KeyPair::generate();
-    CPPUNIT_ASSERT(not deriveSharedKey(a, Key {}, 0));
+    auto a = KeyPair::generate(), ea = KeyPair::generate();
+    auto b = KeyPair::generate();
     Key one {};
     one[0] = 1;
-    CPPUNIT_ASSERT(not deriveSharedKey(a, one, 0));
+    for (const auto& bad : {Key {}, one}) {
+        CPPUNIT_ASSERT(not sessionKeys(a, ea, bad, b.pub, 0));
+        CPPUNIT_ASSERT(not sessionKeys(a, ea, b.pub, bad, 0));
+        CPPUNIT_ASSERT(not initialSendKey(a, ea, bad, 0));
+        CPPUNIT_ASSERT(not initialReceiveKey(a, bad, b.pub, 0));
+        CPPUNIT_ASSERT(not initialReceiveKey(a, b.pub, bad, 0));
+    }
 }
 
 void
@@ -91,76 +121,98 @@ TransportTester::testNodeId()
 void
 TransportTester::testSealOpen()
 {
-    auto a = KeyPair::generate();
-    auto b = KeyPair::generate();
-    auto shared = *deriveSharedKey(a, b.pub, 0);
+    auto a = KeyPair::generate(), ea = KeyPair::generate();
+    auto b = KeyPair::generate(), eb = KeyPair::generate();
+    auto keys = *sessionKeys(a, ea, b.pub, eb.pub, 0);
     auto msg = message();
 
-    auto envelope = seal(shared, a.pub, EnvelopeType::Data, msg.data(), msg.size());
+    auto envelope = seal(keys.tx, EnvelopeType::Session, a.pub, ea.pub, msg.data(), msg.size());
     CPPUNIT_ASSERT_EQUAL(msg.size() + ENVELOPE_OVERHEAD, envelope.size());
     CPPUNIT_ASSERT(isEnvelope(envelope.data(), envelope.size()));
-    CPPUNIT_ASSERT_EQUAL((uint8_t) EnvelopeType::Data, envelope[1]);
-    CPPUNIT_ASSERT(std::equal(a.pub.begin(), a.pub.end(), envelope.begin() + 2));
+    auto header = parseHeader(envelope.data(), envelope.size());
+    CPPUNIT_ASSERT(header);
+    CPPUNIT_ASSERT(header->type == EnvelopeType::Session);
+    CPPUNIT_ASSERT(not header->credential);
+    CPPUNIT_ASSERT(header->sender == a.pub);
+    CPPUNIT_ASSERT(header->ephemeral == ea.pub);
 
-    auto opened = open(*deriveSharedKey(b, a.pub, 0), envelope.data(), envelope.size());
+    auto opened = open(sessionKeys(b, eb, a.pub, ea.pub, 0)->rx, envelope.data(), envelope.size());
     CPPUNIT_ASSERT(opened);
     CPPUNIT_ASSERT(*opened == msg);
 
     // Random nonces: sealing twice gives different envelopes
-    CPPUNIT_ASSERT(seal(shared, a.pub, EnvelopeType::Data, msg.data(), msg.size()) != envelope);
+    CPPUNIT_ASSERT(seal(keys.tx, EnvelopeType::Session, a.pub, ea.pub, msg.data(), msg.size()) != envelope);
 
-    Blob prefix {1, 2, 3};
-    auto withPrefix = seal(shared, a.pub, EnvelopeType::DataCredential, msg.data(), msg.size(), prefix);
-    auto openedPrefix = open(shared, withPrefix.data(), withPrefix.size());
-    CPPUNIT_ASSERT(openedPrefix);
-    CPPUNIT_ASSERT(std::equal(prefix.begin(), prefix.end(), openedPrefix->begin()));
-    CPPUNIT_ASSERT(std::equal(msg.begin(), msg.end(), openedPrefix->begin() + prefix.size()));
+    Blob credential {1, 2, 3};
+    auto withCredential = seal(keys.tx, EnvelopeType::Initial, a.pub, ea.pub, msg.data(), msg.size(), credential);
+    header = parseHeader(withCredential.data(), withCredential.size());
+    CPPUNIT_ASSERT(header and header->type == EnvelopeType::Initial and header->credential);
+    auto openedCredential = open(keys.tx, withCredential.data(), withCredential.size());
+    CPPUNIT_ASSERT(openedCredential);
+    CPPUNIT_ASSERT(std::equal(credential.begin(), credential.end(), openedCredential->begin()));
+    CPPUNIT_ASSERT(std::equal(msg.begin(), msg.end(), openedCredential->begin() + credential.size()));
 }
 
 void
 TransportTester::testOpenRejectsTampering()
 {
-    auto a = KeyPair::generate();
-    auto b = KeyPair::generate();
-    auto shared = *deriveSharedKey(a, b.pub, 0);
+    auto a = KeyPair::generate(), ea = KeyPair::generate();
+    auto b = KeyPair::generate(), eb = KeyPair::generate();
+    auto keys = *sessionKeys(a, ea, b.pub, eb.pub, 0);
     auto msg = message();
-    auto envelope = seal(shared, a.pub, EnvelopeType::Data, msg.data(), msg.size());
+    auto envelope = seal(keys.tx, EnvelopeType::Session, a.pub, ea.pub, msg.data(), msg.size());
 
-    for (size_t i : {(size_t) 1, (size_t) 2, HEADER_SIZE, HEADER_SIZE + NONCE_SIZE, envelope.size() - 1}) {
+    for (size_t i : {(size_t) 1, (size_t) 2, 2 + KEY_SIZE, HEADER_SIZE, HEADER_SIZE + NONCE_SIZE, envelope.size() - 1}) {
         auto tampered = envelope;
         tampered[i] ^= 0x01;
-        CPPUNIT_ASSERT(not open(shared, tampered.data(), tampered.size()));
+        CPPUNIT_ASSERT(not open(keys.tx, tampered.data(), tampered.size()));
     }
-    CPPUNIT_ASSERT(not open(shared, envelope.data(), envelope.size() - 1));
-    CPPUNIT_ASSERT(not open(shared, envelope.data(), ENVELOPE_OVERHEAD - 1));
+    CPPUNIT_ASSERT(not open(keys.tx, envelope.data(), envelope.size() - 1));
+    CPPUNIT_ASSERT(not open(keys.tx, envelope.data(), ENVELOPE_OVERHEAD - 1));
+    CPPUNIT_ASSERT(not open(keys.rx, envelope.data(), envelope.size()));
+    CPPUNIT_ASSERT(not open(sessionKeys(b, eb, a.pub, ea.pub, 1)->rx, envelope.data(), envelope.size()));
+}
 
-    auto c = KeyPair::generate();
-    CPPUNIT_ASSERT(not open(*deriveSharedKey(c, a.pub, 0), envelope.data(), envelope.size()));
-    CPPUNIT_ASSERT(not open(*deriveSharedKey(b, a.pub, 1), envelope.data(), envelope.size()));
+void
+TransportTester::testParseHeader()
+{
+    auto a = KeyPair::generate(), ea = KeyPair::generate();
+    auto msg = message();
+    auto envelope = seal(Key {}, EnvelopeType::Session, a.pub, ea.pub, msg.data(), msg.size());
+    CPPUNIT_ASSERT(parseHeader(envelope.data(), HEADER_SIZE));
+    CPPUNIT_ASSERT(not parseHeader(envelope.data(), HEADER_SIZE - 1));
+    for (uint8_t type : {0, 4, 0x80, 0x84}) {
+        auto unknown = envelope;
+        unknown[1] = type;
+        CPPUNIT_ASSERT(not parseHeader(unknown.data(), unknown.size()));
+    }
+    CPPUNIT_ASSERT(not parseHeader(msg.data(), msg.size()));
 }
 
 void
 TransportTester::testEnvelopeIsNotMsgpack()
 {
-    auto a = KeyPair::generate();
-    auto shared = *deriveSharedKey(a, KeyPair::generate().pub, 0);
+    auto a = KeyPair::generate(), ea = KeyPair::generate();
     auto msg = message();
-    auto envelope = seal(shared, a.pub, EnvelopeType::Data, msg.data(), msg.size());
+    auto envelope = seal(Key {}, EnvelopeType::Session, a.pub, ea.pub, msg.data(), msg.size());
     CPPUNIT_ASSERT_THROW(msgpack::unpack((const char*) envelope.data(), envelope.size()), std::exception);
-    auto h = hello(a.pub, Blob(Credential::PACKED_SIZE), msg.data(), msg.size());
+    auto h = hello(a.pub, ea.pub, Blob(Credential::PACKED_SIZE), msg.data(), msg.size());
     CPPUNIT_ASSERT_THROW(msgpack::unpack((const char*) h.data(), h.size()), std::exception);
 }
 
 void
 TransportTester::testHello()
 {
-    auto a = KeyPair::generate();
+    auto a = KeyPair::generate(), ea = KeyPair::generate();
     auto credential = Authority::generate().issue(a.pub, std::chrono::system_clock::now() + 1h).pack();
     auto msg = message();
-    auto h = hello(a.pub, credential, msg.data(), msg.size());
+    auto h = hello(a.pub, ea.pub, credential, msg.data(), msg.size());
     CPPUNIT_ASSERT_EQUAL(HEADER_SIZE + Credential::PACKED_SIZE + msg.size(), h.size());
-    CPPUNIT_ASSERT(isEnvelope(h.data(), h.size()));
-    CPPUNIT_ASSERT_EQUAL((uint8_t) EnvelopeType::Hello, h[1]);
+    auto header = parseHeader(h.data(), h.size());
+    CPPUNIT_ASSERT(header);
+    CPPUNIT_ASSERT(header->type == EnvelopeType::Hello);
+    CPPUNIT_ASSERT(header->sender == a.pub);
+    CPPUNIT_ASSERT(header->ephemeral == ea.pub);
     CPPUNIT_ASSERT(std::equal(credential.begin(), credential.end(), h.begin() + HEADER_SIZE));
     CPPUNIT_ASSERT(std::equal(msg.begin(), msg.end(), h.begin() + HEADER_SIZE + credential.size()));
 }
