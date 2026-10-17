@@ -1986,6 +1986,18 @@ fromDhtConfig(const Config& config)
     netConf.max_peer_req_per_sec = config.max_peer_req_per_sec ? config.max_peer_req_per_sec
                                                                : netConf.max_req_per_sec / 8;
     netConf.is_client = config.client_mode;
+    netConf.transport = config.transport;
+    auto& transport = netConf.transport;
+    if (transport.isPrivate() and not transport.enabled)
+        throw DhtException("Private networks require transport encryption");
+    if (transport.enabled and not transport.key)
+        transport.key = transport::KeyPair::generate();
+    if (transport.isPrivate()) {
+        if (transport.credential.key != transport.key.pub)
+            throw DhtException("Transport credential doesn't match the transport key");
+        if (not transport.credential.verify(transport.authorities))
+            throw DhtException("Invalid or expired transport credential");
+    }
     return netConf;
 }
 
@@ -2023,6 +2035,8 @@ Dht::Dht(std::unique_ptr<net::DatagramSocket>&& sock,
     , maintain_storage(config.maintain_storage)
     , public_stable(config.public_stable)
 {
+    if (auto key = network_engine.getTransportKey())
+        myid = transport::nodeId(key->pub);
     scheduler.syncTime();
     auto s = network_engine.getSocket();
     if (not s or (not s->hasIPv4() and not s->hasIPv6()))
@@ -2052,6 +2066,9 @@ Dht::Dht(std::unique_ptr<net::DatagramSocket>&& sock,
 
     if (logger_)
         logger_->debug("DHT node initialised with ID {:s}", myid);
+    if (config.transport.isPrivate() and logger_
+        and config.transport.credential.expiration < std::chrono::system_clock::now() + std::chrono::hours(24 * 7))
+        logger_->warn("Transport credential expires in less than a week");
 }
 
 bool
@@ -2947,7 +2964,7 @@ Dht::loadState(const std::string& path)
             auto state = oh.get().as<DhtState>();
             if (logger_)
                 logger_->debug("Importing {} nodes", state.nodes.size());
-            if (state.id)
+            if (state.id and not network_engine.getTransportKey())
                 myid = state.id;
             std::vector<Sp<Node>> tmpNodes;
             tmpNodes.reserve(state.nodes.size());

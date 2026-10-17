@@ -4,6 +4,7 @@
 
 #include "infohash.h"
 #include "value.h"
+#include "transport.h"
 
 #include <vector>
 #include <memory>
@@ -97,7 +98,7 @@ struct OPENDHT_PUBLIC NodeInfo
  */
 struct OPENDHT_PUBLIC Config
 {
-    /** DHT node ID */
+    /** DHT node ID. Ignored if transport encryption is enabled: the node ID derives from the transport key. */
     InfoHash node_id {};
 
     /**
@@ -143,6 +144,9 @@ struct OPENDHT_PUBLIC Config
 
     /* Client mode, node will not be used by other nodes to store data. */
     bool client_mode {false};
+
+    /** Encryption of the DHT protocol, and optional private network */
+    TransportConfig transport {};
 };
 
 /**

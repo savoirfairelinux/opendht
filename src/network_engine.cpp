@@ -131,6 +131,8 @@ NetworkEngine::NetworkEngine(InfoHash& myid,
     , onRefresh(std::move(onRefresh))
     , myid(myid)
     , config(c)
+    , transport_(config.transport.enabled and config.transport.key)
+    , credential_(transport_ and config.transport.isPrivate() ? config.transport.credential.pack() : Blob {})
     , dht_socket(std::move(sock))
     , logger_(log)
     , rd(rand)
@@ -161,7 +163,7 @@ NetworkEngine::tellListener(const Sp<Node>& node,
         if (version >= 1) {
             sendUpdateValues(node, hash, std::move(values), scheduler.time(), ntoken, socket_id);
         } else {
-            sendNodesValues(node->getAddr(), socket_id, nnodes.first, nnodes.second, std::move(values), query, ntoken);
+            sendNodesValues(*node, node->getAddr(), socket_id, nnodes, std::move(values), query, ntoken);
         }
     } catch (const std::overflow_error& e) {
         if (logger_)
@@ -179,8 +181,9 @@ NetworkEngine::tellListenerRefreshed(const Sp<Node>& n,
 {
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
+    bool advertise = advertiseKey(*n);
 
-    pk.pack_map(4 + (version >= 1 ? 1 : 0) + (config.network ? 1 : 0) + (config.is_client ? 1 : 0));
+    pk.pack_map(4 + (version >= 1 ? 1 : 0) + optionalFields(advertise));
 
     pk.pack(version >= 1 ? KEY_A : KEY_U);
     pk.pack_map(1 + (version >= 1 ? 1 : 0) + (not values.empty() ? 1 : 0) + (not token.empty() ? 1 : 0));
@@ -205,14 +208,7 @@ NetworkEngine::tellListenerRefreshed(const Sp<Node>& n,
     pk.pack(version >= 1 ? KEY_Q : KEY_R);
     pk.pack(KEY_UA);
     pk.pack(OPENDHT_UA);
-    if (config.network) {
-        pk.pack(KEY_NETID);
-        pk.pack(config.network);
-    }
-    if (config.is_client) {
-        pk.pack(KEY_ISCLIENT);
-        pk.pack(config.is_client);
-    }
+    packOptionalFields(pk, advertise);
 
     if (version >= 1) {
         Tid tid(n->getNewTid());
@@ -237,7 +233,7 @@ NetworkEngine::tellListenerRefreshed(const Sp<Node>& n,
     pk.pack(socket_id);
 
     // send response
-    send(n->getAddr(), buffer.data(), buffer.size());
+    send(*n, n->getAddr(), buffer.data(), buffer.size());
 }
 
 void
@@ -250,8 +246,9 @@ NetworkEngine::tellListenerExpired(const Sp<Node>& n,
 {
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
+    bool advertise = advertiseKey(*n);
 
-    pk.pack_map(4 + (version >= 1 ? 1 : 0) + (config.network ? 1 : 0) + (config.is_client ? 1 : 0));
+    pk.pack_map(4 + (version >= 1 ? 1 : 0) + optionalFields(advertise));
 
     pk.pack(version >= 1 ? KEY_A : KEY_U);
     pk.pack_map(1 + (version >= 1 ? 1 : 0) + (not values.empty() ? 1 : 0) + (not token.empty() ? 1 : 0));
@@ -276,14 +273,7 @@ NetworkEngine::tellListenerExpired(const Sp<Node>& n,
     pk.pack(version >= 1 ? KEY_Q : KEY_R);
     pk.pack(KEY_UA);
     pk.pack(OPENDHT_UA);
-    if (config.network) {
-        pk.pack(KEY_NETID);
-        pk.pack(config.network);
-    }
-    if (config.is_client) {
-        pk.pack(KEY_ISCLIENT);
-        pk.pack(config.is_client);
-    }
+    packOptionalFields(pk, advertise);
 
     if (version >= 1) {
         Tid tid(n->getNewTid());
@@ -308,7 +298,7 @@ NetworkEngine::tellListenerExpired(const Sp<Node>& n,
     pk.pack(socket_id);
 
     // send response
-    send(n->getAddr(), buffer.data(), buffer.size());
+    send(*n, n->getAddr(), buffer.data(), buffer.size());
 }
 
 bool
@@ -364,7 +354,11 @@ NetworkEngine::requestStep(Sp<Request> sreq)
             req.on_expired(req, false);
     }
 
-    auto err = send(node.getAddr(), (char*) req.msg.data(), req.msg.size(), node.getReplyTime() < now - UDP_REPLY_TIME);
+    auto err = send(node,
+                    node.getAddr(),
+                    (char*) req.msg.data(),
+                    req.msg.size(),
+                    node.getReplyTime() < now - UDP_REPLY_TIME);
     if (err == ENETUNREACH || err == EHOSTUNREACH || err == EAFNOSUPPORT || err == EPIPE || err == EPERM) {
         node.setExpired();
         if (not node.id)
@@ -376,7 +370,7 @@ NetworkEngine::requestStep(Sp<Request> sreq)
             req.attempt_duration += req.attempt_duration
                                     + uniform_duration_distribution<>(0ms, ((duration) Node::MAX_RESPONSE_TIME) / 4)(rd);
             if (not req.parts.empty()) {
-                sendValueParts(req.tid, req.parts, node.getAddr());
+                sendValueParts(req.tid, req.parts, node, node.getAddr());
             }
         }
         std::weak_ptr<Request> wreq = sreq;
@@ -480,6 +474,19 @@ NetworkEngine::processMessage(const uint8_t* buf, size_t buflen, SockAddr f)
         return;
     }
 
+    std::optional<OpenedEnvelope> envelope;
+    if (transport::isEnvelope(buf, buflen)) {
+        if (not transport_)
+            return;
+        envelope = openEnvelope(buf, buflen, from);
+        if (not envelope)
+            return;
+        buf = envelope->payload.data();
+        buflen = envelope->payload.size();
+    } else if (transport_ and config.transport.isPrivate()) {
+        return;
+    }
+
     auto msg = std::make_unique<ParsedMessage>();
     try {
         msgpack::unpacked msg_res = msgpack::unpack((const char*) buf, buflen);
@@ -496,6 +503,19 @@ NetworkEngine::processMessage(const uint8_t* buf, size_t buflen, SockAddr f)
         if (logger_)
             logger_->debug("Received message from other config.network {}", msg->network);
         return;
+    }
+
+    if (envelope) {
+        // value fragments carry no node ID
+        if (msg->type != MessageType::ValueData and msg->id != transport::nodeId(envelope->peer->key)) {
+            if (logger_)
+                logger_->warn("Dropping encrypted message from {}: node ID doesn't match its key", from.toString());
+            return;
+        }
+        msg->peer = std::move(envelope->peer);
+        msg->encrypted = true;
+    } else if (transport_ and msg->transport_key) {
+        msg->peer = makePeer(msg->id, *msg->transport_key);
     }
 
     const auto& now = scheduler.time();
@@ -626,9 +646,24 @@ void
 NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& from)
 {
     const auto& now = scheduler.time();
-    auto node = cache.getNode(msg->id, from, now, true, msg->is_client);
+    // Plaintext can be spoofed: it never moves a node known to support encryption to a new address.
+    Sp<Node> node;
+    bool trusted = msg->encrypted;
+    if (not trusted) {
+        node = cache.getNode(msg->id, from.getFamily());
+        if (not node or not node->getTransport() or node->getAddr() == from) {
+            node.reset();
+            trusted = true;
+        }
+    }
+    if (not node)
+        node = cache.getNode(msg->id, from, now, true, msg->is_client);
+    if (msg->peer)
+        attachPeer(*node, msg->peer);
 
     if (msg->type == MessageType::ValueUpdate) {
+        if (not trusted)
+            return;
         auto rsocket = node->getSocket(msg->tid);
         if (not rsocket)
             throw DhtProtocolException {DhtProtocolException::UNKNOWN_TID, "Unable to find socket", msg->id};
@@ -642,6 +677,10 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
                 logger_->warn("Unable to deserialize nodes {}", e.what());
         }
     } else if (msg->type == MessageType::Error or msg->type == MessageType::Reply) {
+        if (not trusted)
+            return;
+        if (msg->encrypted)
+            node->getTransport()->acked = true;
         auto rsocket = node->getSocket(msg->tid);
         auto req = node->getRequest(msg->tid);
 
@@ -724,9 +763,11 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
             break;
         }
     } else {
-        node->received(now, {});
-        if (not node->isClient())
-            onNewNode(node, 1);
+        if (trusted) {
+            node->received(now, {});
+            if (not node->isClient())
+                onNewNode(node, 1);
+        }
         try {
             switch (msg->type) {
             case MessageType::Ping:
@@ -735,7 +776,7 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
                     if (logger_)
                         logger_->debug("[node {}] sending pong", node->toString());
                 onPing(node);
-                sendPong(from, msg->tid);
+                sendPong(*node, from, msg->tid);
                 break;
             case MessageType::FindNode: {
                 // if (logger_)
@@ -744,7 +785,7 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
                 ++in_stats.find;
                 RequestAnswer answer = onFindNode(node, msg->target, msg->want);
                 auto nnodes = bufferNodes(from.getFamily(), msg->target, msg->want, answer.nodes4, answer.nodes6);
-                sendNodesValues(from, msg->tid, nnodes.first, nnodes.second, {}, {}, answer.ntoken);
+                sendNodesValues(*node, from, msg->tid, nnodes, {}, {}, answer.ntoken);
                 break;
             }
             case MessageType::GetValues: {
@@ -754,7 +795,7 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
                 ++in_stats.get;
                 RequestAnswer answer = onGetValues(node, msg->info_hash, msg->want, msg->query);
                 auto nnodes = bufferNodes(from.getFamily(), msg->info_hash, msg->want, answer.nodes4, answer.nodes6);
-                sendNodesValues(from, msg->tid, nnodes.first, nnodes.second, answer.values, msg->query, answer.ntoken);
+                sendNodesValues(*node, from, msg->tid, nnodes, answer.values, msg->query, answer.ntoken);
                 break;
             }
             case MessageType::AnnounceValue: {
@@ -767,7 +808,7 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
                    This is to prevent them from backtracking, and hence
                    polluting the DHT. */
                 for (auto& v : msg->values) {
-                    sendValueAnnounced(from, msg->tid, v->id);
+                    sendValueAnnounced(*node, from, msg->tid, v->id);
                 }
                 break;
             }
@@ -778,7 +819,7 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
                                    msg->info_hash.toString());
                 onRefresh(node, msg->info_hash, msg->token, msg->value_id);
                 /* Same note as above in MessageType::AnnounceValue applies. */
-                sendValueAnnounced(from, msg->tid, msg->value_id);
+                sendValueAnnounced(*node, from, msg->tid, msg->value_id);
                 break;
             case MessageType::Listen: {
                 if (logIncoming_ and logger_)
@@ -787,7 +828,7 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
                 RequestAnswer answer
                     = onListen(node, msg->info_hash, msg->token, msg->socket_id, std::move(msg->query), msg->version);
                 auto nnodes = bufferNodes(from.getFamily(), msg->info_hash, msg->want, answer.nodes4, answer.nodes6);
-                sendListenConfirmation(from, msg->tid, answer.ntoken);
+                sendListenConfirmation(*node, from, msg->tid, answer.ntoken);
                 break;
             }
             case MessageType::UpdateValue: {
@@ -800,7 +841,7 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
                     logger_->error("[node {}] 'update' request without socket for {}",
                                    node->toString(),
                                    msg->info_hash.toString());
-                sendListenConfirmation(from, msg->tid);
+                sendListenConfirmation(*node, from, msg->tid);
                 break;
             }
             default:
@@ -810,7 +851,7 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
             if (logger_)
                 logger_->e("Unable to send value: buffer not large enough.");
         } catch (const DhtProtocolException& e) {
-            sendError(from, msg->tid, e.getCode(), e.getMsg().c_str(), true);
+            sendError(*node, from, msg->tid, e.getCode(), e.getMsg().c_str(), true);
         }
     }
 }
@@ -827,10 +868,151 @@ insertAddr(msgpack::packer<msgpack::sbuffer>& pk, const SockAddr& addr)
     pk.pack_bin_body((char*) addr_ptr, addr_len);
 }
 
-int
-NetworkEngine::send(const SockAddr& addr, const char* buf, size_t len, bool confirmed)
+void
+NetworkEngine::packOptionalFields(msgpack::packer<msgpack::sbuffer>& pk, bool key) const
 {
-    return dht_socket ? dht_socket->sendTo(addr, (const uint8_t*) buf, len, confirmed) : ENOTCONN;
+    if (config.network) {
+        pk.pack(KEY_NETID);
+        pk.pack(config.network);
+    }
+    if (config.is_client) {
+        pk.pack(KEY_ISCLIENT);
+        pk.pack(config.is_client);
+    }
+    if (key) {
+        const auto& pub = config.transport.key.pub;
+        pk.pack(KEY_TRANSPORT);
+        pk.pack_bin(pub.size());
+        pk.pack_bin_body((const char*) pub.data(), pub.size());
+    }
+}
+
+const transport::Key*
+NetworkEngine::sharedKey(transport::Peer& peer) const
+{
+    if (not peer.shared)
+        peer.shared = transport::deriveSharedKey(config.transport.key, peer.key, config.network);
+    return peer.shared ? &*peer.shared : nullptr;
+}
+
+Sp<transport::Peer>
+NetworkEngine::makePeer(const InfoHash& id, const transport::Key& key) const
+{
+    if (key == transport::Key {} or transport::nodeId(key) != id)
+        return {};
+    return std::make_shared<transport::Peer>(key);
+}
+
+void
+NetworkEngine::attachPeer(Node& node, const Sp<transport::Peer>& peer)
+{
+    const auto& current = node.getTransport();
+    if (not current) {
+        node.setTransport(peer);
+    } else if (current != peer) {
+        // Both keys match the node ID, so they are the same
+        current->authorizedUntil = std::max(current->authorizedUntil, peer->authorizedUntil);
+        if (not current->shared)
+            current->shared = peer->shared;
+    }
+}
+
+bool
+NetworkEngine::authorize(transport::Peer& peer, const uint8_t* data, size_t size) const
+{
+    if (peer.isAuthorized(std::chrono::system_clock::now()))
+        return true;
+    try {
+        auto credential = transport::Credential::unpack(data, size);
+        if (credential.key != peer.key or not credential.verify(config.transport.authorities))
+            return false;
+        peer.authorizedUntil = credential.expiration;
+        return true;
+    } catch (const std::exception&) {
+        return false;
+    }
+}
+
+std::optional<NetworkEngine::OpenedEnvelope>
+NetworkEngine::openEnvelope(const uint8_t* buf, size_t buflen, const SockAddr& from)
+{
+    using transport::EnvelopeType;
+    constexpr size_t CREDENTIAL_SIZE = transport::Credential::PACKED_SIZE;
+    const auto type = static_cast<EnvelopeType>(buf[1]);
+    transport::Key sender;
+    std::copy_n(buf + 2, sender.size(), sender.begin());
+    if (sender == config.transport.key.pub)
+        return std::nullopt;
+
+    Sp<transport::Peer> peer;
+    if (auto node = cache.getNode(transport::nodeId(sender), from.getFamily()))
+        peer = node->getTransport();
+    if (not peer)
+        peer = std::make_shared<transport::Peer>(sender);
+
+    const bool isPrivate = config.transport.isPrivate();
+    if (type == EnvelopeType::Hello) {
+        constexpr size_t credentialEnd = transport::HEADER_SIZE + CREDENTIAL_SIZE;
+        if (not isPrivate or buflen <= credentialEnd or not rateLimit(from)
+            or not authorize(*peer, buf + transport::HEADER_SIZE, CREDENTIAL_SIZE))
+            return std::nullopt;
+        return OpenedEnvelope {std::move(peer), Blob(buf + credentialEnd, buf + buflen)};
+    }
+    if (type != EnvelopeType::Data and type != EnvelopeType::DataCredential)
+        return std::nullopt;
+
+    // Key agreement is the costly part of an unknown sender
+    if (not peer->shared and not rateLimit(from))
+        return std::nullopt;
+    auto key = sharedKey(*peer);
+    if (not key)
+        return std::nullopt;
+    auto payload = transport::open(*key, buf, buflen);
+    if (not payload) {
+        if (logger_)
+            logger_->debug("Unable to decrypt message from {}", from.toString());
+        return std::nullopt;
+    }
+    if (type == EnvelopeType::DataCredential) {
+        if (payload->size() < CREDENTIAL_SIZE or (isPrivate and not authorize(*peer, payload->data(), CREDENTIAL_SIZE)))
+            return std::nullopt;
+        payload->erase(payload->begin(), payload->begin() + CREDENTIAL_SIZE);
+    } else if (isPrivate and not peer->isAuthorized(std::chrono::system_clock::now())) {
+        return std::nullopt;
+    }
+    return OpenedEnvelope {std::move(peer), std::move(*payload)};
+}
+
+int
+NetworkEngine::sendRaw(const SockAddr& addr, const uint8_t* buf, size_t len, bool confirmed)
+{
+    return dht_socket ? dht_socket->sendTo(addr, buf, len, confirmed) : ENOTCONN;
+}
+
+int
+NetworkEngine::send(const Node& node, const SockAddr& addr, const char* buf, size_t len, bool confirmed)
+{
+    const auto data = (const uint8_t*) buf;
+    if (not transport_)
+        return sendRaw(addr, data, len, confirmed);
+    const bool isPrivate = config.transport.isPrivate();
+    const auto& pub = config.transport.key.pub;
+    if (const auto& peer = node.getTransport()) {
+        if (auto key = sharedKey(*peer)) {
+            auto packet
+                = isPrivate and not peer->acked
+                      ? transport::seal(*key, pub, transport::EnvelopeType::DataCredential, data, len, credential_)
+                      : transport::seal(*key, pub, transport::EnvelopeType::Data, data, len);
+            return sendRaw(addr, packet.data(), packet.size(), confirmed);
+        }
+    } else if (isPrivate and not node.id) {
+        // ping to an address: introduce ourselves
+        auto packet = transport::hello(pub, credential_, data, len);
+        return sendRaw(addr, packet.data(), packet.size(), confirmed);
+    }
+    if (isPrivate)
+        return EPERM;
+    return sendRaw(addr, data, len, confirmed);
 }
 
 Sp<Request>
@@ -839,7 +1021,8 @@ NetworkEngine::sendPing(const Sp<Node>& node, RequestCb&& on_done, RequestExpire
     Tid tid(node->getNewTid());
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
-    pk.pack_map(5 + (config.network ? 1 : 0) + (config.is_client ? 1 : 0));
+    bool advertise = advertiseKey(*node);
+    pk.pack_map(5 + optionalFields(advertise));
 
     pk.pack(KEY_A);
     pk.pack_map(1);
@@ -854,14 +1037,7 @@ NetworkEngine::sendPing(const Sp<Node>& node, RequestCb&& on_done, RequestExpire
     pk.pack(KEY_Q);
     pk.pack(KEY_UA);
     pk.pack(OPENDHT_UA);
-    if (config.network) {
-        pk.pack(KEY_NETID);
-        pk.pack(config.network);
-    }
-    if (config.is_client) {
-        pk.pack(KEY_ISCLIENT);
-        pk.pack(config.is_client);
-    }
+    packOptionalFields(pk, advertise);
 
     auto req = std::make_shared<Request>(
         MessageType::Ping,
@@ -882,11 +1058,12 @@ NetworkEngine::sendPing(const Sp<Node>& node, RequestCb&& on_done, RequestExpire
 }
 
 void
-NetworkEngine::sendPong(const SockAddr& addr, Tid tid)
+NetworkEngine::sendPong(const Node& node, const SockAddr& addr, Tid tid)
 {
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
-    pk.pack_map(4 + (config.network ? 1 : 0) + (config.is_client ? 1 : 0));
+    bool advertise = advertiseKey(node);
+    pk.pack_map(4 + optionalFields(advertise));
 
     pk.pack(KEY_R);
     pk.pack_map(2);
@@ -900,16 +1077,9 @@ NetworkEngine::sendPong(const SockAddr& addr, Tid tid)
     pk.pack(KEY_R);
     pk.pack(KEY_UA);
     pk.pack(OPENDHT_UA);
-    if (config.network) {
-        pk.pack(KEY_NETID);
-        pk.pack(config.network);
-    }
-    if (config.is_client) {
-        pk.pack(KEY_ISCLIENT);
-        pk.pack(config.is_client);
-    }
+    packOptionalFields(pk, advertise);
 
-    send(addr, buffer.data(), buffer.size());
+    send(node, addr, buffer.data(), buffer.size());
 }
 
 Sp<Request>
@@ -919,7 +1089,8 @@ NetworkEngine::sendFindNode(
     Tid tid(n->getNewTid());
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
-    pk.pack_map(5 + (config.network ? 1 : 0) + (config.is_client ? 1 : 0));
+    bool advertise = advertiseKey(*n);
+    pk.pack_map(5 + optionalFields(advertise));
 
     pk.pack(KEY_A);
     pk.pack_map(2 + (want > 0 ? 1 : 0));
@@ -944,14 +1115,7 @@ NetworkEngine::sendFindNode(
     pk.pack(KEY_Q);
     pk.pack(KEY_UA);
     pk.pack(OPENDHT_UA);
-    if (config.network) {
-        pk.pack(KEY_NETID);
-        pk.pack(config.network);
-    }
-    if (config.is_client) {
-        pk.pack(KEY_ISCLIENT);
-        pk.pack(config.is_client);
-    }
+    packOptionalFields(pk, advertise);
 
     auto req = std::make_shared<Request>(
         MessageType::FindNode,
@@ -981,7 +1145,8 @@ NetworkEngine::sendGetValues(const Sp<Node>& n,
     Tid tid(n->getNewTid());
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
-    pk.pack_map(5 + (config.network ? 1 : 0) + (config.is_client ? 1 : 0));
+    bool advertise = advertiseKey(*n);
+    pk.pack_map(5 + optionalFields(advertise));
 
     unsigned sendQuery = (not query.where.empty() or not query.select.empty()) ? 1 : 0;
     unsigned sendWant = (want > 0) ? 1 : 0;
@@ -1015,14 +1180,7 @@ NetworkEngine::sendGetValues(const Sp<Node>& n,
     pk.pack(KEY_Q);
     pk.pack(KEY_UA);
     pk.pack(OPENDHT_UA);
-    if (config.network) {
-        pk.pack(KEY_NETID);
-        pk.pack(config.network);
-    }
-    if (config.is_client) {
-        pk.pack(KEY_ISCLIENT);
-        pk.pack(config.is_client);
-    }
+    packOptionalFields(pk, advertise);
 
     auto req = std::make_shared<Request>(
         MessageType::GetValues,
@@ -1070,6 +1228,14 @@ NetworkEngine::deserializeNodes(ParsedMessage& msg, const SockAddr& from)
     }
     // deserialize nodes
     const auto& now = scheduler.time();
+    const bool isPrivate = transport_ and config.transport.isPrivate();
+    auto listedPeer = [&](const Blob& keys, size_t count, size_t i, const InfoHash& id) -> Sp<transport::Peer> {
+        if (not transport_ or keys.size() != count * transport::KEY_SIZE)
+            return {};
+        transport::Key key;
+        std::copy_n(keys.data() + i * transport::KEY_SIZE, key.size(), key.begin());
+        return makePeer(id, key);
+    };
     for (unsigned i = 0, n = msg.nodes4_raw.size() / NODE4_INFO_BUF_LEN; i < n; i++) {
         const uint8_t* ni = msg.nodes4_raw.data() + i * NODE4_INFO_BUF_LEN;
         const auto& ni_id = *reinterpret_cast<const InfoHash*>(ni);
@@ -1083,7 +1249,12 @@ NetworkEngine::deserializeNodes(ParsedMessage& msg, const SockAddr& from)
         }
         if (isMartian(addr) || isNodeBlacklisted(addr))
             continue;
+        auto peer = listedPeer(msg.nodes4_keys, n, i, ni_id);
+        if (isPrivate and not peer)
+            continue;
         msg.nodes4.emplace_back(cache.getNode(ni_id, addr, now, false));
+        if (peer)
+            attachPeer(*msg.nodes4.back(), peer);
         onNewNode(msg.nodes4.back(), 0);
     }
     for (unsigned i = 0, n = msg.nodes6_raw.size() / NODE6_INFO_BUF_LEN; i < n; i++) {
@@ -1099,7 +1270,12 @@ NetworkEngine::deserializeNodes(ParsedMessage& msg, const SockAddr& from)
         }
         if (isMartian(addr) || isNodeBlacklisted(addr))
             continue;
+        auto peer = listedPeer(msg.nodes6_keys, n, i, ni_id);
+        if (isPrivate and not peer)
+            continue;
         msg.nodes6.emplace_back(cache.getNode(ni_id, addr, now, false));
+        if (peer)
+            attachPeer(*msg.nodes6.back(), peer);
         onNewNode(msg.nodes6.back(), 0);
     }
 }
@@ -1136,25 +1312,19 @@ NetworkEngine::packValueHeader(msgpack::sbuffer& buffer,
 }
 
 void
-NetworkEngine::sendValueParts(Tid tid, const std::vector<Blob>& svals, const SockAddr& addr)
+NetworkEngine::sendValueParts(Tid tid, const std::vector<Blob>& svals, const Node& node, const SockAddr& addr)
 {
+    const size_t fragmentSize = transport_ and node.getTransport() ? ENCRYPTED_FRAGMENT_SIZE : MTU;
     msgpack::sbuffer buffer;
     unsigned i = 0;
     for (const auto& v : svals) {
         size_t start {0}, end;
         do {
-            end = std::min(start + MTU, v.size());
+            end = std::min(start + fragmentSize, v.size());
             buffer.clear();
             msgpack::packer<msgpack::sbuffer> pk(&buffer);
-            pk.pack_map(3 + (config.network ? 1 : 0) + (config.is_client ? 1 : 0));
-            if (config.network) {
-                pk.pack(KEY_NETID);
-                pk.pack(config.network);
-            }
-            if (config.is_client) {
-                pk.pack(KEY_ISCLIENT);
-                pk.pack(config.is_client);
-            }
+            pk.pack_map(3 + optionalFields(false));
+            packOptionalFields(pk, false);
             pk.pack(KEY_Y);
             pk.pack(KEY_V);
             pk.pack(KEY_TID);
@@ -1168,7 +1338,7 @@ NetworkEngine::sendValueParts(Tid tid, const std::vector<Blob>& svals, const Soc
             pk.pack("d"sv);
             pk.pack_bin(end - start);
             pk.pack_bin_body((const char*) v.data() + start, end - start);
-            send(addr, buffer.data(), buffer.size());
+            send(node, addr, buffer.data(), buffer.size());
             start = end;
         } while (start != v.size());
         i++;
@@ -1176,34 +1346,36 @@ NetworkEngine::sendValueParts(Tid tid, const std::vector<Blob>& svals, const Soc
 }
 
 void
-NetworkEngine::sendNodesValues(const SockAddr& addr,
+NetworkEngine::sendNodesValues(const Node& node,
+                               const SockAddr& addr,
                                Tid tid,
-                               const Blob& nodes,
-                               const Blob& nodes6,
+                               const BufferedNodes& nodes,
                                const std::vector<Sp<Value>>& st,
                                const Query& query,
                                const Blob& token)
 {
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
-    pk.pack_map(4 + (config.network ? 1 : 0) + (config.is_client ? 1 : 0));
+    bool advertise = advertiseKey(node);
+    pk.pack_map(4 + optionalFields(advertise));
 
+    auto packBlob = [&](std::string_view key, const Blob& b) {
+        if (b.empty())
+            return;
+        pk.pack(key);
+        pk.pack_bin(b.size());
+        pk.pack_bin_body((const char*) b.data(), b.size());
+    };
     pk.pack(KEY_R);
-    pk.pack_map(2 + (not st.empty() ? 1 : 0) + (nodes.size() > 0 ? 1 : 0) + (nodes6.size() > 0 ? 1 : 0)
-                + (not token.empty() ? 1 : 0));
+    pk.pack_map(2 + (not st.empty() ? 1 : 0) + (not nodes.nodes4.empty() ? 1 : 0) + (not nodes.nodes6.empty() ? 1 : 0)
+                + (not nodes.keys4.empty() ? 1 : 0) + (not nodes.keys6.empty() ? 1 : 0) + (not token.empty() ? 1 : 0));
     pk.pack(KEY_REQ_ID);
     pk.pack(myid);
     insertAddr(pk, addr);
-    if (nodes.size() > 0) {
-        pk.pack(KEY_REQ_NODES4);
-        pk.pack_bin(nodes.size());
-        pk.pack_bin_body((const char*) nodes.data(), nodes.size());
-    }
-    if (nodes6.size() > 0) {
-        pk.pack(KEY_REQ_NODES6);
-        pk.pack_bin(nodes6.size());
-        pk.pack_bin_body((const char*) nodes6.data(), nodes6.size());
-    }
+    packBlob(KEY_REQ_NODES4, nodes.nodes4);
+    packBlob(KEY_REQ_NODES6, nodes.nodes6);
+    packBlob(KEY_REQ_KEYS4, nodes.keys4);
+    packBlob(KEY_REQ_KEYS6, nodes.keys6);
     if (not token.empty()) {
         pk.pack(KEY_REQ_TOKEN);
         packToken(pk, token);
@@ -1233,24 +1405,17 @@ NetworkEngine::sendNodesValues(const SockAddr& addr,
     pk.pack(KEY_R);
     pk.pack(KEY_UA);
     pk.pack(OPENDHT_UA);
-    if (config.network) {
-        pk.pack(KEY_NETID);
-        pk.pack(config.network);
-    }
-    if (config.is_client) {
-        pk.pack(KEY_ISCLIENT);
-        pk.pack(config.is_client);
-    }
+    packOptionalFields(pk, advertise);
 
     // send response
-    send(addr, buffer.data(), buffer.size());
+    send(node, addr, buffer.data(), buffer.size());
 
     // send parts
     if (not svals.empty())
-        sendValueParts(tid, svals, addr);
+        sendValueParts(tid, svals, node, addr);
 }
 
-Blob
+std::pair<Blob, Blob>
 NetworkEngine::bufferNodes(sa_family_t af, const InfoHash& id, std::vector<Sp<Node>>& nodes)
 {
     std::sort(nodes.begin(), nodes.end(), [&](const Sp<Node>& a, const Sp<Node>& b) {
@@ -1278,26 +1443,39 @@ NetworkEngine::bufferNodes(sa_family_t af, const InfoHash& id, std::vector<Sp<No
             memcpy(dest + HASH_LEN, &sin6.sin6_addr, sizeof(in6_addr));
             memcpy(dest + HASH_LEN + sizeof(in6_addr), &sin6.sin6_port, sizeof(in_port_t));
         }
+    } else {
+        return {};
     }
-    return bnodes;
+
+    Blob bkeys;
+    if (transport_) {
+        bool hasKey = false;
+        bkeys.resize(transport::KEY_SIZE * nnode);
+        for (size_t i = 0; i < nnode; i++) {
+            if (const auto& peer = nodes[i]->getTransport()) {
+                std::copy(peer->key.begin(), peer->key.end(), bkeys.begin() + transport::KEY_SIZE * i);
+                hasKey = true;
+            }
+        }
+        if (not hasKey)
+            bkeys.clear();
+    }
+    return {std::move(bnodes), std::move(bkeys)};
 }
 
-std::pair<Blob, Blob>
+NetworkEngine::BufferedNodes
 NetworkEngine::bufferNodes(
     sa_family_t af, const InfoHash& id, want_t want, std::vector<Sp<Node>>& nodes4, std::vector<Sp<Node>>& nodes6)
 {
     if (want < 0)
         want = af == AF_INET ? WANT4 : WANT6;
 
-    Blob bnodes4;
+    BufferedNodes buffered;
     if (want & WANT4)
-        bnodes4 = bufferNodes(AF_INET, id, nodes4);
-
-    Blob bnodes6;
+        std::tie(buffered.nodes4, buffered.keys4) = bufferNodes(AF_INET, id, nodes4);
     if (want & WANT6)
-        bnodes6 = bufferNodes(AF_INET6, id, nodes6);
-
-    return {std::move(bnodes4), std::move(bnodes6)};
+        std::tie(buffered.nodes6, buffered.keys6) = bufferNodes(AF_INET6, id, nodes6);
+    return buffered;
 }
 
 Sp<Request>
@@ -1312,7 +1490,8 @@ NetworkEngine::sendListen(const Sp<Node>& n,
     Tid tid(n->getNewTid());
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
-    pk.pack_map(5 + (config.network ? 1 : 0) + (config.is_client ? 1 : 0));
+    bool advertise = advertiseKey(*n);
+    pk.pack_map(5 + optionalFields(advertise));
 
     auto has_query = not query.where.empty() or not query.select.empty();
     pk.pack(KEY_A);
@@ -1340,14 +1519,7 @@ NetworkEngine::sendListen(const Sp<Node>& n,
     pk.pack(KEY_Q);
     pk.pack(KEY_UA);
     pk.pack(OPENDHT_UA);
-    if (config.network) {
-        pk.pack(KEY_NETID);
-        pk.pack(config.network);
-    }
-    if (config.is_client) {
-        pk.pack(KEY_ISCLIENT);
-        pk.pack(config.is_client);
-    }
+    packOptionalFields(pk, advertise);
 
     auto req = std::make_shared<Request>(
         MessageType::Listen,
@@ -1366,11 +1538,12 @@ NetworkEngine::sendListen(const Sp<Node>& n,
 }
 
 void
-NetworkEngine::sendListenConfirmation(const SockAddr& addr, Tid tid, const Blob& token)
+NetworkEngine::sendListenConfirmation(const Node& node, const SockAddr& addr, Tid tid, const Blob& token)
 {
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
-    pk.pack_map(4 + (config.network ? 1 : 0) + (config.is_client ? 1 : 0));
+    bool advertise = advertiseKey(node);
+    pk.pack_map(4 + optionalFields(advertise));
 
     pk.pack(KEY_R);
     pk.pack_map(2 + (not token.empty() ? 1 : 0));
@@ -1388,16 +1561,9 @@ NetworkEngine::sendListenConfirmation(const SockAddr& addr, Tid tid, const Blob&
     pk.pack(KEY_R);
     pk.pack(KEY_UA);
     pk.pack(OPENDHT_UA);
-    if (config.network) {
-        pk.pack(KEY_NETID);
-        pk.pack(config.network);
-    }
-    if (config.is_client) {
-        pk.pack(KEY_ISCLIENT);
-        pk.pack(config.is_client);
-    }
+    packOptionalFields(pk, advertise);
 
-    send(addr, buffer.data(), buffer.size());
+    send(node, addr, buffer.data(), buffer.size());
 }
 
 Sp<Request>
@@ -1412,7 +1578,8 @@ NetworkEngine::sendAnnounceValue(const Sp<Node>& n,
     Tid tid(n->getNewTid());
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
-    pk.pack_map(5 + (config.network ? 1 : 0) + (config.is_client ? 1 : 0));
+    bool advertise = advertiseKey(*n);
+    pk.pack_map(5 + optionalFields(advertise));
 
     bool add_created = created < scheduler.time();
     pk.pack(KEY_A);
@@ -1437,14 +1604,7 @@ NetworkEngine::sendAnnounceValue(const Sp<Node>& n,
     pk.pack(KEY_Q);
     pk.pack(KEY_UA);
     pk.pack(OPENDHT_UA);
-    if (config.network) {
-        pk.pack(KEY_NETID);
-        pk.pack(config.network);
-    }
-    if (config.is_client) {
-        pk.pack(KEY_ISCLIENT);
-        pk.pack(config.is_client);
-    }
+    packOptionalFields(pk, advertise);
 
     auto req = std::make_shared<Request>(
         MessageType::AnnounceValue,
@@ -1510,7 +1670,8 @@ NetworkEngine::sendUpdateValues(const Sp<Node>& n,
 
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
-    pk.pack_map(5 + (config.network ? 1 : 0) + (config.is_client ? 1 : 0));
+    bool advertise = advertiseKey(*n);
+    pk.pack_map(5 + optionalFields(advertise));
 
     pk.pack(KEY_A);
     pk.pack_map((created < scheduler.time() ? 7 : 6));
@@ -1538,14 +1699,7 @@ NetworkEngine::sendUpdateValues(const Sp<Node>& n,
     pk.pack(KEY_Q);
     pk.pack(KEY_UA);
     pk.pack(OPENDHT_UA);
-    if (config.network) {
-        pk.pack(KEY_NETID);
-        pk.pack(config.network);
-    }
-    if (config.is_client) {
-        pk.pack(KEY_ISCLIENT);
-        pk.pack(config.is_client);
-    }
+    packOptionalFields(pk, advertise);
 
     auto req = std::make_shared<Request>(
         MessageType::UpdateValue,
@@ -1572,7 +1726,8 @@ NetworkEngine::sendRefreshValue(const Sp<Node>& n,
     Tid tid(n->getNewTid());
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
-    pk.pack_map(5 + (config.network ? 1 : 0) + (config.is_client ? 1 : 0));
+    bool advertise = advertiseKey(*n);
+    pk.pack_map(5 + optionalFields(advertise));
 
     pk.pack(KEY_A);
     pk.pack_map(4);
@@ -1593,14 +1748,7 @@ NetworkEngine::sendRefreshValue(const Sp<Node>& n,
     pk.pack(KEY_Q);
     pk.pack(KEY_UA);
     pk.pack(OPENDHT_UA);
-    if (config.network) {
-        pk.pack(KEY_NETID);
-        pk.pack(config.network);
-    }
-    if (config.is_client) {
-        pk.pack(KEY_ISCLIENT);
-        pk.pack(config.is_client);
-    }
+    packOptionalFields(pk, advertise);
 
     auto req = std::make_shared<Request>(
         MessageType::Refresh,
@@ -1628,11 +1776,12 @@ NetworkEngine::sendRefreshValue(const Sp<Node>& n,
 }
 
 void
-NetworkEngine::sendValueAnnounced(const SockAddr& addr, Tid tid, Value::Id vid)
+NetworkEngine::sendValueAnnounced(const Node& node, const SockAddr& addr, Tid tid, Value::Id vid)
 {
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
-    pk.pack_map(4 + (config.network ? 1 : 0) + (config.is_client ? 1 : 0));
+    bool advertise = advertiseKey(node);
+    pk.pack_map(4 + optionalFields(advertise));
 
     pk.pack(KEY_R);
     pk.pack_map(3);
@@ -1648,24 +1797,19 @@ NetworkEngine::sendValueAnnounced(const SockAddr& addr, Tid tid, Value::Id vid)
     pk.pack(KEY_R);
     pk.pack(KEY_UA);
     pk.pack(OPENDHT_UA);
-    if (config.network) {
-        pk.pack(KEY_NETID);
-        pk.pack(config.network);
-    }
-    if (config.is_client) {
-        pk.pack(KEY_ISCLIENT);
-        pk.pack(config.is_client);
-    }
+    packOptionalFields(pk, advertise);
 
-    send(addr, buffer.data(), buffer.size());
+    send(node, addr, buffer.data(), buffer.size());
 }
 
 void
-NetworkEngine::sendError(const SockAddr& addr, Tid tid, uint16_t code, const std::string& message, bool include_id)
+NetworkEngine::sendError(
+    const Node& node, const SockAddr& addr, Tid tid, uint16_t code, const std::string& message, bool include_id)
 {
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
-    pk.pack_map(4 + (include_id ? 1 : 0) + (config.network ? 1 : 0) + (config.is_client ? 1 : 0));
+    bool advertise = advertiseKey(node);
+    pk.pack_map(4 + (include_id ? 1 : 0) + optionalFields(advertise));
 
     pk.pack(KEY_E);
     pk.pack_array(2);
@@ -1685,16 +1829,9 @@ NetworkEngine::sendError(const SockAddr& addr, Tid tid, uint16_t code, const std
     pk.pack(KEY_E);
     pk.pack(KEY_UA);
     pk.pack(OPENDHT_UA);
-    if (config.network) {
-        pk.pack(KEY_NETID);
-        pk.pack(config.network);
-    }
-    if (config.is_client) {
-        pk.pack(KEY_ISCLIENT);
-        pk.pack(config.is_client);
-    }
+    packOptionalFields(pk, advertise);
 
-    send(addr, buffer.data(), buffer.size());
+    send(node, addr, buffer.data(), buffer.size());
 }
 
 void
