@@ -18,6 +18,7 @@ class TransportTester : public CppUnit::TestFixture
     CPPUNIT_TEST(testAddressKey);
     CPPUNIT_TEST(testSealOpen);
     CPPUNIT_TEST(testOpenRejectsTampering);
+    CPPUNIT_TEST(testDataEnvelope);
     CPPUNIT_TEST(testParseHeader);
     CPPUNIT_TEST(testEnvelopeIsNotMsgpack);
     CPPUNIT_TEST(testHello);
@@ -37,6 +38,7 @@ public:
     void testAddressKey();
     void testSealOpen();
     void testOpenRejectsTampering();
+    void testDataEnvelope();
     void testParseHeader();
     void testEnvelopeIsNotMsgpack();
     void testHello();

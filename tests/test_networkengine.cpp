@@ -897,6 +897,15 @@ NetworkEngineTester::testTransportEncryptsAfterKeyExchange()
     CPPUNIT_ASSERT(isEnvelope(b.socket->sends.at(0), transport::EnvelopeType::Session));
     b.deliverTo(a);
     CPPUNIT_ASSERT(done);
+
+    // b answered our request: both have the session, keys are left out
+    done = false;
+    a.ping(a.node(b), done);
+    CPPUNIT_ASSERT(isEnvelope(a.socket->sends.at(0), transport::EnvelopeType::Data));
+    a.deliverTo(b);
+    CPPUNIT_ASSERT(isEnvelope(b.socket->sends.at(0), transport::EnvelopeType::Data));
+    b.deliverTo(a);
+    CPPUNIT_ASSERT(done);
 }
 
 void
@@ -1071,9 +1080,8 @@ NetworkEngineTester::testTransportPrivateNetwork()
     CPPUNIT_ASSERT(done);
     auto peerB = a.node(b)->getTransport();
     CPPUNIT_ASSERT(peerB and peerB->isAuthorized(std::chrono::system_clock::now()));
-    // b only saw our credential in the unauthenticated hello
-    CPPUNIT_ASSERT(not peerB->acked);
 
+    // b only saw our credential in the unauthenticated hello
     done = false;
     a.ping(a.node(b), done);
     CPPUNIT_ASSERT(isEnvelope(a.socket->sends.at(0), transport::EnvelopeType::Session, true));
@@ -1081,15 +1089,13 @@ NetworkEngineTester::testTransportPrivateNetwork()
     CPPUNIT_ASSERT(isEnvelope(b.socket->sends.at(0), transport::EnvelopeType::Session, true));
     b.deliverTo(a);
     CPPUNIT_ASSERT(done);
-    CPPUNIT_ASSERT(peerB->acked);
 
-    // b accepted our credential: no need to send it anymore
+    // b accepted our request: Data envelopes, without credential
     done = false;
     a.ping(a.node(b), done);
-    CPPUNIT_ASSERT(isEnvelope(a.socket->sends.at(0), transport::EnvelopeType::Session));
+    CPPUNIT_ASSERT(isEnvelope(a.socket->sends.at(0), transport::EnvelopeType::Data));
     a.deliverTo(b);
-    // we haven't replied to b yet: it still sends its credential
-    CPPUNIT_ASSERT(isEnvelope(b.socket->sends.at(0), transport::EnvelopeType::Session, true));
+    CPPUNIT_ASSERT(isEnvelope(b.socket->sends.at(0), transport::EnvelopeType::Data));
     b.deliverTo(a);
     CPPUNIT_ASSERT(done);
 }
@@ -1162,31 +1168,52 @@ NetworkEngineTester::testTransportEpochRotation()
     auto captured = a.socket->sends.at(0);
     CPPUNIT_ASSERT(isEnvelope(captured, transport::EnvelopeType::Session));
     a.deliverTo(b);
+    auto oldReply = b.socket->sends.at(0);
+    b.deliverTo(a);
+    a.ping(a.node(b), done);
+    auto capturedData = a.socket->sends.at(0);
+    CPPUNIT_ASSERT(isEnvelope(capturedData, transport::EnvelopeType::Data));
+    a.deliverTo(b);
     b.deliverTo(a);
 
-    advance(a, std::chrono::minutes(30));
+    // b rotates: a's Data envelopes still open with b's previous epoch
     advance(b, std::chrono::minutes(30));
-    a.takeSent();
     b.takeSent();
+    done = false;
+    a.ping(a.node(b), done);
+    CPPUNIT_ASSERT(isEnvelope(a.socket->sends.at(0), transport::EnvelopeType::Data));
+    a.deliverTo(b);
+    // b answers with its new ephemeral key, until a confirms the new session
+    CPPUNIT_ASSERT(isEnvelope(b.socket->sends.at(0), transport::EnvelopeType::Session));
+    CPPUNIT_ASSERT(ephemeralKey(b.socket->sends.at(0)) != ephemeralKey(oldReply));
+    b.deliverTo(a);
+    CPPUNIT_ASSERT(done);
+    done = false;
+    a.ping(a.node(b), done);
+    CPPUNIT_ASSERT(isEnvelope(a.socket->sends.at(0), transport::EnvelopeType::Data));
+    a.deliverTo(b);
+    CPPUNIT_ASSERT(isEnvelope(b.socket->sends.at(0), transport::EnvelopeType::Data));
+    b.deliverTo(a);
+    CPPUNIT_ASSERT(done);
 
-    // a uses a new ephemeral key, with the one b used before rotating
+    // a rotates: new ephemeral key
+    advance(a, std::chrono::minutes(30));
+    a.takeSent();
     done = false;
     a.ping(a.node(b), done);
     CPPUNIT_ASSERT(isEnvelope(a.socket->sends.at(0), transport::EnvelopeType::Session));
     CPPUNIT_ASSERT(ephemeralKey(a.socket->sends.at(0)) != ephemeralKey(captured));
     a.deliverTo(b);
-    CPPUNIT_ASSERT(isEnvelope(b.socket->sends.at(0), transport::EnvelopeType::Session));
     b.deliverTo(a);
     CPPUNIT_ASSERT(done);
 
-    // The previous ephemeral key is still accepted for one period
+    // Keys of the previous epoch are accepted for one period, then erased
     b.engine->processMessage(captured.data.data(), captured.data.size(), a.addr);
     CPPUNIT_ASSERT_EQUAL((size_t) 1, b.takeSent().size());
-
-    // then erased
     advance(b, std::chrono::minutes(30));
     b.takeSent();
     b.engine->processMessage(captured.data.data(), captured.data.size(), a.addr);
+    b.engine->processMessage(capturedData.data.data(), capturedData.data.size(), a.addr);
     CPPUNIT_ASSERT(b.socket->sends.empty());
 }
 
@@ -1208,13 +1235,12 @@ NetworkEngineTester::testTransportPeerRestart()
         b->deliverTo(a);
         CPPUNIT_ASSERT(done);
     }
-    CPPUNIT_ASSERT(a.node(*b)->getTransport()->acked);
 
-    // b restarts with the same key: it knows neither our ephemeral key nor our credential
+    // b restarts with the same key: it lost the session and our credential
     b = std::make_unique<TransportTestNode>("127.0.0.3", configB, 3);
     done = false;
     a.ping(a.node(*b), done);
-    CPPUNIT_ASSERT(isEnvelope(a.socket->sends.at(0), transport::EnvelopeType::Session));
+    CPPUNIT_ASSERT(isEnvelope(a.socket->sends.at(0), transport::EnvelopeType::Data));
     a.deliverTo(*b);
     CPPUNIT_ASSERT(b->socket->sends.empty());
 
@@ -1317,6 +1343,23 @@ NetworkEngineTester::testTransportSessionAuthorizesWrites()
     CPPUNIT_ASSERT_EQUAL(1, b.listens);
     b.deliverTo(a);
     CPPUNIT_ASSERT(token and token->empty());
+
+    // Data envelopes also come from the address that got b's ephemeral key
+    token.reset();
+    a.engine->sendListen(a.node(b),
+                         InfoHash::getRandom(rd),
+                         {},
+                         {},
+                         2,
+                         [&token](const net::Request&, net::RequestAnswer&& answer) {
+                             token = std::move(answer.ntoken);
+                         },
+                         {});
+    CPPUNIT_ASSERT(isEnvelope(a.socket->sends.at(0), transport::EnvelopeType::Data));
+    a.deliverTo(b);
+    CPPUNIT_ASSERT_EQUAL(2, b.listens);
+    b.deliverTo(a);
+    CPPUNIT_ASSERT(token and token->empty());
 }
 
 void
@@ -1389,6 +1432,17 @@ NetworkEngineTester::testTransportEphemeralBoundToAddress()
     b.engine->processMessage(fromA.data.data(), fromA.data.size(), c.addr);
     CPPUNIT_ASSERT(b.socket->sends.empty());
     b.engine->processMessage(fromA.data.data(), fromA.data.size(), a.addr);
+    CPPUNIT_ASSERT_EQUAL((size_t) 1, b.socket->sends.size());
+
+    // So does a Data envelope, without any key derivation
+    a.takeSent();
+    b.deliverTo(a);
+    a.ping(a.node(b), done);
+    auto data = a.socket->sends.at(0);
+    CPPUNIT_ASSERT(isEnvelope(data, transport::EnvelopeType::Data));
+    b.engine->processMessage(data.data.data(), data.data.size(), c.addr);
+    CPPUNIT_ASSERT(b.socket->sends.empty());
+    b.engine->processMessage(data.data.data(), data.data.size(), a.addr);
     CPPUNIT_ASSERT_EQUAL((size_t) 1, b.socket->sends.size());
 }
 

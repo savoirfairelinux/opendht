@@ -196,6 +196,46 @@ TransportTester::testOpenRejectsTampering()
 }
 
 void
+TransportTester::testDataEnvelope()
+{
+    auto a = KeyPair::generate(), ea = KeyPair::generate();
+    auto b = KeyPair::generate(), eb = KeyPair::generate();
+    auto keys = *sessionKeys(a, ea, b.pub, eb.pub, 0);
+    auto msg = message();
+
+    auto envelope = sealData(keys.tx, msg.data(), msg.size());
+    CPPUNIT_ASSERT_EQUAL(msg.size() + DATA_ENVELOPE_OVERHEAD, envelope.size());
+    CPPUNIT_ASSERT_EQUAL((size_t) 30, DATA_ENVELOPE_OVERHEAD);
+    CPPUNIT_ASSERT(isEnvelope(envelope.data(), envelope.size()));
+    CPPUNIT_ASSERT_THROW(msgpack::unpack((const char*) envelope.data(), envelope.size()), std::exception);
+    auto header = parseHeader(envelope.data(), envelope.size());
+    CPPUNIT_ASSERT(header and header->type == EnvelopeType::Data and not header->credential);
+
+    auto opened = open(sessionKeys(b, eb, a.pub, ea.pub, 0)->rx, envelope.data(), envelope.size());
+    CPPUNIT_ASSERT(opened and *opened == msg);
+
+    for (size_t i : {(size_t) 1, DATA_HEADER_SIZE, DATA_HEADER_SIZE + NONCE_SIZE, envelope.size() - 1}) {
+        auto tampered = envelope;
+        tampered[i] ^= 0x01;
+        CPPUNIT_ASSERT(not open(keys.tx, tampered.data(), tampered.size()));
+    }
+    CPPUNIT_ASSERT(not open(keys.tx, envelope.data(), DATA_ENVELOPE_OVERHEAD - 1));
+    CPPUNIT_ASSERT(not open(keys.rx, envelope.data(), envelope.size()));
+
+    // Same key, other type: the type is authenticated
+    auto session = seal(keys.tx, EnvelopeType::Session, a.pub, ea.pub, msg.data(), msg.size());
+    Blob relabeled {ENVELOPE_MARKER, static_cast<uint8_t>(EnvelopeType::Data)};
+    relabeled.insert(relabeled.end(), session.begin() + HEADER_SIZE, session.end());
+    CPPUNIT_ASSERT(not open(keys.tx, relabeled.data(), relabeled.size()));
+
+    // Data never carries a credential
+    auto flagged = envelope;
+    flagged[1] |= CREDENTIAL_FLAG;
+    CPPUNIT_ASSERT(not parseHeader(flagged.data(), flagged.size()));
+    CPPUNIT_ASSERT(not open(keys.tx, flagged.data(), flagged.size()));
+}
+
+void
 TransportTester::testParseHeader()
 {
     auto a = KeyPair::generate(), ea = KeyPair::generate();
@@ -203,7 +243,7 @@ TransportTester::testParseHeader()
     auto envelope = seal(Key {}, EnvelopeType::Session, a.pub, ea.pub, msg.data(), msg.size());
     CPPUNIT_ASSERT(parseHeader(envelope.data(), HEADER_SIZE));
     CPPUNIT_ASSERT(not parseHeader(envelope.data(), HEADER_SIZE - 1));
-    for (uint8_t type : {0, 4, 0x80, 0x84}) {
+    for (uint8_t type : {0, 5, 0x80, 0x84, 0x85}) {
         auto unknown = envelope;
         unknown[1] = type;
         CPPUNIT_ASSERT(not parseHeader(unknown.data(), unknown.size()));
