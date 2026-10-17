@@ -122,6 +122,54 @@ loadFile(const std::string& path)
     return buffer;
 }
 
+void
+saveFile(const std::string& path, const uint8_t* data, size_t size, bool secret)
+{
+    std::ofstream file(path, std::ios::binary | std::ios::trunc);
+    if (!file)
+        throw std::runtime_error("Can't write file: " + path);
+#ifndef _WIN32
+    if (secret)
+        chmod(path.c_str(), S_IRUSR | S_IWUSR);
+#else
+    (void) secret;
+#endif
+    file.write((const char*) data, size);
+}
+
+dht::transport::Key
+loadTransportKey(const std::string& path)
+{
+    auto data = loadFile(path);
+    dht::transport::Key key;
+    if (data.size() != key.size())
+        throw std::runtime_error("Invalid key file: " + path);
+    std::copy(data.begin(), data.end(), key.begin());
+    return key;
+}
+
+/* Loads the transport key from path, or generates and saves it if the file doesn't exist */
+dht::transport::KeyPair
+loadOrCreateTransportKey(const std::string& path)
+{
+    if (std::ifstream(path).good())
+        return dht::transport::KeyPair::fromSecret(loadTransportKey(path));
+    auto key = dht::transport::KeyPair::generate();
+    saveFile(path, key.secret.data(), key.secret.size(), true);
+    return key;
+}
+
+dht::transport::Key
+keyFromHex(const std::string& hex)
+{
+    dht::transport::Key key;
+    if (hex.size() != 2 * key.size())
+        throw std::runtime_error("Invalid key: " + hex);
+    for (size_t i = 0; i < key.size(); i++)
+        key[i] = std::stoul(hex.substr(2 * i, 2), nullptr, 16);
+    return key;
+}
+
 struct dht_params
 {
     bool help {false}; // print help and exit
@@ -151,7 +199,43 @@ struct dht_params
     std::string save_identity {};
     bool no_rate_limit {false};
     bool public_stable {false};
+    bool no_encryption {false};
+    std::string transport_key {};
+    std::vector<dht::transport::Key> authorities {};
+    std::string credential {};
+    std::string gen_authority {};
+    std::string issue_credential {};
+    std::string authority_key {};
+    unsigned validity_days {365};
 };
+
+/* Runs private network management commands. Returns true if one was run. */
+bool
+runNetworkAuthorityCommands(const dht_params& params)
+{
+    if (not params.gen_authority.empty()) {
+        auto authority = dht::transport::Authority::generate();
+        auto pub = dht::toHex(authority.pub.data(), authority.pub.size());
+        saveFile(params.gen_authority + ".key", authority.secret.data(), authority.secret.size(), true);
+        saveFile(params.gen_authority + ".pub", (const uint8_t*) pub.data(), pub.size(), false);
+        std::cout << "Network authority saved to " << params.gen_authority << ".key" << std::endl
+                  << "Public key (--network-authority): " << pub << std::endl;
+        return true;
+    }
+    if (not params.issue_credential.empty()) {
+        if (params.authority_key.empty() or params.transport_key.empty())
+            throw std::runtime_error("--issue-credential requires --authority-key and --transport-key");
+        auto authority = dht::transport::Authority::fromSecret(loadTransportKey(params.authority_key));
+        auto key = loadOrCreateTransportKey(params.transport_key);
+        auto expiration = std::chrono::system_clock::now() + std::chrono::hours(24) * params.validity_days;
+        auto credential = authority.issue(key.pub, expiration).pack();
+        saveFile(params.issue_credential, credential.data(), credential.size(), false);
+        std::cout << "Credential for node " << dht::transport::nodeId(key.pub) << " saved to "
+                  << params.issue_credential << ", valid for " << params.validity_days << " days" << std::endl;
+        return true;
+    }
+    return false;
+}
 
 std::pair<dht::DhtRunner::Config, dht::DhtRunner::Context>
 getDhtConfig(dht_params& params)
@@ -184,6 +268,13 @@ getDhtConfig(dht_params& params)
         config.dht_config.node_config.max_searches = -1;
         config.dht_config.node_config.max_store_size = -1;
     }
+    auto& transport = config.dht_config.node_config.transport;
+    transport.enabled = not params.no_encryption;
+    if (not params.transport_key.empty())
+        transport.key = loadOrCreateTransportKey(params.transport_key);
+    transport.authorities = params.authorities;
+    if (not params.credential.empty())
+        transport.credential = dht::transport::Credential::unpack(loadFile(params.credential));
 
     dht::DhtRunner::Context context {};
     if (params.log) {
@@ -253,6 +344,14 @@ static const constexpr struct option long_options[] = {
     {"devicekey",              required_argument, nullptr, 'z'},
     {"bundleid",               required_argument, nullptr, 'u'},
     {"version",                no_argument,       nullptr, 'V'},
+    {"no-encryption",          no_argument,       nullptr, 'N'},
+    {"transport-key",          required_argument, nullptr, 'T'},
+    {"network-authority",      required_argument, nullptr, 'A'},
+    {"network-credential",     required_argument, nullptr, 'R'},
+    {"gen-network-authority",  required_argument, nullptr, 'G'},
+    {"issue-credential",       required_argument, nullptr, 'Y'},
+    {"authority-key",          required_argument, nullptr, 'X'},
+    {"validity",               required_argument, nullptr, 'W'},
     {nullptr,                  0,                 nullptr, 0  }
 };
 
@@ -374,6 +473,30 @@ parseArgs(int argc, char** argv)
             break;
         case 'I':
             params.save_identity = optarg;
+            break;
+        case 'N':
+            params.no_encryption = true;
+            break;
+        case 'T':
+            params.transport_key = optarg;
+            break;
+        case 'A':
+            params.authorities.emplace_back(keyFromHex(optarg));
+            break;
+        case 'R':
+            params.credential = optarg;
+            break;
+        case 'G':
+            params.gen_authority = optarg;
+            break;
+        case 'Y':
+            params.issue_credential = optarg;
+            break;
+        case 'X':
+            params.authority_key = optarg;
+            break;
+        case 'W':
+            params.validity_days = std::stoul(optarg);
             break;
         default:
             break;

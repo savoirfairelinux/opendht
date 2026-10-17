@@ -27,6 +27,19 @@
 [\fB\-y\fR \fIendpoint\fR]
 [\fB\-z\fR \fIkey\fR]
 [\fB\-u\fR \fIbundleid\fR]
+[\fB\-\-no\-encryption\fR]
+[\fB\-\-transport\-key\fR \fIfile\fR]
+[\fB\-\-network\-authority\fR \fIkey\fR]
+[\fB\-\-network\-credential\fR \fIfile\fR]
+.br
+.B dhtnode
+\fB\-\-gen\-network\-authority\fR \fIprefix\fR
+.br
+.B dhtnode
+\fB\-\-issue\-credential\fR \fIfile\fR
+\fB\-\-authority\-key\fR \fIfile\fR
+\fB\-\-transport\-key\fR \fIfile\fR
+[\fB\-\-validity\fR \fIdays\fR]
 .SH DESCRIPTION
 Runs an OpenDHT node, with an interactive CLI (default) or as a daemon (with \fB'-d'\fP or \fB'-s'\fP).
 Commands available in the interactive shell are:
@@ -164,6 +177,38 @@ Device key for push notifications.
 .TP
 \fB\-u\fP \fIbundleid\fP, \fB\-\-bundleid\fP \fIbundleid\fP
 Bundle ID for push notifications.
+.SH TRANSPORT ENCRYPTION
+The DHT protocol is encrypted with nodes supporting it, and stays in plaintext
+with older nodes. The node ID derives from the transport key.
+.TP
+\fB\-\-no\-encryption\fP
+Disable protocol encryption, using a random node ID like older versions.
+.TP
+\fB\-\-transport\-key\fP \fIfile\fP
+Load the transport key from \fIfile\fP, or create it if it doesn't exist.
+Keeps the same node ID across restarts. Otherwise, a new key is generated on each start.
+.TP
+\fB\-\-network\-authority\fP \fIkey\fP
+Join a private network: only accept nodes with a credential issued by the
+authority with public key \fIkey\fP (hexadecimal). Can be repeated.
+Requires \fB\-\-network\-credential\fP and \fB\-\-transport\-key\fP.
+.TP
+\fB\-\-network\-credential\fP \fIfile\fP
+Credential of our transport key, issued by a network authority.
+.TP
+\fB\-\-gen\-network\-authority\fP \fIprefix\fP
+Generate a network authority, save its secret key to \fIprefix\fP.key and its
+public key to \fIprefix\fP.pub, and exit.
+.TP
+\fB\-\-issue\-credential\fP \fIfile\fP
+Issue a credential for the key in \fB\-\-transport\-key\fP (created if needed),
+signed with \fB\-\-authority\-key\fP, save it to \fIfile\fP and exit.
+.TP
+\fB\-\-authority\-key\fP \fIfile\fP
+Network authority secret key used to issue credentials.
+.TP
+\fB\-\-validity\fP \fIdays\fP
+Validity of issued credentials (default: 365 days).
 .SH EXAMPLES
 Run a node using bootstrap.jami.net as a bootstrap:
 .PP
@@ -187,6 +232,15 @@ Use a proxy client to connect to a proxy server:
 .PP
 .EX
 dhtnode --proxyclient dhtproxy.jami.net:80
+.EE
+.PP
+Create a private network and run one of its nodes:
+.PP
+.EX
+dhtnode --gen-network-authority net
+dhtnode --issue-credential node1.cred --authority-key net.key --transport-key node1.key
+dhtnode --transport-key node1.key --network-credential node1.cred \\
+        --network-authority $(cat net.pub) -b 192.0.2.1:4222
 .EE
 .SH AUTHORS
 .TP

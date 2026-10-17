@@ -38,7 +38,11 @@ print_usage()
 {
     std::cout
         << "Usage: dhtnode [-v [-l logfile]] [-i] [-d] [-n network_id] [-p local_port] [-b bootstrap_host[:port]] "
-           "[--proxyserver local_port] [--proxyserverssl local_port] [--bundleid bundleid] [--pushserver endpoint]"
+           "[--proxyserver local_port] [--proxyserverssl local_port] [--bundleid bundleid] [--pushserver endpoint] "
+           "[--no-encryption] [--transport-key file] [--network-authority key] [--network-credential file]"
+        << std::endl
+        << "       dhtnode --gen-network-authority prefix" << std::endl
+        << "       dhtnode --issue-credential file --authority-key file --transport-key file [--validity days]"
         << std::endl
         << std::endl;
     print_info();
@@ -575,6 +579,13 @@ main(int argc, char** argv)
     if (params.version) {
         print_version();
         return 0;
+    }
+    try {
+        if (runNetworkAuthorityCommands(params))
+            return 0;
+    } catch (const std::exception& e) {
+        std::cerr << e.what() << std::endl;
+        return EXIT_FAILURE;
     }
 
     if (params.daemonize) {
