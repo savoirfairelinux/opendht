@@ -678,6 +678,10 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
         node = cache.getNode(msg->id, from, now, true, msg->is_client);
     if (msg->peer)
         attachPeer(*node, msg->peer);
+    // Advertising its key in plaintext, the peer shows it lost our session, e.g. after a restart
+    if (trusted and not msg->encrypted and msg->transport_key)
+        if (const auto& peer = node->getTransport())
+            peer->ephemeral.reset();
 
     if (msg->type == MessageType::ValueUpdate) {
         if (not trusted)
