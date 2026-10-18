@@ -629,6 +629,9 @@ private:
     }
     using PartialMessageKey = std::pair<SockAddr, Tid>;
     void maintainRxBuffer(const PartialMessageKey& key);
+    /* Whether `part` may join the partial message at `it`, end() if none. Parts of a message are all
+     * plaintext, or all in envelopes from one sender key: an encrypted part replaces plaintext state. */
+    bool acceptsPart(std::map<PartialMessageKey, PartialMessage>::iterator& it, const ParsedMessage& part);
 
     /*************
      *  Answers  *

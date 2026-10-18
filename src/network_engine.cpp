@@ -43,7 +43,35 @@ struct NetworkEngine::PartialMessage
     std::vector<std::unique_ptr<ParsedMessage>> early_parts;
     size_t early_bytes {};
     bool request_quota_consumed {};
+    /* parts are all plaintext, or all in envelopes from this sender key */
+    bool encrypted {};
+    transport::Key key {};
+
+    void bind(const ParsedMessage& part)
+    {
+        encrypted = part.encrypted;
+        if (encrypted)
+            key = part.peer->key;
+    }
+    bool accepts(const ParsedMessage& part) const
+    {
+        return encrypted == part.encrypted and (not encrypted or (part.peer and key == part.peer->key));
+    }
 };
+
+/* Value data fragments carry no node ID: parts are bound to the envelope state of the first one.
+ * Plaintext from a spoofed address can be forged by anyone, so an encrypted part replaces it. */
+bool
+NetworkEngine::acceptsPart(std::map<PartialMessageKey, PartialMessage>::iterator& it, const ParsedMessage& part)
+{
+    if (it == partial_messages.end() or it->second.accepts(part))
+        return true;
+    if (not part.encrypted or it->second.encrypted)
+        return false;
+    partial_messages.erase(it);
+    it = partial_messages.end();
+    return true;
+}
 
 bool
 NetworkEngine::isExpectedReply(const ParsedMessage& msg, const SockAddr& from)
@@ -551,6 +579,8 @@ NetworkEngine::processMessage(const uint8_t* buf, size_t buflen, SockAddr f)
         }
         PartialMessageKey key {from, msg->tid};
         auto pmsg_it = partial_messages.find(key);
+        if (not acceptsPart(pmsg_it, *msg))
+            return;
         if (pmsg_it == partial_messages.end()) {
             if (!rateLimit(from))
                 return;
@@ -560,6 +590,7 @@ NetworkEngine::processMessage(const uint8_t* buf, size_t buflen, SockAddr f)
             pmsg_it->second.start = now;
             pmsg_it->second.last_part = now;
             pmsg_it->second.request_quota_consumed = true;
+            pmsg_it->second.bind(*msg);
             scheduler.add(now + RX_MAX_PACKET_TIME, std::bind(&NetworkEngine::maintainRxBuffer, this, key));
         }
         auto& pmsg = pmsg_it->second;
@@ -626,7 +657,9 @@ NetworkEngine::processMessage(const uint8_t* buf, size_t buflen, SockAddr f)
     if (msg->type == MessageType::Reply && !isExpectedReply(*msg, from))
         return;
 
-    const auto partial = partial_messages.find(partial_key);
+    auto partial = partial_messages.find(partial_key);
+    if (not acceptsPart(partial, *msg))
+        return;
     const bool request_quota_consumed = partial != partial_messages.end() && !partial->second.msg
                                         && partial->second.request_quota_consumed;
     if (msg->type > MessageType::Reply && !request_quota_consumed) {
@@ -645,6 +678,7 @@ NetworkEngine::processMessage(const uint8_t* buf, size_t buflen, SockAddr f)
         if (inserted.second) {
             pmsg.from = from;
             pmsg.start = now;
+            pmsg.bind(*msg);
             scheduler.add(now + RX_MAX_PACKET_TIME, std::bind(&NetworkEngine::maintainRxBuffer, this, partial_key));
         }
         pmsg.msg = std::move(msg);
