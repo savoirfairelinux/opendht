@@ -258,7 +258,7 @@ The confirmation is lost when the session keys change: on epoch rotation, or whe
 
 **Recovery.** On the first retransmission of a request, the node forgets B's ephemeral key. The retry is therefore an Initial envelope, with our credential in a private network. This recovers when B no longer has the session or our authorization, for example after a restart. In public mode, a plaintext read-only request claiming B's ID is answered with an Initial envelope to B's known static key. The answer uses a transient node record: it does not reset B's existing ephemeral key, address or session. A restarted peer can read this answer and establish a new session.
 
-When value data is fragmented for a node with a known key, fragments are reduced to `1280 − 199 = 1081` bytes, so that each packet still fits in the 1280-byte IPv6 minimum MTU.
+Value data is fragmented so that each packet fits in the 1280-byte IPv6 minimum MTU: `1280 − 40 − 8 = 1232` bytes of UDP payload, less 48 bytes reserved for the msgpack framing of a fragment. Fragments carry `1184` bytes of value data, or `1184 − 199 = 985` bytes for a node with a known key, leaving room for the largest envelope overhead.
 
 ### 6.5 Receiving
 
@@ -532,4 +532,4 @@ From the library, set `Config::transport` before starting:
 | Credential signature context | `"opendht-credential-v1"` |
 | Ephemeral key, token contexts | `"opendht-address-key-v1"`, `"opendht-address-token-v1"` |
 | Token size | 32 bytes |
-| Encrypted value fragment size | 1081 bytes |
+| Value fragment size | 1184 bytes, 985 for encrypted peers |
