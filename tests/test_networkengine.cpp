@@ -754,7 +754,11 @@ NetworkEngineTester::testUnauthorizedListenFlushClearsListenState()
 /* A NetworkEngine with its own socket, delivering its packets to other engines */
 struct TransportTestNode
 {
-    TransportTestNode(const char* ip, TransportConfig transport, uint64_t seed, NetId network = 0)
+    TransportTestNode(const char* ip,
+                      TransportConfig transport,
+                      uint64_t seed,
+                      NetId network = 0,
+                      const std::function<void(net::NetworkConfig&)>& configure = {})
         : rd(seed)
         , addr(makeIPv4(ip, 4222))
     {
@@ -762,6 +766,8 @@ struct TransportTestNode
         config.network = network;
         config.max_req_per_sec = -1;
         config.max_peer_req_per_sec = -1;
+        if (configure)
+            configure(config);
         if (transport.enabled and not transport.key)
             transport.key = transport::KeyPair::generate();
         config.transport = transport;
@@ -2660,6 +2666,160 @@ NetworkEngineTester::testTransportEncryptionFailureDoesNotSendPlaintext()
     node->setTransport(peer);
     CPPUNIT_ASSERT_EQUAL(EPERM, receiver.engine->send(*node, from, "payload", 7));
     CPPUNIT_ASSERT(receiver.socket->sends.empty());
+}
+
+/* Limits of a test node: global quotas, without per-address quotas unless given */
+static std::function<void(net::NetworkConfig&)>
+rateLimits(ssize_t requests, ssize_t unauthenticated, ssize_t crypto, ssize_t peerCrypto = -1)
+{
+    return [=](net::NetworkConfig& c) {
+        c.max_req_per_sec = requests;
+        c.max_unauth_req_per_sec = unauthenticated;
+        c.max_crypto_per_sec = crypto;
+        c.max_peer_req_per_sec = c.max_peer_unauth_req_per_sec = -1;
+        c.max_peer_crypto_per_sec = peerCrypto;
+    };
+}
+
+/* A distinct source address per index, as a spoofing attacker can use */
+static SockAddr
+spoofedAddress(unsigned i)
+{
+    return makeIPv4(("10.1." + std::to_string(i / 256) + "." + std::to_string(i % 256)).c_str(), 4222);
+}
+
+static SockAddr
+makeIPv6(const char* ip, in_port_t port)
+{
+    SockAddr addr;
+    addr.setFamily(AF_INET6);
+    addr.setAddress(ip);
+    addr.setPort(port);
+    return addr;
+}
+
+/* Number of packets sent in answer to an Initial ping from each address */
+static size_t
+floodInitialPings(TransportTestNode& n, const std::vector<SockAddr>& sources)
+{
+    for (size_t i = 0; i < sources.size(); i++) {
+        auto initial = makeInitialPing(n.key, 1000 + i);
+        n.engine->processMessage(initial.data(), initial.size(), sources[i]);
+    }
+    return n.takeSent().size();
+}
+
+static std::vector<SockAddr>
+spoofedAddresses(unsigned count, unsigned first = 0)
+{
+    std::vector<SockAddr> sources;
+    for (unsigned i = first; i < first + count; i++)
+        sources.emplace_back(spoofedAddress(i));
+    return sources;
+}
+
+void
+NetworkEngineTester::testRateLimitSeparatesSessionRequests()
+{
+    TransportTestNode a("127.0.0.2", {}, 1);
+    TransportTestNode b("127.0.0.3", {}, 2, 0, rateLimits(4, 4, -1));
+    establishSession(a, b);
+    advance(b, std::chrono::seconds(2));
+
+    // A plaintext flood uses up the budget of senders without a session
+    std::mt19937_64 rd(3);
+    for (unsigned i = 0; i < 10; i++) {
+        auto ping = makePingPacketBlob(InfoHash::getRandom(rd), 100 + i);
+        b.engine->processMessage(ping.data(), ping.size(), spoofedAddress(i));
+    }
+    CPPUNIT_ASSERT_EQUAL((size_t) 4, b.takeSent().size());
+
+    // Requests from a validated address have their own
+    for (unsigned i = 0; i < 5; i++) {
+        bool done = false;
+        a.ping(a.node(b), done);
+        CPPUNIT_ASSERT(isEnvelope(a.socket->sends.at(0), transport::EnvelopeType::Data));
+        a.deliverTo(b);
+        CPPUNIT_ASSERT_EQUAL((size_t) (i < 4 ? 1 : 0), b.takeSent().size());
+    }
+}
+
+void
+NetworkEngineTester::testRateLimitCryptoAdmission()
+{
+    TransportTestNode a("127.0.0.2", {}, 1);
+    TransportTestNode b("127.0.0.3", {}, 2, 0, rateLimits(-1, 6, 4));
+    establishSession(a, b);
+    advance(b, std::chrono::seconds(2));
+
+    // Each Initial request is charged once to each budget
+    CPPUNIT_ASSERT_EQUAL((size_t) 4, floodInitialPings(b, spoofedAddresses(10)));
+
+    // Answering a plaintext request advertising a key takes an Initial envelope
+    std::mt19937_64 rd(3);
+    auto key = transport::KeyPair::generate().pub;
+    auto keyed = makePingPacketBlob(transport::nodeId(key), 200, key);
+    b.engine->processMessage(keyed.data(), keyed.size(), spoofedAddress(20));
+    CPPUNIT_ASSERT(b.takeSent().empty());
+    auto legacy = makePingPacketBlob(InfoHash::getRandom(rd), 201);
+    b.engine->processMessage(legacy.data(), legacy.size(), spoofedAddress(21));
+    CPPUNIT_ASSERT_EQUAL((size_t) 1, b.takeSent().size());
+    // The 4 Initial requests, the keyed and the legacy one used the unauthenticated budget
+    legacy = makePingPacketBlob(InfoHash::getRandom(rd), 202);
+    b.engine->processMessage(legacy.data(), legacy.size(), spoofedAddress(22));
+    CPPUNIT_ASSERT(b.takeSent().empty());
+
+    // Established sessions need no key agreement
+    bool done = false;
+    a.ping(a.node(b), done);
+    a.deliverTo(b);
+    b.deliverTo(a);
+    CPPUNIT_ASSERT(done);
+}
+
+void
+NetworkEngineTester::testRateLimitCryptoPerPrefix()
+{
+    TransportTestNode b("127.0.0.3", {}, 2, 0, rateLimits(-1, -1, 100, 2));
+    // IPv6 addresses share the budget of their /64 prefix
+    CPPUNIT_ASSERT_EQUAL((size_t) 2,
+                         floodInitialPings(b,
+                                           {makeIPv6("2001:db8::1", 4222),
+                                            makeIPv6("2001:db8::2", 4223),
+                                            makeIPv6("2001:db8::3:4", 4224)}));
+    CPPUNIT_ASSERT_EQUAL((size_t) 1, floodInitialPings(b, {makeIPv6("2001:db8:0:1::1", 4222)}));
+    auto v4 = makeIPv4("192.0.2.1", 4222);
+    CPPUNIT_ASSERT_EQUAL((size_t) 2, floodInitialPings(b, {v4, v4, v4}));
+
+    // Spoofed sources take no more per-address records than the global budget allows
+    TransportTestNode c("127.0.0.4", {}, 3, 0, rateLimits(-1, -1, 4, 1));
+    CPPUNIT_ASSERT_EQUAL((size_t) 4, floodInitialPings(c, spoofedAddresses(50)));
+    CPPUNIT_ASSERT(c.engine->cryptoLimiter_.size() <= 4);
+}
+
+void
+NetworkEngineTester::testRateLimitReservesExpectedReplies()
+{
+    TransportTestNode b("127.0.0.3", {}, 2, 0, rateLimits(-1, -1, 2));
+    TransportTestNode c("127.0.0.4", {}, 3);
+    CPPUNIT_ASSERT_EQUAL((size_t) 2, floodInitialPings(b, spoofedAddresses(5)));
+
+    // Our own handshakes still complete: c answers in an Initial, then in a Session envelope
+    bool done = false;
+    b.ping(c.addr, done);
+    b.deliverTo(c);
+    CPPUNIT_ASSERT(isEnvelope(c.socket->sends.at(0), transport::EnvelopeType::Initial));
+    c.deliverTo(b);
+    CPPUNIT_ASSERT(done);
+    done = false;
+    b.ping(b.node(c), done);
+    b.deliverTo(c);
+    CPPUNIT_ASSERT(isEnvelope(c.socket->sends.at(0), transport::EnvelopeType::Session));
+    c.deliverTo(b);
+    CPPUNIT_ASSERT(done);
+
+    // Unexpected senders don't get that reserve
+    CPPUNIT_ASSERT_EQUAL((size_t) 0, floodInitialPings(b, spoofedAddresses(5, 10)));
 }
 
 } // namespace test
