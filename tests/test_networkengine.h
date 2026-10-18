@@ -39,6 +39,11 @@ class NetworkEngineTester : public CppUnit::TestFixture
     CPPUNIT_TEST(testTransportInitialWriteIsUnauthorized);
     CPPUNIT_TEST(testTransportEphemeralBoundToAddress);
     CPPUNIT_TEST(testTransportRestartedPeerReconnects);
+    CPPUNIT_TEST(testTransportSpoofedInitialKeepsSession);
+    CPPUNIT_TEST(testTransportSpoofedHelloKeepsSession);
+    CPPUNIT_TEST(testTransportSpoofedInitialsDoNotFillSessionCache);
+    CPPUNIT_TEST(testTransportSessionCacheEvictsLeastRecentlyUsed);
+    CPPUNIT_TEST(testTransportInitialSenderConfirmsAfterSessionEnvelope);
 #endif
     CPPUNIT_TEST_SUITE_END();
 
@@ -75,6 +80,11 @@ public:
     void testTransportInitialWriteIsUnauthorized();
     void testTransportEphemeralBoundToAddress();
     void testTransportRestartedPeerReconnects();
+    void testTransportSpoofedInitialKeepsSession();
+    void testTransportSpoofedHelloKeepsSession();
+    void testTransportSpoofedInitialsDoNotFillSessionCache();
+    void testTransportSessionCacheEvictsLeastRecentlyUsed();
+    void testTransportInitialSenderConfirmsAfterSessionEnvelope();
 #endif
 };
 

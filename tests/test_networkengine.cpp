@@ -36,7 +36,6 @@ NetworkEngineTester::testDisabledOnMsvc()
 #endif
 
 #include "opendht/node.h"
-#include "opendht/network_engine.h"
 #include "opendht/network_utils.h"
 #include "opendht/utils.h"
 #include "opendht/value.h"
@@ -49,6 +48,7 @@ NetworkEngineTester::testDisabledOnMsvc()
 #pragma GCC diagnostic ignored "-Wpedantic"
 #endif
 #define private public
+#include "opendht/network_engine.h"
 #include "opendht/dht.h"
 #undef private
 #if defined(__clang__)
@@ -1470,6 +1470,207 @@ NetworkEngineTester::testTransportRestartedPeerReconnects()
     a->deliverTo(b);
     CPPUNIT_ASSERT(isEnvelope(b.socket->sends.at(0), transport::EnvelopeType::Initial));
     b.deliverTo(*a);
+    CPPUNIT_ASSERT(done);
+}
+
+/* Brings a and b to confirmed sessions both ways: their next packets are Data envelopes */
+static void
+establishSession(TransportTestNode& a, TransportTestNode& b)
+{
+    bool done = false;
+    a.ping(b.addr, done);
+    a.deliverTo(b);
+    b.deliverTo(a);
+    for (int i = 0; i < 2; i++) {
+        done = false;
+        a.ping(a.node(b), done);
+        a.deliverTo(b);
+        b.deliverTo(a);
+        CPPUNIT_ASSERT(done);
+    }
+    done = false;
+    a.ping(a.node(b), done);
+    CPPUNIT_ASSERT(isEnvelope(a.socket->sends.at(0), transport::EnvelopeType::Data));
+    a.deliverTo(b);
+    CPPUNIT_ASSERT(isEnvelope(b.socket->sends.at(0), transport::EnvelopeType::Data));
+    b.deliverTo(a);
+    CPPUNIT_ASSERT(done);
+}
+
+/* Initial envelope from a fresh identity, as anyone can send from any address */
+static Blob
+makeInitialPing(const transport::KeyPair& receiver, Tid tid)
+{
+    auto sender = transport::KeyPair::generate();
+    auto ephemeral = transport::KeyPair::generate();
+    auto ping = makePingPacketBlob(transport::nodeId(sender.pub), tid);
+    return transport::seal(*transport::initialSendKey(sender, ephemeral, receiver.pub, 0),
+                           transport::EnvelopeType::Initial,
+                           sender.pub,
+                           ephemeral.pub,
+                           ping.data(),
+                           ping.size());
+}
+
+void
+NetworkEngineTester::testTransportSpoofedInitialKeepsSession()
+{
+    TransportTestNode a("127.0.0.2", {}, 1);
+    TransportTestNode b("127.0.0.3", {}, 2);
+    establishSession(a, b);
+
+    // An Initial envelope with a's source address, from an identity that never received anything at it
+    auto initial = makeInitialPing(b.key, 77);
+    b.engine->processMessage(initial.data(), initial.size(), a.addr);
+    auto sent = b.takeSent();
+    CPPUNIT_ASSERT_EQUAL((size_t) 1, sent.size());
+    CPPUNIT_ASSERT(sent[0].dest == a.addr);
+    CPPUNIT_ASSERT(isEnvelope(sent[0], transport::EnvelopeType::Session));
+
+    // a's session with b is untouched: its Data envelopes still open
+    bool done = false;
+    a.ping(a.node(b), done);
+    CPPUNIT_ASSERT(isEnvelope(a.socket->sends.at(0), transport::EnvelopeType::Data));
+    a.deliverTo(b);
+    CPPUNIT_ASSERT_EQUAL((size_t) 1, b.socket->sends.size());
+    b.deliverTo(a);
+    CPPUNIT_ASSERT(done);
+}
+
+void
+NetworkEngineTester::testTransportSpoofedHelloKeepsSession()
+{
+    auto authority = transport::Authority::generate();
+    auto configA = privateTransport(authority);
+    TransportTestNode a("127.0.0.2", configA, 1);
+    TransportTestNode b("127.0.0.3", privateTransport(authority), 2);
+    establishSession(a, b);
+
+    // A hello with a copied credential and a's source address
+    auto ephemeral = transport::KeyPair::generate();
+    auto credential = configA.credential.pack();
+    auto ping = makePingPacketBlob(a.id, 78);
+    auto hello = transport::hello(a.key.pub, ephemeral.pub, credential, ping.data(), ping.size());
+    b.engine->processMessage(hello.data(), hello.size(), a.addr);
+    auto sent = b.takeSent();
+    CPPUNIT_ASSERT_EQUAL((size_t) 1, sent.size());
+    CPPUNIT_ASSERT(sent[0].dest == a.addr);
+
+    bool done = false;
+    a.ping(a.node(b), done);
+    CPPUNIT_ASSERT(isEnvelope(a.socket->sends.at(0), transport::EnvelopeType::Data));
+    a.deliverTo(b);
+    CPPUNIT_ASSERT_EQUAL((size_t) 1, b.socket->sends.size());
+    b.deliverTo(a);
+    CPPUNIT_ASSERT(done);
+}
+
+void
+NetworkEngineTester::testTransportSpoofedInitialsDoNotFillSessionCache()
+{
+    TransportTestNode a("127.0.0.2", {}, 1);
+    TransportTestNode b("127.0.0.3", {}, 2);
+    establishSession(a, b);
+    const auto cached = b.engine->epoch_.sessions.size();
+    CPPUNIT_ASSERT(b.engine->epoch_.find(a.addr));
+
+    // Answering unvalidated senders must not take a cache slot per source address
+    for (unsigned i = 0; i < 64; i++) {
+        auto initial = makeInitialPing(b.key, 100 + i);
+        b.engine->processMessage(initial.data(), initial.size(), makeIPv4("203.0.113.7", 10000 + i));
+    }
+    CPPUNIT_ASSERT_EQUAL((size_t) 64, b.takeSent().size());
+    CPPUNIT_ASSERT_EQUAL(cached, b.engine->epoch_.sessions.size());
+
+    // The sender takes a slot once it answers with our key for its address
+    auto sender = transport::KeyPair::generate();
+    auto ephemeral = transport::KeyPair::generate();
+    auto from = makeIPv4("203.0.113.8", 4222);
+    auto ping = makePingPacketBlob(transport::nodeId(sender.pub), 200);
+    auto initial = transport::seal(*transport::initialSendKey(sender, ephemeral, b.key.pub, 0),
+                                   transport::EnvelopeType::Initial,
+                                   sender.pub,
+                                   ephemeral.pub,
+                                   ping.data(),
+                                   ping.size());
+    b.engine->processMessage(initial.data(), initial.size(), from);
+    auto reply = b.takeSent().at(0);
+    CPPUNIT_ASSERT_EQUAL(cached, b.engine->epoch_.sessions.size());
+    auto keys = *transport::sessionKeys(sender, ephemeral, b.key.pub, ephemeralKey(reply), 0);
+    auto session = transport::seal(keys.tx,
+                                   transport::EnvelopeType::Session,
+                                   sender.pub,
+                                   ephemeral.pub,
+                                   ping.data(),
+                                   ping.size());
+    b.engine->processMessage(session.data(), session.size(), from);
+    CPPUNIT_ASSERT_EQUAL((size_t) 1, b.takeSent().size());
+    CPPUNIT_ASSERT_EQUAL(cached + 1, b.engine->epoch_.sessions.size());
+    CPPUNIT_ASSERT(b.engine->epoch_.find(from));
+}
+
+void
+NetworkEngineTester::testTransportSessionCacheEvictsLeastRecentlyUsed()
+{
+    TransportTestNode a("127.0.0.2", {}, 1);
+    TransportTestNode b("127.0.0.3", {}, 2);
+    establishSession(a, b);
+    auto& epoch = b.engine->epoch_;
+    CPPUNIT_ASSERT(epoch.find(a.addr));
+
+    // Fill the cache around a's session, with addresses sorting after it
+    auto filler = [](unsigned i) {
+        return makeIPv4(i % 2 ? "10.0.0.1" : "250.0.0.1", 5000 + i);
+    };
+    const auto max = net::NetworkEngine::MAX_SESSIONS;
+    for (unsigned i = 0; epoch.sessions.size() < max; i++)
+        epoch.store(filler(i), {});
+
+    // a is the least recently used until it talks to b again
+    bool done = false;
+    a.ping(a.node(b), done);
+    a.deliverTo(b);
+    b.deliverTo(a);
+    CPPUNIT_ASSERT(done);
+
+    epoch.store(makeIPv4("192.0.2.1", 4222), {});
+    CPPUNIT_ASSERT_EQUAL(max, epoch.sessions.size());
+    CPPUNIT_ASSERT(epoch.find(a.addr));
+    CPPUNIT_ASSERT(not epoch.find(filler(0)));
+    CPPUNIT_ASSERT(epoch.find(filler(1)));
+}
+
+void
+NetworkEngineTester::testTransportInitialSenderConfirmsAfterSessionEnvelope()
+{
+    TransportTestNode a("127.0.0.2", {}, 1);
+    TransportTestNode b("127.0.0.3", {}, 2);
+    // a learned b's key from a node list: its first packet is an Initial envelope
+    a.engine->insertNode(b.id, b.addr)->setTransport(std::make_shared<transport::Peer>(b.key.pub));
+    bool done = false;
+    a.ping(a.node(b), done);
+    CPPUNIT_ASSERT(isEnvelope(a.socket->sends.at(0), transport::EnvelopeType::Initial));
+    a.deliverTo(b);
+    CPPUNIT_ASSERT(isEnvelope(b.socket->sends.at(0), transport::EnvelopeType::Session));
+    b.deliverTo(a);
+    CPPUNIT_ASSERT(done);
+
+    // b answered without caching a session for a's address: a must not send Data yet
+    done = false;
+    a.ping(a.node(b), done);
+    CPPUNIT_ASSERT(isEnvelope(a.socket->sends.at(0), transport::EnvelopeType::Session));
+    a.deliverTo(b);
+    CPPUNIT_ASSERT(isEnvelope(b.socket->sends.at(0), transport::EnvelopeType::Session));
+    b.deliverTo(a);
+    CPPUNIT_ASSERT(done);
+
+    // b opened a Session envelope from a, so it cached the session
+    done = false;
+    a.ping(a.node(b), done);
+    CPPUNIT_ASSERT(isEnvelope(a.socket->sends.at(0), transport::EnvelopeType::Data));
+    a.deliverTo(b);
+    CPPUNIT_ASSERT(isEnvelope(b.socket->sends.at(0), transport::EnvelopeType::Data));
+    b.deliverTo(a);
     CPPUNIT_ASSERT(done);
 }
 
