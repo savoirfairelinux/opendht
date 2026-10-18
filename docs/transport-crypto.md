@@ -248,15 +248,15 @@ To send a message to node B:
    - otherwise refuse to send (`EPERM`).
 4. Else (public network, key unknown), send plaintext, including `k`.
 
-Once a node's key is known, nothing is ever sent to it in plaintext.
+Once a node's key is known, nothing is ever sent to it in plaintext. Failed key agreement, including a low-order public key, refuses the send (`EPERM`); it never falls back to plaintext.
 
 **Confirmation.** A session with an address is confirmed when B shows that it holds the session keys and accepted us:
 - B answers, in a Session or Data envelope, a request we sent to its node ID **in a Session or Data envelope**. B cached the session when it opened our envelope ([§6.5](#65-receiving)), and answered with keys of our current epoch. Requests sent in an Initial envelope or a Hello are excluded: B answered them without caching a session, so our next request is a Session envelope, and its answer confirms;
 - or we receive a Data envelope under our current epoch. B only sends one after we confirmed it the same way.
 
-The confirmation is lost when the session keys change: on epoch rotation, or when B's ephemeral key changes. It is also lost when B sends us an Initial envelope, because B no longer knows our ephemeral key and may have lost the session.
+The confirmation is lost when the session keys change: on epoch rotation, or when B's ephemeral key changes through accepted traffic. An Initial request leaves existing state untouched and is answered without reusing a cached session or its confirmation.
 
-**Recovery.** On the first retransmission of a request, the node forgets B's ephemeral key. The retry is therefore an Initial envelope, with our credential in a private network. This recovers when B no longer has the session or our authorization, for example after a restart. Likewise, a plaintext message advertising B's key (`k`) from B's address means B lost our key: the node forgets B's ephemeral key.
+**Recovery.** On the first retransmission of a request, the node forgets B's ephemeral key. The retry is therefore an Initial envelope, with our credential in a private network. This recovers when B no longer has the session or our authorization, for example after a restart. In public mode, a plaintext read-only request claiming B's ID is answered with an Initial envelope to B's known static key. The answer uses a transient node record: it does not reset B's existing ephemeral key, address or session. A restarted peer can read this answer and establish a new session.
 
 When value data is fragmented for a node with a known key, fragments are reduced to `1280 − 199 = 1081` bytes, so that each packet still fits in the 1280-byte IPv6 minimum MTU.
 
@@ -279,9 +279,9 @@ For each received packet, a node applies the following checks in order:
    7. Drop the packet if it was not decrypted.
    8. **Credential flag:** strip the 105-byte credential. In a private network, verify it as for Hello, unless the peer is already authorized; on success, the peer is authorized until the credential expires.
       **No credential:** in a private network, drop the packet unless the peer is currently authorized.
-   9. Record `epk_sender` as the peer's ephemeral key. It is **validated** if the envelope was a Session or Data envelope: opening it required our ephemeral key for the source address, which was only ever sent there.
+  9. Record `epk_sender` on a temporary peer record. It is **validated for the source address** if the envelope was a Session or Data envelope: opening it required our ephemeral key for that address, which was only ever sent there. Existing peer state is updated only after parsing, ID binding and the processing checks below.
 
-   **Session cache.** The epoch caches one session per source address. An entry is created or replaced only by a Session envelope that was opened (step 5), or when sending to a peer whose ephemeral key is validated. Answers to Initial and Hello envelopes derive their keys without caching them: their source address may be spoofed, and caching would let anyone replace the session of the address's real owner, or fill the cache from forged addresses.
+  **Session cache.** The epoch caches one session per source address. An entry is created or replaced only by a Session envelope that was opened (step 5), or when sending to the exact address for which the peer's ephemeral key is validated. Answers to Initial and Hello envelopes derive their keys without using or changing cached sessions: their source address may be spoofed, and caching would let anyone replace the session of the address's real owner, or fill the cache from forged addresses.
 
 3. **Plaintext in a private network.** Drop any packet that is not an envelope.
 
@@ -292,13 +292,15 @@ For each received packet, a node applies the following checks in order:
 6. **Plaintext with `k`.** For a plaintext message carrying `k`, attach the key to the sender if it matches the sender's ID.
 
 7. **Processing.**
-   - An encrypted message moves the sender's node record to the packet's source address, like legacy messages always did.
+  - A Session or Data envelope can move the sender's node record to the packet's source address.
+  - Initial requests use transient node records. Read-only requests are answered, writes receive `401`, and value updates are dropped. They do not add or move an established node, count as activity, or change its ephemeral key or session confirmation.
+  - Initial replies and errors are accepted only for a pending request at the expected source address, never for a listener. They cannot move a known keyed node to a different address.
    - Replies and Data envelopes can confirm the session ([§6.4](#64-sending)).
 
-   A **plaintext** message claiming the ID of a node whose key is known, but coming from a different address than that node's record, is untrusted:
+  A **plaintext** message claiming the ID of a node whose key is known is untrusted, even from that node's recorded address:
    - it does not move the node record and does not count as activity from that node;
-   - replies and value updates are dropped;
-   - requests are answered, but the answer is encrypted to the known key.
+  - replies, errors, value updates and writes are dropped;
+  - only read-only requests (`ping`, `find`, `get`) are answered, using a transient node record and an Initial envelope to the known key.
 
 The rate limiter is the existing per-address and global request limiter. It runs before every expensive public-key operation on unauthenticated input:
 - each Initial envelope (two X25519 operations);
@@ -407,7 +409,7 @@ Against an attacker who controls the network but holds no node's secret key:
   - Choosing the first `b` bits of one's own ID costs about $2^b$ key generations. Legacy nodes choose their ID freely.
 - **Forward secrecy.** Session envelopes recorded by the attacker stay confidential if static keys are compromised later, once both ephemeral secrets are erased (at most one hour after use). Initial envelopes stay confidential if the sender's static key is compromised, but not the receiver's.
 - **Key-compromise impersonation.** With a node's static secret, an attacker can decrypt the Initial envelopes sent to it and impersonate other nodes to it in Initial envelopes, but not in Session envelopes.
-- **Address stickiness.** Spoofed plaintext and Hellos cannot redirect a node record whose key is known (see [§6.2](#62-hello-private-networks-only) and [§6.5](#65-receiving)).
+- **Address stickiness.** Spoofed plaintext, Hellos and replayed Initial envelopes cannot redirect a node record whose key is known. Moving it requires a Session or Data envelope from the new address (see [§6.2](#62-hello-private-networks-only) and [§6.5](#65-receiving)).
 - **Fragment integrity.** Once a fragmented message arrives in envelopes, only parts from the same sender key are merged. Spoofed plaintext or foreign-key parts cannot alter or block it ([§6.5](#65-receiving), step 5).
 - **Address validation.** Session and Data envelopes only open from the address our ephemeral key was sent to. An off-path attacker cannot send one from a spoofed address, even with its own valid static key, so it cannot `put`, `refresh` or `listen` on behalf of another address.
 - **Private-network admission.** Without a valid credential and its matching secret key, a node:
@@ -424,7 +426,7 @@ Against an attacker who controls the network but holds no node's secret key:
   - The first request to a node whose key is unknown, for example a bootstrap ping, is visible.
 - **Static key compromise.** The static secret lets an attacker impersonate its owner from then on, and read the Initial envelopes sent to it, including recorded ones. Rotate a key by changing it, which also changes the node ID.
 - **No replay protection.** The transport layer accepts a captured envelope again while the receiver still has the keys for it:
-  - Initial envelopes from any address, at any time. A replayed Initial request is processed again, except writes ([§6.6](#66-write-authorization)). Because it is authenticated, it also moves the sender's node record to the replayer's address, and may restore an older ephemeral key for the sender; the retry rule ([§6.4](#64-sending)) recovers from the latter, and the restored key is not validated, so it never replaces the cached session of the sender's address. Replies to the replayer stay encrypted.
+  - Initial envelopes decrypt from any address, at any time. Replayed read-only requests may receive another encrypted answer, but do not change established peer or session state. Writes receive `401`, updates are dropped, and replies require a matching pending request at the expected address ([§6.5](#65-receiving)). This limits replay effects without adding a transport replay window.
   - Session and Data envelopes only from their original source address, for up to one hour.
 
   Transaction IDs limit the effect of replayed replies.
