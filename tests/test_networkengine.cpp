@@ -1966,6 +1966,41 @@ NetworkEngineTester::testTransportRetryNeverResendsPayloadInInitial()
 }
 
 void
+NetworkEngineTester::testTransportRecoveryWithholdsAllRequests()
+{
+    TransportConfig configB;
+    configB.key = transport::KeyPair::generate();
+    TransportTestNode a("127.0.0.2", {}, 1);
+    auto b = std::make_unique<TransportTestNode>("127.0.0.3", configB, 2);
+    establishSession(a, *b);
+
+    // b restarts: both listens are lost, and their retries share one recovery ping
+    b = std::make_unique<TransportTestNode>("127.0.0.3", configB, 3);
+    std::optional<Blob> token1, token2, token3;
+    sendTestListen(a, a.node(*b), token1);
+    sendTestListen(a, a.node(*b), token2);
+    a.deliverTo(*b);
+    advance(a, std::chrono::milliseconds(1500));
+    CPPUNIT_ASSERT_EQUAL((size_t) 1, a.socket->sends.size());
+    CPPUNIT_ASSERT(initialMessageType(a.socket->sends[0], b->key) == MessageType::Ping);
+
+    // A new request waits for the recovery too
+    sendTestListen(a, a.node(*b), token3);
+    CPPUNIT_ASSERT_EQUAL((size_t) 1, a.socket->sends.size());
+    a.deliverTo(*b);
+    b->deliverTo(a);
+
+    // The pong releases all of them in Session envelopes
+    CPPUNIT_ASSERT_EQUAL((size_t) 3, a.socket->sends.size());
+    for (const auto& p : a.socket->sends)
+        CPPUNIT_ASSERT(isEnvelope(p, transport::EnvelopeType::Session));
+    a.deliverTo(*b);
+    CPPUNIT_ASSERT_EQUAL(3, b->listens);
+    b->deliverTo(a);
+    CPPUNIT_ASSERT(token1 and token2 and token3);
+}
+
+void
 NetworkEngineTester::testTransportPlaintextCannotPoisonSessionCache()
 {
     TransportTestNode receiver("127.0.0.2", {}, 1);

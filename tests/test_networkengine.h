@@ -51,6 +51,7 @@ class NetworkEngineTester : public CppUnit::TestFixture
     CPPUNIT_TEST(testValueFragmentsFitMinimumMtu);
     CPPUNIT_TEST(testTransportRetryRecoversSessionBeforePayload);
     CPPUNIT_TEST(testTransportRetryNeverResendsPayloadInInitial);
+    CPPUNIT_TEST(testTransportRecoveryWithholdsAllRequests);
     CPPUNIT_TEST(testTransportPlaintextCannotPoisonSessionCache);
     CPPUNIT_TEST(testTransportPlaintextCannotUpdateKeyedNode);
     CPPUNIT_TEST(testTransportPlaintextCannotCompleteEncryptedRequest);
@@ -105,6 +106,7 @@ public:
     void testValueFragmentsFitMinimumMtu();
     void testTransportRetryRecoversSessionBeforePayload();
     void testTransportRetryNeverResendsPayloadInInitial();
+    void testTransportRecoveryWithholdsAllRequests();
     void testTransportPlaintextCannotPoisonSessionCache();
     void testTransportPlaintextCannotUpdateKeyedNode();
     void testTransportPlaintextCannotCompleteEncryptedRequest();
