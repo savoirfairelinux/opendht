@@ -902,6 +902,8 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
                 break;
             }
             case MessageType::GetValues: {
+                if (transport_ and node->getTransport() and not msg->session)
+                    throw DhtProtocolException {DhtProtocolException::UNAUTHORIZED, "Session required", msg->id};
                 // if (logger_)
                 //     logger_->d("[node %s] got 'get' request for %s",
                 //     node->toString().c_str(), msg->info_hash.toString().c_str());
