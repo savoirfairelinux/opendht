@@ -239,6 +239,8 @@ cdef extern from "opendht/callbacks.h" namespace "dht":
         string persist_path
         size_t max_req_per_sec
         size_t max_peer_req_per_sec
+        ssize_t max_crypto_per_sec
+        ssize_t max_peer_crypto_per_sec
     cppclass SecureDhtConfig:
         Config node_config
         Identity id
