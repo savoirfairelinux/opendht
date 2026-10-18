@@ -277,6 +277,8 @@ getDhtConfig(dht_params& params)
     if (params.no_rate_limit) {
         config.dht_config.node_config.max_req_per_sec = -1;
         config.dht_config.node_config.max_peer_req_per_sec = -1;
+        config.dht_config.node_config.max_crypto_per_sec = -1;
+        config.dht_config.node_config.max_peer_crypto_per_sec = -1;
         config.dht_config.node_config.max_searches = -1;
         config.dht_config.node_config.max_store_size = -1;
     }
