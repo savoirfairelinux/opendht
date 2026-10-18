@@ -1810,6 +1810,47 @@ NetworkEngineTester::testTransportSessionCacheEvictsLeastRecentlyUsed()
 }
 
 void
+NetworkEngineTester::testTransportRejectedSessionsKeepCache()
+{
+    auto authority = transport::Authority::generate();
+    TransportTestNode a("127.0.0.2", privateTransport(authority), 1);
+    TransportTestNode b("127.0.0.3", privateTransport(authority), 2);
+    establishSession(a, b);
+    auto sender = transport::KeyPair::generate();
+    auto ephemeral = transport::KeyPair::generate();
+    auto receiver = b.engine->epoch_.ephemeral(a.addr);
+    auto keys = *transport::sessionKeys(sender, ephemeral, b.key.pub, receiver.pub, 0);
+    auto expiration = std::chrono::system_clock::now() + std::chrono::hours(1);
+    auto credential = authority.issue(sender.pub, expiration).pack();
+    auto ping = makePingPacketBlob(transport::nodeId(sender.pub), 77);
+    std::vector<std::pair<Blob, Blob>> rejected {
+        {ping, {}},
+        {ping, transport::Authority::generate().issue(sender.pub, expiration).pack()},
+        {Blob {0xC1}, credential},
+        {makePingPacketBlob(a.id, 77), credential},
+        {makeReplyHeaderPacketBlob(transport::nodeId(sender.pub), 77, {}), credential},
+        {makeValueDataPacketBlob(77, 0, 0, {}), credential}};
+    for (const auto& [payload, proof] : rejected) {
+        auto packet = transport::seal(keys.tx,
+                                      transport::EnvelopeType::Session,
+                                      sender.pub,
+                                      ephemeral.pub,
+                                      payload.data(),
+                                      payload.size(),
+                                      proof);
+        b.engine->processMessage(packet.data(), packet.size(), a.addr);
+        auto cached = b.engine->epoch_.find(a.addr);
+        CPPUNIT_ASSERT(cached and cached->peer == a.key.pub and cached->confirmed);
+        CPPUNIT_ASSERT(b.socket->sends.empty());
+    }
+    bool done = false;
+    a.ping(a.node(b), done);
+    a.deliverTo(b);
+    b.deliverTo(a);
+    CPPUNIT_ASSERT(done);
+}
+
+void
 NetworkEngineTester::testTransportInitialSenderConfirmsAfterSessionEnvelope()
 {
     TransportTestNode a("127.0.0.2", {}, 1);
@@ -1915,24 +1956,37 @@ NetworkEngineTester::testTransportEncryptedFragmentsRequireSenderKey()
     TransportTestNode a("127.0.0.2", {}, 1);
     TransportTestNode b("127.0.0.3", {}, 2);
     establishSession(a, b);
-    FragmentedReply r(a, b);
-    const auto tid = r.request->getTid();
-
-    // A fragment under another key, in an Initial envelope spoofed from b's address, must not be merged
     auto sender = transport::KeyPair::generate();
     auto ephemeral = transport::KeyPair::generate();
-    auto fragment = makeValueDataPacketBlob(tid, 0, 0, Blob(r.FRAGMENT, 'z'));
-    auto initial = transport::seal(*transport::initialSendKey(sender, ephemeral, a.key.pub, 0),
-                                   transport::EnvelopeType::Initial,
-                                   sender.pub,
-                                   ephemeral.pub,
-                                   fragment.data(),
-                                   fragment.size());
-    r.deliver(a, b.addr, 0);
-    a.engine->processMessage(initial.data(), initial.size(), b.addr);
-    r.deliver(a, b.addr, 1);
-    r.deliver(a, b.addr, 2);
-    CPPUNIT_ASSERT(r.received());
+    for (auto type : {transport::EnvelopeType::Initial, transport::EnvelopeType::Session}) {
+        FragmentedReply r(a, b);
+        auto replySession = b.engine->session(*b.node(a)->getTransport(), a.addr);
+        for (auto& packet : r.reply) {
+            auto payload = transport::open(replySession->keys.tx, packet.data.data(), packet.data.size());
+            CPPUNIT_ASSERT(payload);
+            packet.data = transport::seal(replySession->keys.tx,
+                                          transport::EnvelopeType::Session,
+                                          b.key.pub,
+                                          replySession->ephemeral,
+                                          payload->data(),
+                                          payload->size());
+        }
+        auto receiver = a.engine->epoch_.ephemeral(b.addr);
+        auto key = type == transport::EnvelopeType::Initial
+                       ? *transport::initialSendKey(sender, ephemeral, a.key.pub, 0)
+                       : transport::sessionKeys(sender, ephemeral, a.key.pub, receiver.pub, 0)->tx;
+        auto fragment = makeValueDataPacketBlob(r.request->getTid(), 0, 0, Blob(r.FRAGMENT, 'z'));
+        auto packet = transport::seal(key, type, sender.pub, ephemeral.pub, fragment.data(), fragment.size());
+        a.engine->processMessage(packet.data(), packet.size(), b.addr);
+        if (type == transport::EnvelopeType::Initial)
+            CPPUNIT_ASSERT_EQUAL(size_t(0), a.engine->getPartialCount());
+        r.deliver(a, b.addr, 1);
+        a.engine->processMessage(packet.data(), packet.size(), b.addr);
+        r.deliver(a, b.addr, 0);
+        r.deliver(a, b.addr, 2);
+        CPPUNIT_ASSERT(r.received());
+        a.engine->partial_messages.clear();
+    }
 }
 
 /* every packet of a fragmented value fits the IPv6 minimum MTU, less the IPv6 and UDP headers,
