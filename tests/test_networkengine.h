@@ -48,6 +48,7 @@ class NetworkEngineTester : public CppUnit::TestFixture
     CPPUNIT_TEST(testTransportSpoofedHelloKeepsSession);
     CPPUNIT_TEST(testTransportSpoofedInitialsDoNotFillSessionCache);
     CPPUNIT_TEST(testTransportSessionCacheEvictsLeastRecentlyUsed);
+    CPPUNIT_TEST(testTransportRejectedSessionsKeepCache);
     CPPUNIT_TEST(testTransportInitialSenderConfirmsAfterSessionEnvelope);
     CPPUNIT_TEST(testTransportEncryptedFragmentsIgnorePlaintextParts);
     CPPUNIT_TEST(testTransportEncryptedFragmentsIgnorePlaintextHeader);
@@ -122,6 +123,7 @@ public:
     void testTransportSpoofedHelloKeepsSession();
     void testTransportSpoofedInitialsDoNotFillSessionCache();
     void testTransportSessionCacheEvictsLeastRecentlyUsed();
+    void testTransportRejectedSessionsKeepCache();
     void testTransportInitialSenderConfirmsAfterSessionEnvelope();
     void testTransportEncryptedFragmentsIgnorePlaintextParts();
     void testTransportEncryptedFragmentsIgnorePlaintextHeader();
