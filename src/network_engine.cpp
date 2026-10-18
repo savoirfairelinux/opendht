@@ -401,6 +401,7 @@ NetworkEngine::requestStep(Sp<Request> sreq)
         // if (logger_)
         //     logger_->d(node.id, "[node %s] expired.", node.toString().c_str());
         node.setExpired();
+        req.setExpired();
         if (not node.id)
             requests.erase(req.tid);
         return;
@@ -435,10 +436,10 @@ NetworkEngine::transmitRequest(const Sp<Request>& sreq)
     const auto& peer = node.getTransport();
     req.initial = peer and not peer->ephemeral;
     auto err = send(node,
-                                   node.getAddr(),
-                                   (char*) req.msg.data(),
-                                   req.msg.size(),
-                                   node.getReplyTime() < now - UDP_REPLY_TIME);
+                    node.getAddr(),
+                    (char*) req.msg.data(),
+                    req.msg.size(),
+                    node.getReplyTime() < now - UDP_REPLY_TIME);
     if (err == ENETUNREACH || err == EHOSTUNREACH || err == EAFNOSUPPORT || err == EPIPE || err == EPERM) {
         node.setExpired();
         if (not node.id)
@@ -820,13 +821,13 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
     }
 
     if (msg->type == MessageType::Reply or msg->type == MessageType::Error) {
-        auto req = node and node->getAddr() == from ? node->getRequest(msg->tid) : nullptr;
+        auto req = node ? node->getRequest(msg->tid) : nullptr;
         if (not req) {
             auto pending = requests.find(msg->tid);
             if (pending != requests.end() and pending->second->node->getAddr() == from)
                 req = pending->second;
         }
-        if (req ? not req->pending() : not (node and node->getSocket(msg->tid)))
+        if (req ? not req->pending() : not(node and node->getSocket(msg->tid)))
             return;
     }
 
@@ -910,6 +911,11 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
 
         switch (msg->type) {
         case MessageType::Error: {
+            if (req and req->sessionProbe) {
+                req->setExpired();
+                node->setExpired();
+                break;
+            }
             if (msg->id and req
                 and ((msg->error_code == DhtProtocolException::NOT_FOUND and req->getType() == MessageType::Refresh)
                      or (msg->error_code == DhtProtocolException::UNAUTHORIZED
@@ -919,6 +925,8 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
                 if (not req->setError(DhtProtocolException {msg->error_code}))
                     onError(req, DhtProtocolException {msg->error_code});
             } else {
+                if (req)
+                    req->setExpired();
                 if (logIncoming_)
                     if (logger_)
                         logger_->warn("[node {} {}] received unknown error message {}",
@@ -939,7 +947,10 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
                 try {
                     deserializeNodes(*msg, from);
                     r.setDone(std::move(*msg));
-                    completeSession(*node);
+                    const auto& peer = node->getTransport();
+                    if (r.completed() and (r.getType() == MessageType::Ping or r.getType() == MessageType::FindNode
+                                          or (peer and peer->recovering)))
+                        completeSession(*node);
                 } catch (const DhtProtocolException& e) {
                     if (logger_)
                         logger_->warn("Unable to deserialize nodes {}", e.what());

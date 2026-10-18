@@ -271,6 +271,8 @@ public:
      *  Requests  *
      **************/
 
+    bool needsSession(const Node& node) const;
+
     /**
      * Send a "ping" request to a given node.
      *
@@ -280,8 +282,6 @@ public:
      *
      * @return the request with information concerning its success.
      */
-    bool needsSession(const Node& node) const;
-
     Sp<Request> sendPing(const Sp<Node>& n, RequestCb&& on_done, RequestExpiredCb&& on_expired);
 
     /**

@@ -161,7 +161,7 @@ private:
     std::vector<Blob> parts;
     /* the last attempt was an Initial envelope, answered without caching our session */
     bool initial {false};
-    /* the last attempt waited for the session recovery: never sent in an Initial envelope */
+    /* waiting for session establishment or recovery, without an application retry timer */
     bool withheld {false};
     bool sessionProbe {false};
     bool timeoutNotified {false};
