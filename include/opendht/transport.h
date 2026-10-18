@@ -21,6 +21,9 @@ using Key = std::array<uint8_t, KEY_SIZE>;
 using Signature = std::array<uint8_t, SIGNATURE_SIZE>;
 using SystemTime = std::chrono::system_clock::time_point;
 
+/** Erases secret key material. */
+OPENDHT_PUBLIC void wipe(Key& key);
+
 /**
  * X25519 key pair used to encrypt the DHT protocol: the static key of a node, from which its node ID derives,
  * or a periodically rotated ephemeral key.
@@ -148,6 +151,19 @@ struct SessionKeys
 {
     Key tx;
     Key rx;
+
+    /** Erases secret key material. */
+    void wipe()
+    {
+        transport::wipe(tx);
+        transport::wipe(rx);
+    }
+
+    /** Destructor that wipes secret key material. */
+    ~SessionKeys()
+    {
+        wipe();
+    }
 };
 
 /** Session keys with a peer whose ephemeral key is known, or nullopt for an invalid peer key. */
@@ -183,9 +199,6 @@ OPENDHT_PUBLIC std::optional<Blob> open(const Key& key, const uint8_t* data, siz
 
 OPENDHT_PUBLIC Blob
 hello(const Key& sender, const Key& ephemeral, const Blob& credential, const uint8_t* data, size_t size);
-
-/** Erases secret key material. */
-OPENDHT_PUBLIC void wipe(Key& key);
 
 } // namespace transport
 

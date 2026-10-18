@@ -50,6 +50,7 @@ hmacSha256(const uint8_t* key, size_t keyLen, const uint8_t* data, size_t dataLe
 #else
     hmac_sha256_digest(&ctx, out.size(), out.data());
 #endif
+    gnutls_memset(&ctx, 0, sizeof(ctx));
     return out;
 }
 
