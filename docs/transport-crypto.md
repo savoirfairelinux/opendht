@@ -162,7 +162,7 @@ Properties:
 - **Key-compromise impersonation resistance.** With `sk_B`, an attacker still cannot impersonate A to B in a Session envelope: it cannot compute `DH(sk_A, epk_B)` without `sk_A` or `esk_B`.
 - **Initial keys are weaker**, as for the first message of Noise IK. Without `epk_B`, an Initial key is only forward-secret against a later compromise of `sk_A`, not of `sk_B`. It also allows impersonating A to B with `sk_B`. Initial envelopes are only sent until A learns `epk_B`, usually for a single packet.
 - **Binding.** `info` includes `N`, the envelope type and all public keys involved. Nodes with different network IDs cannot decrypt each other's packets.
-- **Cost.** A Session key costs four X25519 operations, plus one for our ephemeral key. It is cached in the epoch, so it is derived once per peer address and ephemeral key pair. An Initial key costs two X25519 operations, plus one for our ephemeral key, and is not cached. Each epoch caches at most 16384 sessions; beyond that, keys are derived for each packet.
+- **Cost.** A Session key costs four X25519 operations, plus one for our ephemeral key. It is cached in the epoch, so it is derived once per peer address and ephemeral key pair, once the peer has proven to receive at that address ([§6.5](#65-receiving)). An Initial key costs two X25519 operations, plus one for our ephemeral key, and is not cached. Each epoch caches at most 16384 sessions, evicting the least recently used; beyond that, keys are derived for each packet.
 
 ## 6. Wire protocol
 
@@ -251,7 +251,7 @@ To send a message to node B:
 Once a node's key is known, nothing is ever sent to it in plaintext.
 
 **Confirmation.** A session with an address is confirmed when B shows that it holds the session keys and accepted us:
-- B answers, in a Session or Data envelope, a request we sent to its node ID. Our request was in an envelope with our credential if needed, and B answered with keys of our current epoch. Requests to a bare address are excluded, because they were sent in a Hello;
+- B answers, in a Session or Data envelope, a request we sent to its node ID **in a Session or Data envelope**. B cached the session when it opened our envelope ([§6.5](#65-receiving)), and answered with keys of our current epoch. Requests sent in an Initial envelope or a Hello are excluded: B answered them without caching a session, so our next request is a Session envelope, and its answer confirms;
 - or we receive a Data envelope under our current epoch. B only sends one after we confirmed it the same way.
 
 The confirmation is lost when the session keys change: on epoch rotation, or when B's ephemeral key changes. It is also lost when B sends us an Initial envelope, because B no longer knows our ephemeral key and may have lost the session.
@@ -279,7 +279,9 @@ For each received packet, a node applies the following checks in order:
    7. Drop the packet if it was not decrypted.
    8. **Credential flag:** strip the 105-byte credential. In a private network, verify it as for Hello, unless the peer is already authorized; on success, the peer is authorized until the credential expires.
       **No credential:** in a private network, drop the packet unless the peer is currently authorized.
-   9. Record `epk_sender` as the peer's ephemeral key.
+   9. Record `epk_sender` as the peer's ephemeral key. It is **validated** if the envelope was a Session or Data envelope: opening it required our ephemeral key for the source address, which was only ever sent there.
+
+   **Session cache.** The epoch caches one session per source address. An entry is created or replaced only by a Session envelope that was opened (step 5), or when sending to a peer whose ephemeral key is validated. Answers to Initial and Hello envelopes derive their keys without caching them: their source address may be spoofed, and caching would let anyone replace the session of the address's real owner, or fill the cache from forged addresses.
 
 3. **Plaintext in a private network.** Drop any packet that is not an envelope.
 
@@ -303,7 +305,7 @@ The rate limiter is the existing per-address and global request limiter. It runs
 - each Session envelope from an uncached (address, `pk_sender`, `epk_sender`) triple (five X25519 operations per epoch tried);
 - each Hello (one Ed25519 verification, and the key derivation of its answer).
 
-Packets from peers with cached session keys cost one AEAD operation. Each epoch caches at most 16384 sessions, evicting one to store a new one. An evicted peer recovers after one retransmission.
+Packets from peers with cached session keys cost one AEAD operation. Each epoch caches at most 16384 sessions, evicting the least recently used one to store a new one. An evicted peer recovers after one retransmission. Only a peer that received a packet from us at its address can take a cache slot, so a slot costs the attacker a reachable address and a round trip.
 
 ### 6.6 Write authorization
 
@@ -346,7 +348,7 @@ sequenceDiagram
 ```
 
 - The first request to a node with an unknown key, typically a bootstrap ping, is in plaintext. Its reply is an Initial envelope. The next request and its reply use Session envelopes, and all later traffic uses Data envelopes.
-- Nodes learned through `k4`/`k6` get an Initial envelope as the first packet, and Session envelopes once they have answered.
+- Nodes learned through `k4`/`k6` get an Initial envelope as the first packet. Its answer is a Session envelope, but the answerer caches nothing yet: the next request is a Session envelope, and its answer confirms the session. Data envelopes follow.
 - Legacy nodes see plaintext from new nodes and are unaffected.
 
 ### 7.2 Private network
@@ -362,7 +364,7 @@ sequenceDiagram
     B->>A: Session(cred_B, pong)
     Note over A: verifies cred_B, authorizes B
     A->>B: Session(cred_A, request)
-    Note over B: verifies cred_A, authorizes A
+    Note over B: verifies cred_A, authorizes A, caches the session
     B->>A: Session(cred_B, reply)
     Note over A: session confirmed
     A->>B: Data (without credential)
@@ -421,7 +423,7 @@ Against an attacker who controls the network but holds no node's secret key:
   - The first request to a node whose key is unknown, for example a bootstrap ping, is visible.
 - **Static key compromise.** The static secret lets an attacker impersonate its owner from then on, and read the Initial envelopes sent to it, including recorded ones. Rotate a key by changing it, which also changes the node ID.
 - **No replay protection.** The transport layer accepts a captured envelope again while the receiver still has the keys for it:
-  - Initial envelopes from any address, at any time. A replayed Initial request is processed again, except writes ([§6.6](#66-write-authorization)). Because it is authenticated, it also moves the sender's node record to the replayer's address, and may restore an older ephemeral key for the sender; the retry rule ([§6.4](#64-sending)) recovers from the latter. Replies to the replayer stay encrypted.
+  - Initial envelopes from any address, at any time. A replayed Initial request is processed again, except writes ([§6.6](#66-write-authorization)). Because it is authenticated, it also moves the sender's node record to the replayer's address, and may restore an older ephemeral key for the sender; the retry rule ([§6.4](#64-sending)) recovers from the latter, and the restored key is not validated, so it never replaces the cached session of the sender's address. Replies to the replayer stay encrypted.
   - Session and Data envelopes only from their original source address, for up to one hour.
 
   Transaction IDs limit the effect of replayed replies.
@@ -468,7 +470,7 @@ From the library, set `Config::transport` before starting:
 | Envelope header | 66 bytes, 2 for Data |
 | Envelope overhead | 30 bytes for Data, 94 for Initial and Session (199 with credential) |
 | Epoch (ephemeral keys and tokens) | 30 minutes, previous epoch accepted for one more period |
-| Cached sessions per epoch | 16384 |
+| Cached sessions per epoch | 16384, least recently used evicted |
 | Credential size, version | 105 bytes, `0x01` |
 | Node ID context | `"opendht-node-id-v1"` |
 | HKDF salt | `"opendht-transport-v2"` |
