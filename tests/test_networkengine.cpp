@@ -1076,7 +1076,7 @@ NetworkEngineTester::testTransportPlaintextDoesNotMoveKeyedNode()
     // Answered, but only readable by the owner of the key
     CPPUNIT_ASSERT_EQUAL((size_t) 1, a.socket->sends.size());
     CPPUNIT_ASSERT(a.socket->sends[0].dest == attacker);
-    CPPUNIT_ASSERT(isEnvelope(a.socket->sends[0], transport::EnvelopeType::Session));
+    CPPUNIT_ASSERT(isEnvelope(a.socket->sends[0], transport::EnvelopeType::Initial));
 }
 
 void
@@ -1779,6 +1779,198 @@ NetworkEngineTester::testTransportEncryptedFragmentsRequireSenderKey()
     r.deliver(a, b.addr, 1);
     r.deliver(a, b.addr, 2);
     CPPUNIT_ASSERT(r.received());
+}
+
+void
+NetworkEngineTester::testTransportPlaintextCannotPoisonSessionCache()
+{
+    TransportTestNode receiver("127.0.0.2", {}, 1);
+    TransportTestNode peer("127.0.0.3", {}, 2);
+    TransportTestNode victim("127.0.0.4", {}, 3);
+    establishSession(receiver, peer);
+    establishSession(receiver, victim);
+    const auto cached = receiver.engine->epoch_.sessions.size();
+    const auto ephemeral = receiver.node(peer)->getTransport()->ephemeral;
+    CPPUNIT_ASSERT(receiver.engine->session(*receiver.node(peer)->getTransport(), victim.addr));
+    CPPUNIT_ASSERT(receiver.engine->epoch_.find(victim.addr)->peer == victim.key.pub);
+    auto ping = makePingPacketBlob(peer.id, 77);
+    receiver.engine->processMessage(ping.data(), ping.size(), victim.addr);
+    receiver.takeSent();
+    CPPUNIT_ASSERT(receiver.engine->epoch_.find(victim.addr)->peer == victim.key.pub);
+
+    for (unsigned index = 0; index < 64; ++index) {
+        auto from = makeIPv4("203.0.113.7", 10000 + index);
+        receiver.engine->processMessage(ping.data(), ping.size(), from);
+    }
+    CPPUNIT_ASSERT_EQUAL(cached, receiver.engine->epoch_.sessions.size());
+    CPPUNIT_ASSERT(receiver.node(peer)->getTransport()->ephemeral == ephemeral);
+    receiver.takeSent();
+
+    bool done = false;
+    victim.ping(victim.node(receiver), done);
+    victim.deliverTo(receiver);
+    CPPUNIT_ASSERT(isEnvelope(receiver.socket->sends.at(0), transport::EnvelopeType::Data));
+    receiver.deliverTo(victim);
+    CPPUNIT_ASSERT(done);
+}
+
+void
+NetworkEngineTester::testTransportPlaintextCannotUpdateKeyedNode()
+{
+    TransportTestNode receiver("127.0.0.2", {}, 1);
+    TransportTestNode peer("127.0.0.3", {}, 2);
+    establishSession(receiver, peer);
+    size_t expired = 0;
+    auto socketId = receiver.node(peer)->openSocket([&](const Sp<Node>&, net::RequestAnswer&& answer) {
+        expired += answer.expired_values.size();
+    });
+    for (bool legacy : {false, true}) {
+        msgpack::sbuffer buffer;
+        msgpack::packer<msgpack::sbuffer> pk(&buffer);
+        pk.pack_map(legacy ? 3 : 4);
+        pk.pack(legacy ? KEY_U : KEY_A);
+        pk.pack_map(legacy ? 2 : 3);
+        pk.pack(KEY_REQ_ID);
+        pk.pack(peer.id);
+        if (not legacy) {
+            pk.pack(KEY_REQ_SID);
+            pk.pack(socketId);
+        }
+        pk.pack(KEY_REQ_EXPIRED);
+        pk.pack(std::vector<Value::Id> {42});
+        if (not legacy) {
+            pk.pack(KEY_Q);
+            pk.pack(QUERY_UPDATE);
+        }
+        pk.pack(KEY_TID);
+        pk.pack(legacy ? socketId : 77);
+        pk.pack(KEY_Y);
+        pk.pack(legacy ? KEY_R : KEY_Q);
+        for (const auto& from : {peer.addr, makeIPv4("127.0.0.66", 4222)}) {
+            receiver.engine->processMessage((const uint8_t*) buffer.data(), buffer.size(), from);
+            CPPUNIT_ASSERT_EQUAL((size_t) 0, expired);
+            CPPUNIT_ASSERT(receiver.socket->sends.empty());
+        }
+    }
+    peer.engine->tellListenerExpired(peer.node(receiver), socketId, {}, {42}, 1);
+    peer.deliverTo(receiver);
+    CPPUNIT_ASSERT_EQUAL((size_t) 1, expired);
+}
+
+void
+NetworkEngineTester::testTransportPlaintextCannotCompleteEncryptedRequest()
+{
+    TransportTestNode receiver("127.0.0.2", {}, 1);
+    TransportTestNode peer("127.0.0.3", {}, 2);
+    establishSession(receiver, peer);
+    auto node = receiver.node(peer);
+    const auto ephemeral = node->getTransport()->ephemeral;
+    bool done = false;
+    auto request = receiver.ping(node, done);
+    auto reply = makeReplyHeaderPacketBlob(peer.id, request->getTid(), {});
+    receiver.engine->processMessage(reply.data(), reply.size(), peer.addr);
+    CPPUNIT_ASSERT(not done);
+    CPPUNIT_ASSERT(request->pending());
+
+    auto advertisement = makePingPacketBlob(peer.id, 78, peer.key.pub);
+    receiver.engine->processMessage(advertisement.data(), advertisement.size(), peer.addr);
+    CPPUNIT_ASSERT(node->getTransport()->ephemeral == ephemeral);
+    CPPUNIT_ASSERT(receiver.engine->epoch_.find(peer.addr)->confirmed);
+    receiver.deliverTo(peer);
+    peer.deliverTo(receiver);
+    CPPUNIT_ASSERT(done);
+}
+
+void
+NetworkEngineTester::testTransportInitialReplayKeepsPeerState()
+{
+    TransportTestNode receiver("127.0.0.2", {}, 1);
+    TransportTestNode peer("127.0.0.3", {}, 2);
+    bool done = false;
+    receiver.ping(peer.addr, done);
+    receiver.deliverTo(peer);
+    auto initial = peer.socket->sends.at(0);
+    CPPUNIT_ASSERT(isEnvelope(initial, transport::EnvelopeType::Initial));
+    peer.deliverTo(receiver);
+    establishSession(receiver, peer);
+    auto node = receiver.node(peer);
+    const auto ephemeral = node->getTransport()->ephemeral;
+    const auto newNodes = receiver.newNodes;
+    auto oldEphemeral = transport::KeyPair::generate();
+    auto ping = makePingPacketBlob(peer.id, 79);
+    auto initialPing = transport::seal(*transport::initialSendKey(peer.key, oldEphemeral, receiver.key.pub, 0),
+                                       transport::EnvelopeType::Initial,
+                                       peer.key.pub,
+                                       oldEphemeral.pub,
+                                       ping.data(),
+                                       ping.size());
+    for (const auto& from : {peer.addr, makeIPv4("127.0.0.66", 4222)}) {
+        for (const auto& packet : {initial.data, initialPing}) {
+            receiver.engine->processMessage(packet.data(), packet.size(), from);
+            CPPUNIT_ASSERT(node->getAddr() == peer.addr);
+            CPPUNIT_ASSERT(node->getTransport()->ephemeral == ephemeral);
+            CPPUNIT_ASSERT_EQUAL(newNodes, receiver.newNodes);
+            CPPUNIT_ASSERT(receiver.engine->epoch_.find(peer.addr)->confirmed);
+        }
+    }
+    receiver.takeSent();
+    done = false;
+    receiver.ping(node, done);
+    CPPUNIT_ASSERT(isEnvelope(receiver.socket->sends.at(0), transport::EnvelopeType::Data));
+    receiver.deliverTo(peer);
+    peer.deliverTo(receiver);
+    CPPUNIT_ASSERT(done);
+}
+
+void
+NetworkEngineTester::testTransportInitialAddressChangeNeedsSession()
+{
+    auto authority = transport::Authority::generate();
+    for (bool isPrivate : {false, true}) {
+        auto config = isPrivate ? privateTransport(authority) : TransportConfig {};
+        if (not config.key)
+            config.key = transport::KeyPair::generate();
+        TransportTestNode peer("127.0.0.3", config, 2);
+        TransportTestNode receiver("127.0.0.2", isPrivate ? privateTransport(authority) : TransportConfig {}, 1);
+        establishSession(receiver, peer);
+        auto node = receiver.node(peer);
+        TransportTestNode moved("127.0.0.4", config, 3);
+        auto remote = moved.node(receiver);
+        remote->setTransport(std::make_shared<transport::Peer>(receiver.key.pub));
+        bool done = false;
+        moved.ping(remote, done);
+        moved.deliverTo(receiver);
+        CPPUNIT_ASSERT(node->getAddr() == peer.addr);
+        receiver.deliverTo(moved);
+        CPPUNIT_ASSERT(done);
+
+        done = false;
+        moved.ping(remote, done);
+        CPPUNIT_ASSERT(isEnvelope(moved.socket->sends.at(0), transport::EnvelopeType::Session, isPrivate));
+        moved.deliverTo(receiver);
+        CPPUNIT_ASSERT(node->getAddr() == moved.addr);
+        receiver.deliverTo(moved);
+        CPPUNIT_ASSERT(done);
+    }
+}
+
+void
+NetworkEngineTester::testTransportEncryptionFailureDoesNotSendPlaintext()
+{
+    TransportTestNode receiver("127.0.0.2", {}, 1);
+    auto from = makeIPv4("127.0.0.3", 4222);
+    transport::Key lowOrder {};
+    lowOrder[0] = 1;
+    auto ping = makePingPacketBlob(transport::nodeId(lowOrder), 80, lowOrder);
+    receiver.engine->processMessage(ping.data(), ping.size(), from);
+    CPPUNIT_ASSERT(receiver.socket->sends.empty());
+
+    auto peer = std::make_shared<transport::Peer>(transport::KeyPair::generate().pub);
+    peer->ephemeral = lowOrder;
+    auto node = receiver.engine->insertNode(transport::nodeId(peer->key), from);
+    node->setTransport(peer);
+    CPPUNIT_ASSERT_EQUAL(EPERM, receiver.engine->send(*node, from, "payload", 7));
+    CPPUNIT_ASSERT(receiver.socket->sends.empty());
 }
 
 } // namespace test

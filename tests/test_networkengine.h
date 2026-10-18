@@ -47,6 +47,12 @@ class NetworkEngineTester : public CppUnit::TestFixture
     CPPUNIT_TEST(testTransportEncryptedFragmentsIgnorePlaintextParts);
     CPPUNIT_TEST(testTransportEncryptedFragmentsIgnorePlaintextHeader);
     CPPUNIT_TEST(testTransportEncryptedFragmentsRequireSenderKey);
+    CPPUNIT_TEST(testTransportPlaintextCannotPoisonSessionCache);
+    CPPUNIT_TEST(testTransportPlaintextCannotUpdateKeyedNode);
+    CPPUNIT_TEST(testTransportPlaintextCannotCompleteEncryptedRequest);
+    CPPUNIT_TEST(testTransportInitialReplayKeepsPeerState);
+    CPPUNIT_TEST(testTransportInitialAddressChangeNeedsSession);
+    CPPUNIT_TEST(testTransportEncryptionFailureDoesNotSendPlaintext);
 #endif
     CPPUNIT_TEST_SUITE_END();
 
@@ -91,6 +97,12 @@ public:
     void testTransportEncryptedFragmentsIgnorePlaintextParts();
     void testTransportEncryptedFragmentsIgnorePlaintextHeader();
     void testTransportEncryptedFragmentsRequireSenderKey();
+    void testTransportPlaintextCannotPoisonSessionCache();
+    void testTransportPlaintextCannotUpdateKeyedNode();
+    void testTransportPlaintextCannotCompleteEncryptedRequest();
+    void testTransportInitialReplayKeepsPeerState();
+    void testTransportInitialAddressChangeNeedsSession();
+    void testTransportEncryptionFailureDoesNotSendPlaintext();
 #endif
 };
 
