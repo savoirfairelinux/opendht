@@ -600,6 +600,8 @@ private:
     bool isNodeBlacklisted(const SockAddr& addr) const;
 
     void requestStep(Sp<Request> req);
+    /* Re-establishes the session with a ping in an Initial envelope, then resends `req` under it */
+    void recoverSession(const Sp<Request>& req);
 
     /**
      * Sends a request to a node. Request::MAX_ATTEMPT_COUNT attempts will
