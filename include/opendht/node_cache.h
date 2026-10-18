@@ -24,6 +24,7 @@ struct NodeCache
      * To use in case of connectivity change etc.
      */
     void clearBadNodes(sa_family_t family = 0);
+    void clear();
 
     NodeCache(std::mt19937_64& r)
         : rd(r) {};

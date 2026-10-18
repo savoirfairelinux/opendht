@@ -280,6 +280,8 @@ public:
      *
      * @return the request with information concerning its success.
      */
+    bool needsSession(const Node& node) const;
+
     Sp<Request> sendPing(const Sp<Node>& n, RequestCb&& on_done, RequestExpiredCb&& on_expired);
 
     /**
@@ -600,6 +602,9 @@ private:
     bool isNodeBlacklisted(const SockAddr& addr) const;
 
     void requestStep(Sp<Request> req);
+    void transmitRequest(const Sp<Request>& req);
+    void notifyRequestTimeout(Request& req);
+    void completeSession(Node& node);
     /* Re-establishes the session with a ping in an Initial envelope, unless one is pending */
     void recoverSession(const Sp<Node>& node);
     /* Sends the requests withheld during the recovery, under the new session */

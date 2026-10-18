@@ -362,6 +362,7 @@ NetworkEngine::clear()
         request.second->node->setExpired();
     }
     requests.clear();
+    cache.clear();
     partial_messages.clear();
 }
 
@@ -369,6 +370,22 @@ void
 NetworkEngine::connectivityChanged(sa_family_t af)
 {
     cache.clearBadNodes(af);
+}
+
+void
+NetworkEngine::notifyRequestTimeout(Request& req)
+{
+    if (not std::exchange(req.timeoutNotified, true) and req.on_expired)
+        req.on_expired(req, false);
+}
+
+bool
+NetworkEngine::needsSession(const Node& node) const
+{
+    if (not transport_)
+        return false;
+    const auto& peer = node.getTransport();
+    return peer ? not peer->ephemeral or peer->recovering : node.getReplyTime() == time_point::min();
 }
 
 void
@@ -388,23 +405,36 @@ NetworkEngine::requestStep(Sp<Request> sreq)
             requests.erase(req.tid);
         return;
     } else if (req.attempt_count == 1) {
-        if (req.on_expired)
-            req.on_expired(req, false);
+        notifyRequestTimeout(req);
+        if (not req.pending())
+            return;
         // The peer may have lost our session or credential: start a new one
         if (const auto& peer = node.getTransport(); peer and peer->ephemeral) {
             peer->resetEphemeral();
             peer->recovering = true;
         }
     }
+    req.withheld = req.type != MessageType::Ping and req.type != MessageType::FindNode and needsSession(node);
+    if (req.withheld) {
+        scheduler.cancel(req.retryJob);
+        recoverSession(req.node);
+        return;
+    }
+    transmitRequest(sreq);
+}
+
+void
+NetworkEngine::transmitRequest(const Sp<Request>& sreq)
+{
+    auto& req = *sreq;
+    if (not req.pending())
+        return;
+    scheduler.cancel(req.retryJob);
+    auto now = scheduler.time();
+    auto& node = *req.node;
     const auto& peer = node.getTransport();
     req.initial = peer and not peer->ephemeral;
-    // After the first contact, payloads stay out of Initial envelopes: a later compromise of the receiver key reveals them
-    req.withheld = peer and peer->recovering and req.type != MessageType::Ping;
-    if (req.withheld)
-        recoverSession(req.node);
-
-    auto err = req.withheld ? 0
-                            : send(node,
+    auto err = send(node,
                                    node.getAddr(),
                                    (char*) req.msg.data(),
                                    req.msg.size(),
@@ -419,14 +449,16 @@ NetworkEngine::requestStep(Sp<Request> sreq)
             ++req.attempt_count;
             req.attempt_duration += req.attempt_duration
                                     + uniform_duration_distribution<>(0ms, ((duration) Node::MAX_RESPONSE_TIME) / 4)(rd);
-            if (not req.withheld and not req.parts.empty()) {
+            if (not req.parts.empty()) {
                 sendValueParts(req.tid, req.parts, node, node.getAddr());
             }
         }
         std::weak_ptr<Request> wreq = sreq;
-        scheduler.add(req.last_try + req.attempt_duration, [this, wreq] {
-            if (auto req = wreq.lock())
+        req.retryJob = scheduler.add(req.last_try + req.attempt_duration, [this, wreq] {
+            if (auto req = wreq.lock()) {
+                req->retryJob.reset();
                 requestStep(req);
+            }
         });
     }
 }
@@ -435,21 +467,60 @@ void
 NetworkEngine::recoverSession(const Sp<Node>& node)
 {
     for (const auto& [tid, req] : node->getRequests())
-        if (req->type == MessageType::Ping and req->pending())
+        if (req->sessionProbe and req->pending())
             return;
-    sendPing(node, {}, {});
+    auto probe = sendPing(node, {}, [this](const Request& req, bool over) {
+        if (over)
+            return;
+        std::vector<Sp<Request>> waiting;
+        for (const auto& [tid, pending] : req.node->getRequests())
+            if (pending->pending() and pending->withheld)
+                waiting.emplace_back(pending);
+        for (const auto& pending : waiting)
+            if (pending->pending())
+                notifyRequestTimeout(*pending);
+    });
+    probe->sessionProbe = true;
+}
+
+void
+NetworkEngine::completeSession(Node& node)
+{
+    if (const auto& peer = node.getTransport()) {
+        if (not peer->ephemeral) {
+            for (const auto& [tid, req] : node.getRequests()) {
+                if (req->pending() and req->withheld) {
+                    recoverSession(req->node);
+                    break;
+                }
+            }
+            return;
+        }
+        peer->recovering = false;
+    }
+    if (not needsSession(node))
+        resumeRequests(node);
 }
 
 void
 NetworkEngine::resumeRequests(Node& node)
 {
+    std::vector<Sp<Request>> waiting;
+    std::vector<Sp<Request>> probes;
     for (const auto& [tid, req] : node.getRequests()) {
-        if (not req->withheld or not req->pending())
+        if (req->pending() and req->sessionProbe)
+            probes.emplace_back(req);
+        else if (req->pending() and req->withheld)
+            waiting.emplace_back(req);
+    }
+    for (const auto& probe : probes)
+        node.cancelRequest(probe);
+    for (const auto& req : waiting) {
+        if (not req->pending() or needsSession(node))
             continue;
         req->withheld = false;
-        req->initial = false;
-        if (send(node, node.getAddr(), (char*) req->msg.data(), req->msg.size()) == 0 and not req->parts.empty())
-            sendValueParts(req->tid, req->parts, node, node.getAddr());
+        req->attempt_duration = ((duration) Node::MAX_RESPONSE_TIME) / 2;
+        transmitRequest(req);
     }
 }
 
@@ -748,6 +819,17 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
         trusted = true;
     }
 
+    if (msg->type == MessageType::Reply or msg->type == MessageType::Error) {
+        auto req = node and node->getAddr() == from ? node->getRequest(msg->tid) : nullptr;
+        if (not req) {
+            auto pending = requests.find(msg->tid);
+            if (pending != requests.end() and pending->second->node->getAddr() == from)
+                req = pending->second;
+        }
+        if (req ? not req->pending() : not (node and node->getSocket(msg->tid)))
+            return;
+    }
+
     if (trusted) {
         node = cache.getNode(msg->id, from, now, true, msg->is_client);
         if (msg->peer)
@@ -857,6 +939,7 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
                 try {
                     deserializeNodes(*msg, from);
                     r.setDone(std::move(*msg));
+                    completeSession(*node);
                 } catch (const DhtProtocolException& e) {
                     if (logger_)
                         logger_->warn("Unable to deserialize nodes {}", e.what());
@@ -1221,8 +1304,6 @@ NetworkEngine::attachPeer(Node& node, const Sp<transport::Peer>& peer)
         current->authorizedUntil = std::max(current->authorizedUntil, peer->authorizedUntil);
         if (peer->ephemeral) {
             current->setEphemeral(*peer->ephemeral, peer->validatedAddress);
-            if (std::exchange(current->recovering, false))
-                resumeRequests(node);
         }
     }
 }
