@@ -53,6 +53,7 @@
 #include <iostream>
 #include <sstream>
 #include <fstream>
+#include <filesystem>
 
 namespace dht {
 namespace tools {
@@ -125,16 +126,22 @@ loadFile(const std::string& path)
 void
 saveFile(const std::string& path, const uint8_t* data, size_t size, bool secret)
 {
-    std::ofstream file(path, std::ios::binary | std::ios::trunc);
-    if (!file)
-        throw std::runtime_error("Can't write file: " + path);
-#ifndef _WIN32
-    if (secret)
-        chmod(path.c_str(), S_IRUSR | S_IWUSR);
-#else
-    (void) secret;
-#endif
-    file.write((const char*) data, size);
+    auto temporary = path + "." + dht::InfoHash::getRandom().toString() + ".tmp";
+    try {
+        std::ofstream file;
+        file.exceptions(std::ios::failbit | std::ios::badbit);
+        file.open(temporary, std::ios::binary | std::ios::trunc);
+        if (secret)
+            std::filesystem::permissions(temporary,
+                                         std::filesystem::perms::owner_read | std::filesystem::perms::owner_write);
+        file.write((const char*) data, size);
+        file.close();
+        std::filesystem::rename(temporary, path);
+    } catch (...) {
+        std::error_code ec;
+        std::filesystem::remove(temporary, ec);
+        throw;
+    }
 }
 
 dht::transport::Key
@@ -152,7 +159,7 @@ loadTransportKey(const std::string& path)
 dht::transport::KeyPair
 loadOrCreateTransportKey(const std::string& path)
 {
-    if (std::ifstream(path).good())
+    if (std::filesystem::exists(std::filesystem::symlink_status(path)))
         return dht::transport::KeyPair::fromSecret(loadTransportKey(path));
     auto key = dht::transport::KeyPair::generate();
     saveFile(path, key.secret.data(), key.secret.size(), true);
@@ -214,6 +221,11 @@ bool
 runNetworkAuthorityCommands(const dht_params& params)
 {
     if (not params.gen_authority.empty()) {
+        for (const auto& suffix : {".key", ".pub"}) {
+            auto path = params.gen_authority + suffix;
+            if (std::filesystem::exists(std::filesystem::symlink_status(path)))
+                throw std::runtime_error("Refusing to overwrite network authority file: " + path);
+        }
         auto authority = dht::transport::Authority::generate();
         auto pub = dht::toHex(authority.pub.data(), authority.pub.size());
         saveFile(params.gen_authority + ".key", authority.secret.data(), authority.secret.size(), true);

@@ -2862,12 +2862,23 @@ Dht::saveState(const std::string& path) const
     auto key = persistTransportKey ? network_engine.getTransportKey() : nullptr;
     if (key)
         state.transport_key.assign(key->secret.begin(), key->secret.end());
-    std::ofstream file(path);
-    if (key) {
+    auto temporary = path + "." + InfoHash::getRandom().toString() + ".tmp";
+    try {
+        std::ofstream file;
+        file.exceptions(std::ios::failbit | std::ios::badbit);
+        file.open(temporary, std::ios::binary | std::ios::trunc);
+        if (key)
+            std::filesystem::permissions(temporary,
+                                         std::filesystem::perms::owner_read | std::filesystem::perms::owner_write);
+        msgpack::pack(file, state);
+        file.close();
+        std::filesystem::rename(temporary, path);
+    } catch (const std::exception& e) {
         std::error_code ec;
-        std::filesystem::permissions(path, std::filesystem::perms::owner_read | std::filesystem::perms::owner_write, ec);
+        std::filesystem::remove(temporary, ec);
+        if (logger_)
+            logger_->warn("Error saving state to {}: {}", path, e.what());
     }
-    msgpack::pack(file, state);
 }
 
 void
