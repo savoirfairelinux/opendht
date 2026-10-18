@@ -1636,7 +1636,7 @@ NetworkEngine::packValueHeader(msgpack::sbuffer& buffer,
 void
 NetworkEngine::sendValueParts(Tid tid, const std::vector<Blob>& svals, const Node& node, const SockAddr& addr)
 {
-    const size_t fragmentSize = transport_ and node.getTransport() ? ENCRYPTED_FRAGMENT_SIZE : MTU;
+    const size_t fragmentSize = transport_ and node.getTransport() ? ENCRYPTED_FRAGMENT_SIZE : FRAGMENT_SIZE;
     msgpack::sbuffer buffer;
     unsigned i = 0;
     for (const auto& v : svals) {
