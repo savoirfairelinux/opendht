@@ -493,9 +493,13 @@ private:
         reason to increase this value. */
     static constexpr unsigned BLACKLISTED_MAX {10};
 
-    static constexpr size_t MTU {1280};
-    /* Value fragment size for encrypted peers, keeping packets close to the MTU */
-    static constexpr size_t ENCRYPTED_FRAGMENT_SIZE {MTU - transport::MAX_ENVELOPE_OVERHEAD};
+    /* IPv6 minimum MTU, less the IPv6 and UDP headers */
+    static constexpr size_t MAX_PACKET_SIZE {1280 - 40 - 8};
+    /* Upper bound of the msgpack framing around a value fragment */
+    static constexpr size_t FRAGMENT_HEADER_SIZE {48};
+    /* Value fragment sizes keeping each packet within the minimum MTU */
+    static constexpr size_t FRAGMENT_SIZE {MAX_PACKET_SIZE - FRAGMENT_HEADER_SIZE};
+    static constexpr size_t ENCRYPTED_FRAGMENT_SIZE {FRAGMENT_SIZE - transport::MAX_ENVELOPE_OVERHEAD};
     static constexpr size_t MAX_PACKET_VALUE_SIZE {600};
     static constexpr size_t MAX_MESSAGE_VALUE_SIZE {56 * 1024};
     static constexpr size_t RX_MAX_EARLY_BYTES {MAX_MESSAGE_VALUE_SIZE + MAX_VALUE_SIZE + 32};
