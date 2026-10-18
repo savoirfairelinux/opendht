@@ -43,35 +43,7 @@ struct NetworkEngine::PartialMessage
     std::vector<std::unique_ptr<ParsedMessage>> early_parts;
     size_t early_bytes {};
     bool request_quota_consumed {};
-    /* parts are all plaintext, or all in envelopes from this sender key */
-    bool encrypted {};
-    transport::Key key {};
-
-    void bind(const ParsedMessage& part)
-    {
-        encrypted = part.encrypted;
-        if (encrypted)
-            key = part.peer->key;
-    }
-    bool accepts(const ParsedMessage& part) const
-    {
-        return encrypted == part.encrypted and (not encrypted or (part.peer and key == part.peer->key));
-    }
 };
-
-/* Value data fragments carry no node ID: parts are bound to the envelope state of the first one.
- * Plaintext from a spoofed address can be forged by anyone, so an encrypted part replaces it. */
-bool
-NetworkEngine::acceptsPart(std::map<PartialMessageKey, PartialMessage>::iterator& it, const ParsedMessage& part)
-{
-    if (it == partial_messages.end() or it->second.accepts(part))
-        return true;
-    if (not part.encrypted or it->second.encrypted)
-        return false;
-    partial_messages.erase(it);
-    it = partial_messages.end();
-    return true;
-}
 
 bool
 NetworkEngine::isExpectedReply(const ParsedMessage& msg, const SockAddr& from)
@@ -82,7 +54,7 @@ NetworkEngine::isExpectedReply(const ParsedMessage& msg, const SockAddr& from)
         return true;
 
     auto node = cache.getNode(msg.id, from.getFamily());
-    if (!node || node->getAddr() != from)
+    if (!node || (not msg.session and node->getAddr() != from))
         return false;
 
     auto pending = node->getRequest(msg.tid);
@@ -687,9 +659,9 @@ NetworkEngine::processMessage(const uint8_t* buf, size_t buflen, SockAddr f)
         msg->peer = makePeer(msg->id, *msg->transport_key);
     }
 
-    const auto& now = scheduler.time();
-
-    // partial value data
+    if (msg->encrypted and not msg->session
+        and (msg->type == MessageType::ValueData or not msg->value_parts.empty()))
+        return;
     if (msg->type == MessageType::ValueData) {
         if (msg->fragment_parts.empty()
             || std::any_of(msg->fragment_parts.begin(), msg->fragment_parts.end(), [](const auto& fragment) {
@@ -698,10 +670,21 @@ NetworkEngine::processMessage(const uint8_t* buf, size_t buflen, SockAddr f)
             limitRequest(*msg, from);
             return;
         }
-        PartialMessageKey key {from, msg->tid};
+    } else if (msg->id == myid or not msg->id) {
+        return;
+    } else if ((msg->type == MessageType::Reply or msg->type == MessageType::Error
+                or msg->type == MessageType::ValueUpdate)
+               and not isExpectedReply(*msg, from)) {
+        return;
+    }
+    if (envelope and envelope->pending)
+        envelope->pending->epoch->store(from, envelope->pending->session);
+
+    const auto& now = scheduler.time();
+    PartialMessageKey key {from, msg->tid, msg->encrypted ? msg->peer->key : transport::Key {}};
+
+    if (msg->type == MessageType::ValueData) {
         auto pmsg_it = partial_messages.find(key);
-        if (not acceptsPart(pmsg_it, *msg))
-            return;
         if (pmsg_it == partial_messages.end()) {
             if (not limitRequest(*msg, from))
                 return;
@@ -711,7 +694,6 @@ NetworkEngine::processMessage(const uint8_t* buf, size_t buflen, SockAddr f)
             pmsg_it->second.start = now;
             pmsg_it->second.last_part = now;
             pmsg_it->second.request_quota_consumed = true;
-            pmsg_it->second.bind(*msg);
             scheduler.add(now + RX_MAX_PACKET_TIME, std::bind(&NetworkEngine::maintainRxBuffer, this, key));
         }
         auto& pmsg = pmsg_it->second;
@@ -750,12 +732,6 @@ NetworkEngine::processMessage(const uint8_t* buf, size_t buflen, SockAddr f)
         return;
     }
 
-    if (msg->id == myid or not msg->id) {
-        if (logger_)
-            logger_->debug("Received message from self");
-        return;
-    }
-
     if (msg->value_parts.empty()) {
         if (msg->type > MessageType::Reply) {
             /* Rate limit requests. */
@@ -774,13 +750,7 @@ NetworkEngine::processMessage(const uint8_t* buf, size_t buflen, SockAddr f)
         return;
     }
 
-    PartialMessageKey partial_key {from, msg->tid};
-    if (msg->type == MessageType::Reply && !isExpectedReply(*msg, from))
-        return;
-
-    auto partial = partial_messages.find(partial_key);
-    if (not acceptsPart(partial, *msg))
-        return;
+    auto partial = partial_messages.find(key);
     const bool request_quota_consumed = partial != partial_messages.end() && !partial->second.msg
                                         && partial->second.request_quota_consumed;
     if (msg->type > MessageType::Reply && !limitRequest(*msg, from, request_quota_consumed)) {
@@ -790,14 +760,13 @@ NetworkEngine::processMessage(const uint8_t* buf, size_t buflen, SockAddr f)
     }
 
     // starting partial message session
-    auto inserted = partial_messages.emplace(partial_key, PartialMessage {});
+    auto inserted = partial_messages.emplace(key, PartialMessage {});
     auto& pmsg = inserted.first->second;
     if (not pmsg.msg) {
         if (inserted.second) {
             pmsg.from = from;
             pmsg.start = now;
-            pmsg.bind(*msg);
-            scheduler.add(now + RX_MAX_PACKET_TIME, std::bind(&NetworkEngine::maintainRxBuffer, this, partial_key));
+            scheduler.add(now + RX_MAX_PACKET_TIME, std::bind(&NetworkEngine::maintainRxBuffer, this, key));
         }
         pmsg.msg = std::move(msg);
         pmsg.last_part = now;
@@ -808,7 +777,7 @@ NetworkEngine::processMessage(const uint8_t* buf, size_t buflen, SockAddr f)
         if (tryCompleteMessage(pmsg, from)) {
             partial_messages.erase(inserted.first);
         } else {
-            scheduler.add(now + RX_TIMEOUT, std::bind(&NetworkEngine::maintainRxBuffer, this, partial_key));
+            scheduler.add(now + RX_TIMEOUT, std::bind(&NetworkEngine::maintainRxBuffer, this, key));
         }
     } else if (logger_)
         logger_->error("Partial message from {} with given TID {} already exists", from.toString(), msg->tid);
@@ -1234,7 +1203,11 @@ NetworkEngine::session(const transport::Peer& peer, const SockAddr& addr)
 }
 
 std::optional<Blob>
-NetworkEngine::openSession(const transport::Header& header, const uint8_t* buf, size_t buflen, const SockAddr& from)
+NetworkEngine::openSession(const transport::Header& header,
+                            const uint8_t* buf,
+                            size_t buflen,
+                            const SockAddr& from,
+                            std::optional<PendingSession>& pending)
 {
     // The sender uses the last ephemeral key we sent to its address
     const std::array<Epoch*, 2> epochs {&epoch_, &previousEpoch_};
@@ -1259,7 +1232,7 @@ NetworkEngine::openSession(const transport::Header& header, const uint8_t* buf, 
         if (not keys)
             return std::nullopt;
         if (auto payload = transport::open(keys->rx, buf, buflen)) {
-            epoch->store(from, Session {ephemeral.pub, header.sender, header.ephemeral, *keys});
+            pending = PendingSession {epoch, {ephemeral.pub, header.sender, header.ephemeral, *keys}};
             return payload;
         }
     }
@@ -1364,6 +1337,7 @@ NetworkEngine::openEnvelope(const uint8_t* buf, size_t buflen, const SockAddr& f
     }
 
     std::optional<Blob> payload;
+    std::optional<PendingSession> pending;
     if (header->type == EnvelopeType::Initial) {
         if (not limitCrypto(header->sender, from))
             return std::nullopt;
@@ -1382,7 +1356,7 @@ NetworkEngine::openEnvelope(const uint8_t* buf, size_t buflen, const SockAddr& f
     } else if (header->type == EnvelopeType::Data) {
         payload = openData(*header, buf, buflen, from);
     } else {
-        payload = openSession(*header, buf, buflen, from);
+        payload = openSession(*header, buf, buflen, from, pending);
     }
     if (not payload) {
         if (logger_)
@@ -1404,7 +1378,7 @@ NetworkEngine::openEnvelope(const uint8_t* buf, size_t buflen, const SockAddr& f
     // Session and Data envelopes were opened with our key for the source address: the sender receives there
     const bool session = header->type != EnvelopeType::Initial;
     peer->setEphemeral(header->ephemeral, session ? from : SockAddr {});
-    return OpenedEnvelope {std::move(peer), std::move(*payload), false, session};
+    return OpenedEnvelope {std::move(peer), std::move(*payload), false, session, std::move(pending)};
 }
 
 void

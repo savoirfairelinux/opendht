@@ -21,6 +21,7 @@
 #include <list>
 #include <memory>
 #include <queue>
+#include <tuple>
 
 namespace dht {
 namespace net {
@@ -558,13 +559,19 @@ private:
         void store(const SockAddr& addr, const Session& session);
         void wipe();
     };
+    struct PendingSession
+    {
+        Epoch* epoch;
+        Session session;
+    };
     void rotateEpoch();
     /* Session with the peer at `addr`, or nullopt for an invalid peer key. Cached if the peer ephemeral key is validated. */
     std::optional<Session> session(const transport::Peer& peer, const SockAddr& addr);
     std::optional<Blob> openSession(const transport::Header& header,
                                     const uint8_t* buf,
                                     size_t buflen,
-                                    const SockAddr& from);
+                                    const SockAddr& from,
+                                    std::optional<PendingSession>& pending);
     /* Fills the sender keys of `header` from the session */
     std::optional<Blob> openData(transport::Header& header, const uint8_t* buf, size_t buflen, const SockAddr& from);
 
@@ -576,6 +583,7 @@ private:
         bool hello {false};
         /* Session or Data envelope: the sender got our ephemeral key for its address */
         bool session {false};
+        std::optional<PendingSession> pending {};
     };
     std::optional<OpenedEnvelope> openEnvelope(const uint8_t* buf, size_t buflen, const SockAddr& from);
     bool authorize(transport::Peer& peer, const uint8_t* credential, size_t size) const;
@@ -657,11 +665,8 @@ private:
     {
         return packValueHeader(buf, values.begin(), values.end());
     }
-    using PartialMessageKey = std::pair<SockAddr, Tid>;
+    using PartialMessageKey = std::tuple<SockAddr, Tid, transport::Key>;
     void maintainRxBuffer(const PartialMessageKey& key);
-    /* Whether `part` may join the partial message at `it`, end() if none. Parts of a message are all
-     * plaintext, or all in envelopes from one sender key: an encrypted part replaces plaintext state. */
-    bool acceptsPart(std::map<PartialMessageKey, PartialMessage>::iterator& it, const ParsedMessage& part);
 
     /*************
      *  Answers  *
