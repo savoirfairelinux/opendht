@@ -277,11 +277,11 @@ For each received packet, a node applies the following checks in order:
    2. Drop it if its type is unknown, or if `pk_sender` is our own key. This rejects reflected packets.
    3. **Hello:**
       - Drop it outside private networks, or if it carries no message.
-      - Apply the rate limiter, then verify the credential: its key must equal `pk_sender` and it must be valid. Drop the packet on failure.
+      - Apply the public-key limit, then verify the credential: its key must equal `pk_sender` and it must be valid. Drop the packet on failure.
       - Continue with steps 4 and 5, then answer as described in [§6.2](#62-hello-private-networks-only). The Hello is not processed any further.
-   4. **Initial:** apply the rate limiter, derive the Initial key from `pk_sender` and `epk_sender`, and decrypt.
-   5. **Session:** first try the keys cached in each epoch for (source address, `pk_sender`, `epk_sender`). Otherwise, for our current epoch then the previous one: apply the rate limiter, derive the keys with our ephemeral key for the source address, and decrypt; on success, cache the keys in that epoch.
-   6. **Data:** decrypt with the session cached for the source address in our current epoch, then in the previous one. Its `pk_sender` and `epk_sender` are those of the session. This needs no key derivation and no rate limiting.
+   4. **Initial:** apply the public-key limit, derive the Initial key from `pk_sender` and `epk_sender`, and decrypt.
+   5. **Session:** first try the keys cached in each epoch for (source address, `pk_sender`, `epk_sender`). Otherwise, apply the public-key limit, then for our current epoch then the previous one: derive the keys with our ephemeral key for the source address, and decrypt; on success, cache the keys in that epoch.
+   6. **Data:** decrypt with the session cached for the source address in our current epoch, then in the previous one. Its `pk_sender` and `epk_sender` are those of the session. This needs no key derivation and no public-key limit.
    7. Drop the packet if it was not decrypted.
    8. **Credential flag:** strip the 105-byte credential. In a private network, verify it as for Hello, unless the peer is already authorized; on success, the peer is authorized until the credential expires.
       **No credential:** in a private network, drop the packet unless the peer is currently authorized.
@@ -308,10 +308,16 @@ For each received packet, a node applies the following checks in order:
   - replies, errors, value updates and writes are dropped;
   - `ping` and `find_node` receive control replies using a transient node record and an Initial envelope to the known key; GET receives a short `401`, even when the plaintext packet is the first advertisement of a matching `k`. Truly keyless legacy GETs remain unchanged.
 
-The rate limiter is the existing per-address and global request limiter. It runs before every expensive public-key operation on unauthenticated input:
-- each Initial envelope (two X25519 operations);
-- each Session envelope from an uncached (address, `pk_sender`, `epk_sender`) triple (five X25519 operations per epoch tried);
-- each Hello (one Ed25519 verification, and the key derivation of its answer).
+**Rate limits.** A node keeps separate budgets, each with a global quota and a quota per source address (per /64 prefix for IPv6):
+- **Session requests:** requests in Session or Data envelopes, whose source address is validated. `Config::max_req_per_sec`, by default 8192 per second, and 1024 per address.
+- **Other requests:** plaintext requests and requests in Initial or Hello envelopes, whose source address can be spoofed. `Config::max_unauth_req_per_sec`, with the same defaults. A flood of them does not affect requests from established peers.
+- **Public-key work:** one unit per packet needing a key agreement or a signature verification, charged before that work. `Config::max_crypto_per_sec`, by default 512 per second, and 64 per address. A unit covers the packet and its answer, including credential verification:
+  - each Initial envelope (two X25519 operations, and five more to answer a request);
+  - each Session envelope from an uncached (address, `pk_sender`, `epk_sender`) triple (five X25519 operations per epoch tried);
+  - each Hello (one Ed25519 verification, and the key derivation of its answer);
+  - each plaintext request from a sender whose key is known or advertised, answered in an Initial envelope (three X25519 operations).
+
+  Initial and uncached Session envelopes from an address where we await an answer, from the sender's node record or from a request sent by address, use a separate budget of the same size. Our own key exchanges thus complete during a flood.
 
 Packets from peers with cached session keys cost one AEAD operation. Each epoch caches at most 16384 sessions, evicting the least recently used one to store a new one. An evicted peer recovers after one retransmission. Only a peer that received a packet from us at its address can take a cache slot, so a slot costs the attacker a reachable address and a round trip.
 
@@ -428,7 +434,7 @@ Against an attacker who controls the network but holds no node's secret key:
   - cannot get answers it can decrypt;
   - is never listed by honest nodes.
 - **Network separation.** Different network IDs derive different keys.
-- **DoS cost.** An unauthenticated Data envelope costs a lookup and at most two AEAD operations. Other envelopes trigger rate-limited key derivations (one per epoch tried) or a signature verification.
+- **DoS cost.** An unauthenticated Data envelope costs a lookup and at most two AEAD operations. Other envelopes pass the public-key limit before any key derivation or signature verification.
 
 ### 9.2 Limitations
 
@@ -461,7 +467,7 @@ Each item states who it applies to, what that party can do, and what it cannot d
   Routing targets and control traffic remain exposed to a later compromise of the receiver's static key. Application GET/SELECT and write payloads do not enter Initial envelopes. Answers to Initial envelopes are Session envelopes, and are forward-secret.
 
 - **No replay protection.** Nodes keep no record of received nonces. A captured envelope is accepted again as long as the receiver holds the keys that open it:
-  - **Initial envelopes** open from any address, for as long as the receiver's static key is unchanged. A replayed `ping` or `find_node` is answered again, to the replayer's source address, under keys the replayer cannot derive. GET and writes are refused with `401`, value updates are dropped, and replies and errors are accepted only for a request pending toward that address ([§6.5](#65-receiving), step 7). Reflection remains for control replies: anyone holding a captured Initial request, or a Hello, can make the receiver send an encrypted answer to an address of its choice. In a private network this includes outsiders, because the captured packet carries its sender's credential. The rate limiter bounds request frequency, not reply size; node-list packet-size limits remain separate work.
+  - **Initial envelopes** open from any address, for as long as the receiver's static key is unchanged. A replayed `ping` or `find_node` is answered again, to the replayer's source address, under keys the replayer cannot derive. GET and writes are refused with `401`, value updates are dropped, and replies and errors are accepted only for a request pending toward that address ([§6.5](#65-receiving), step 7). Reflection remains for control replies: anyone holding a captured Initial request, or a Hello, can make the receiver send an encrypted answer to an address of its choice. In a private network this includes outsiders, because the captured packet carries its sender's credential. Rate limits bound request frequency, not reply size; node-list packet-size limits remain separate work.
   - **Session and Data envelopes** open only from their original source address, which the replayer must spoof, and only until the epoch that opened them is erased: at most one hour. A replayed request is processed again as its sender, including a write the sender did make: a repeated `put`, `refresh` or `listen` extends the life of a value or of a listener. A replayed value update is accepted while its listen is open, and repeats it: the values it lists are added or refreshed again, and the expirations it announces are signaled again. A replayed reply or error is accepted only if its transaction ID is pending. Transaction IDs are 32-bit counters per peer with a random start, so an old ID is pending again only after $2^{32}$ requests to that peer.
 
 - **On-path attackers get write authorization for the addresses they observe.** Applies to an attacker that reads the packets we send to an address `addr`. Our ephemeral key `epk(addr)` is in the clear header of every Initial and Session envelope we send there: at each first contact, retransmission and epoch rotation. Data envelopes do not carry it.
@@ -476,9 +482,10 @@ Each item states who it applies to, what that party can do, and what it cannot d
 
 - **No Sybil resistance.** An identity costs one key generation. Encryption prevents choosing a node ID ([§9.1](#91-properties)), not creating many of them. In public networks, legacy nodes still choose their IDs freely.
 
-- **Denial of service.** Public-key operations on unauthenticated packets are bounded only by the rate limiter, which is shared with request processing: by default 8192 packets per second globally, and 1024 per source address.
-  - An attacker spending the global budget from many or spoofed addresses drops every rate-limited packet: Initial, Hello and uncached Session envelopes from new peers, and requests from established peers, as in the legacy protocol. Opening Data envelopes and cached sessions is never rate limited.
-  - A budgeted Initial envelope costs two X25519 operations, and a Session envelope five per epoch tried, far more than a legacy request, so the default budget can exceed the CPU available to a node. `Config::max_req_per_sec` lowers it.
+- **Denial of service.** Public-key operations on unauthenticated packets are bounded by the public-key limit ([§6.5](#65-receiving)): by default 512 packets per second globally, and 64 per source address or IPv6 /64 prefix.
+  - An attacker spending that budget from many or spoofed addresses drops Initial, Hello and uncached Session envelopes from new peers, and plaintext requests from keyed senders. Answers to our own requests have a separate budget, which only an attacker spoofing the addresses of the peers we contact can spend. Data envelopes, cached sessions and requests from established peers are unaffected.
+  - Likewise, a flood of plaintext or Initial requests drops other requests without a session, as in the legacy protocol, but not those of established peers.
+  - A unit stands for three to ten X25519 operations, so the default allows about 5000 per second. `Config::max_crypto_per_sec` adapts it to the CPU available.
   - An attacker reachable at many addresses, for example an IPv6 prefix, can fill the session cache of an epoch: one slot costs it one round trip. Evicted peers have their Data envelopes dropped until their next retransmission, which starts a new session.
 
 - **No revocation.** Applies to private networks. A credential cannot be revoked before it expires. A peer that presented a valid credential stays authorized until that credential's expiry, so a compromised or excluded node keeps participating until then. To exclude it earlier, every other node must stop trusting the authority that signed its credential. That also excludes every other node that only holds credentials from that authority. Keep validity periods short.
