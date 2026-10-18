@@ -27,6 +27,7 @@ class NetworkEngineTester : public CppUnit::TestFixture
     CPPUNIT_TEST(testGetRequestReuse);
     CPPUNIT_TEST(testFilteredProjectionDoesNotWaitForUnrelatedPeer);
     CPPUNIT_TEST(testFindNodeRequestReuse);
+    CPPUNIT_TEST(testNodeTransportState);
     CPPUNIT_TEST(testTransportDisabledKeepsLegacyWire);
     CPPUNIT_TEST(testTransportEncryptsAfterKeyExchange);
     CPPUNIT_TEST(testTransportLegacyPeerStaysPlaintext);
@@ -80,6 +81,7 @@ public:
     void testGetRequestReuse();
     void testFilteredProjectionDoesNotWaitForUnrelatedPeer();
     void testFindNodeRequestReuse();
+    void testNodeTransportState();
     void testTransportDisabledKeepsLegacyWire();
     void testTransportEncryptsAfterKeyExchange();
     void testTransportLegacyPeerStaysPlaintext();

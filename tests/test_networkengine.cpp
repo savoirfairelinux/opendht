@@ -37,6 +37,7 @@ NetworkEngineTester::testDisabledOnMsvc()
 
 #include "opendht/node.h"
 #include "opendht/network_utils.h"
+#include "opendht/transport.h"
 #include "opendht/utils.h"
 #include "opendht/value.h"
 
@@ -68,6 +69,7 @@ NetworkEngineTester::testDisabledOnMsvc()
 #include "../src/node_cache.cpp"
 #include "../src/network_engine.cpp"
 
+#include <sstream>
 #include <string>
 
 namespace test {
@@ -289,6 +291,46 @@ NetworkEngineTester::setUp()
 void
 NetworkEngineTester::tearDown()
 {}
+
+void
+NetworkEngineTester::testNodeTransportState()
+{
+    std::mt19937_64 rd(0);
+    const auto id = InfoHash::getRandom(rd);
+    const auto address = makeIPv4("127.0.0.2", 5000);
+    Node node(id, address, rd);
+    const auto prefix = fmt::format("{} {:<21}", id, address.toString());
+    auto check = [&](const std::string& state) {
+        CPPUNIT_ASSERT_EQUAL(prefix + " [transport: " + state + "]", node.toString());
+        std::ostringstream out;
+        out << node;
+        CPPUNIT_ASSERT_EQUAL(node.toString(), out.str());
+    };
+
+    check("plaintext");
+    auto peer = std::make_shared<transport::Peer>(transport::KeyPair::generate().pub);
+    node.setTransport(peer);
+    check("key-known");
+
+    const auto ephemeral = transport::KeyPair::generate().pub;
+    peer->setEphemeral(ephemeral);
+    check("key-known");
+    peer->setEphemeral(ephemeral, makeIPv4("127.0.0.3", 5000));
+    check("key-known");
+    peer->setEphemeral(ephemeral, address);
+    check("authenticated");
+
+    peer->authorizedUntil = std::chrono::system_clock::now() + std::chrono::hours(1);
+    check("authenticated, authorized");
+    peer->authorizedUntil = std::chrono::system_clock::now() - std::chrono::hours(1);
+    check("authenticated, authorization-expired");
+
+    peer->authorizedUntil = {};
+    peer->resetEphemeral();
+    check("key-known");
+    node.setTransport({});
+    check("plaintext");
+}
 
 void
 NetworkEngineTester::testCompletesPartialSessionWithDataBeforeHeader()
