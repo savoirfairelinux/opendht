@@ -301,35 +301,36 @@ NetworkEngineTester::testNodeTransportState()
     Node node(id, address, rd);
     const auto prefix = fmt::format("{} {:<21}", id, address.toString());
     auto check = [&](const std::string& state) {
-        CPPUNIT_ASSERT_EQUAL(prefix + " [transport: " + state + "]", node.toString());
+        CPPUNIT_ASSERT_EQUAL(prefix + " " + state, node.toString());
+        CPPUNIT_ASSERT_EQUAL(prefix.size() + size_t {5}, node.toString().size());
         std::ostringstream out;
         out << node;
         CPPUNIT_ASSERT_EQUAL(node.toString(), out.str());
     };
 
-    check("plaintext");
+    check("[P-]");
     auto peer = std::make_shared<transport::Peer>(transport::KeyPair::generate().pub);
     node.setTransport(peer);
-    check("key-known");
+    check("[K-]");
 
     const auto ephemeral = transport::KeyPair::generate().pub;
     peer->setEphemeral(ephemeral);
-    check("key-known");
+    check("[K-]");
     peer->setEphemeral(ephemeral, makeIPv4("127.0.0.3", 5000));
-    check("key-known");
+    check("[K-]");
     peer->setEphemeral(ephemeral, address);
-    check("authenticated");
+    check("[A-]");
 
     peer->authorizedUntil = std::chrono::system_clock::now() + std::chrono::hours(1);
-    check("authenticated, authorized");
+    check("[A+]");
     peer->authorizedUntil = std::chrono::system_clock::now() - std::chrono::hours(1);
-    check("authenticated, authorization-expired");
+    check("[A!]");
 
     peer->authorizedUntil = {};
     peer->resetEphemeral();
-    check("key-known");
+    check("[K-]");
     node.setTransport({});
-    check("plaintext");
+    check("[P-]");
 }
 
 void
