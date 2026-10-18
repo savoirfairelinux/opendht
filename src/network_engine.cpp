@@ -169,7 +169,15 @@ NetworkEngine::NetworkEngine(InfoHash& myid,
     , logger_(log)
     , rd(rand)
     , cache(rd)
-    , rate_limiter(config.max_req_per_sec)
+    , requestLimiter_(config.max_req_per_sec, config.max_peer_req_per_sec)
+    , unauthLimiter_(config.max_unauth_req_per_sec ? config.max_unauth_req_per_sec : config.max_req_per_sec,
+                     config.max_peer_unauth_req_per_sec ? config.max_peer_unauth_req_per_sec
+                                                        : config.max_peer_req_per_sec)
+    , cryptoLimiter_(config.max_crypto_per_sec ? config.max_crypto_per_sec : config.max_req_per_sec,
+                     config.max_peer_crypto_per_sec ? config.max_peer_crypto_per_sec : config.max_peer_req_per_sec)
+    , replyCryptoLimiter_(config.max_crypto_per_sec ? config.max_crypto_per_sec : config.max_req_per_sec,
+                          config.max_peer_crypto_per_sec ? config.max_peer_crypto_per_sec
+                                                         : config.max_peer_req_per_sec)
     , scheduler(scheduler)
 {
     epoch_.secret = transport::randomSecret();
@@ -542,25 +550,37 @@ NetworkEngine::sendRequest(const Sp<Request>& request)
 
 /* Rate control for requests we receive. */
 bool
-NetworkEngine::rateLimit(const SockAddr& addr)
+NetworkEngine::limitRequest(const ParsedMessage& msg, const SockAddr& from, bool charged)
 {
     const auto& now = scheduler.time();
-
-    // occasional IP limiter maintenance (a few times every second at max rate)
-    if (limiter_maintenance++ == config.max_peer_req_per_sec) {
-        for (auto it = address_rate_limiter.begin(); it != address_rate_limiter.end();) {
-            if (it->second.maintain(now) == 0)
-                address_rate_limiter.erase(it++);
-            else
-                ++it;
-        }
-        limiter_maintenance = 0;
+    if (not charged and not(msg.session ? requestLimiter_ : unauthLimiter_).limit(from, now))
+        return false;
+    if (not transport_ or msg.encrypted or msg.type < MessageType::Ping or msg.type > MessageType::Listen)
+        return true;
+    if (not msg.peer) {
+        auto node = cache.getNode(msg.id, from.getFamily());
+        if (not node or not node->getTransport())
+            return true;
     }
+    return cryptoLimiter_.limit(from, now);
+}
 
-    // invoke per IP, then global rate limiter
-    return (config.max_peer_req_per_sec < 0
-            or address_rate_limiter.emplace(addr, config.max_peer_req_per_sec).first->second.limit(now))
-           and rate_limiter.limit(now);
+bool
+NetworkEngine::limitCrypto(const transport::Key& sender, const SockAddr& from)
+{
+    auto& limiter = expectsReply(sender, from) ? replyCryptoLimiter_ : cryptoLimiter_;
+    return limiter.limit(from, scheduler.time());
+}
+
+bool
+NetworkEngine::expectsReply(const transport::Key& sender, const SockAddr& from)
+{
+    if (auto node = cache.getNode(transport::nodeId(sender), from.getFamily()))
+        if (node->getAddr() == from and node->isPendingMessage())
+            return true;
+    return std::any_of(requests.begin(), requests.end(), [&](const auto& r) {
+        return r.second->pending() and r.second->node->getAddr() == from;
+    });
 }
 
 bool
@@ -675,7 +695,7 @@ NetworkEngine::processMessage(const uint8_t* buf, size_t buflen, SockAddr f)
             || std::any_of(msg->fragment_parts.begin(), msg->fragment_parts.end(), [](const auto& fragment) {
                    return fragment.second.second.empty();
                })) {
-            rateLimit(from);
+            limitRequest(*msg, from);
             return;
         }
         PartialMessageKey key {from, msg->tid};
@@ -683,7 +703,7 @@ NetworkEngine::processMessage(const uint8_t* buf, size_t buflen, SockAddr f)
         if (not acceptsPart(pmsg_it, *msg))
             return;
         if (pmsg_it == partial_messages.end()) {
-            if (!rateLimit(from))
+            if (not limitRequest(*msg, from))
                 return;
             auto inserted = partial_messages.emplace(key, PartialMessage {});
             pmsg_it = inserted.first;
@@ -739,7 +759,7 @@ NetworkEngine::processMessage(const uint8_t* buf, size_t buflen, SockAddr f)
     if (msg->value_parts.empty()) {
         if (msg->type > MessageType::Reply) {
             /* Rate limit requests. */
-            if (!rateLimit(from)) {
+            if (not limitRequest(*msg, from)) {
                 if (logger_)
                     logger_->warn("Dropping request due to rate limiting");
                 return;
@@ -763,13 +783,10 @@ NetworkEngine::processMessage(const uint8_t* buf, size_t buflen, SockAddr f)
         return;
     const bool request_quota_consumed = partial != partial_messages.end() && !partial->second.msg
                                         && partial->second.request_quota_consumed;
-    if (msg->type > MessageType::Reply && !request_quota_consumed) {
-        /* Rate limit requests. */
-        if (!rateLimit(from)) {
-            if (logger_)
-                logger_->warn("Dropping request due to rate limiting");
-            return;
-        }
+    if (msg->type > MessageType::Reply && !limitRequest(*msg, from, request_quota_consumed)) {
+        if (logger_)
+            logger_->warn("Dropping request due to rate limiting");
+        return;
     }
 
     // starting partial message session
@@ -1234,11 +1251,12 @@ NetworkEngine::openSession(const transport::Header& header, const uint8_t* buf, 
         if (auto cached = epoch->find(from, header.sender, header.ephemeral))
             if (auto payload = transport::open(cached->keys.rx, buf, buflen))
                 return payload;
+    bool charged = false;
     for (auto* epoch : epochs) {
         if (not *epoch or epoch->find(from, header.sender, header.ephemeral))
             continue;
-        // Key agreement is the costly part of an unknown sender
-        if (not rateLimit(from))
+        // Key agreement is the costly part of an unknown sender, charged once per packet
+        if (not std::exchange(charged, true) and not limitCrypto(header.sender, from))
             return std::nullopt;
         auto ephemeral = epoch->ephemeral(from);
         auto keys = transport::sessionKeys(config.transport.key,
@@ -1349,7 +1367,7 @@ NetworkEngine::openEnvelope(const uint8_t* buf, size_t buflen, const SockAddr& f
         // Unauthenticated: its state is only used to answer, never kept
         constexpr size_t credentialEnd = transport::HEADER_SIZE + CREDENTIAL_SIZE;
         auto peer = std::make_shared<transport::Peer>(header->sender);
-        if (not isPrivate or buflen <= credentialEnd or not rateLimit(from)
+        if (not isPrivate or buflen <= credentialEnd or not cryptoLimiter_.limit(from, scheduler.time())
             or not authorize(*peer, buf + transport::HEADER_SIZE, CREDENTIAL_SIZE))
             return std::nullopt;
         peer->setEphemeral(header->ephemeral);
@@ -1358,7 +1376,7 @@ NetworkEngine::openEnvelope(const uint8_t* buf, size_t buflen, const SockAddr& f
 
     std::optional<Blob> payload;
     if (header->type == EnvelopeType::Initial) {
-        if (not rateLimit(from))
+        if (not limitCrypto(header->sender, from))
             return std::nullopt;
         if (auto key = transport::initialReceiveKey(config.transport.key,
                                                     header->sender,
@@ -1396,7 +1414,7 @@ NetworkEngine::openEnvelope(const uint8_t* buf, size_t buflen, const SockAddr& f
 void
 NetworkEngine::processHello(const ParsedMessage& msg, const Sp<transport::Peer>& peer, const SockAddr& from)
 {
-    if (msg.type != MessageType::Ping)
+    if (msg.type != MessageType::Ping or not unauthLimiter_.limit(from, scheduler.time()))
         return;
     ++in_stats.ping;
     // Answer without adding the claimed node: only the owner of its key can read the answer

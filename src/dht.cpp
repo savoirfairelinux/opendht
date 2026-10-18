@@ -28,6 +28,7 @@ constexpr duration Dht::LISTEN_EXPIRE_TIME;
 constexpr duration Dht::LISTEN_EXPIRE_TIME_PUBLIC;
 constexpr duration Dht::REANNOUNCE_MARGIN;
 static constexpr size_t MAX_REQUESTS_PER_SEC {8 * 1024};
+static constexpr size_t MAX_CRYPTO_PER_SEC {512};
 static constexpr duration BOOTSTRAP_PERIOD_MAX {std::chrono::hours(24)};
 
 NodeStatus
@@ -1966,9 +1967,20 @@ fromDhtConfig(const Config& config)
 {
     net::NetworkConfig netConf;
     netConf.network = config.network;
+    // global limiting should be triggered by at least 8 different IPs
+    auto peerLimit = [](ssize_t global, ssize_t peer) -> ssize_t {
+        return peer ? peer : (global < 0 ? -1 : global / 8);
+    };
     netConf.max_req_per_sec = config.max_req_per_sec ? config.max_req_per_sec : MAX_REQUESTS_PER_SEC;
-    netConf.max_peer_req_per_sec = config.max_peer_req_per_sec ? config.max_peer_req_per_sec
-                                                               : netConf.max_req_per_sec / 8;
+    netConf.max_peer_req_per_sec = peerLimit(netConf.max_req_per_sec, config.max_peer_req_per_sec);
+    // left at 0, the engine uses the limits above
+    netConf.max_unauth_req_per_sec = config.max_unauth_req_per_sec;
+    netConf.max_peer_unauth_req_per_sec = config.max_unauth_req_per_sec
+                                              ? peerLimit(config.max_unauth_req_per_sec,
+                                                          config.max_peer_unauth_req_per_sec)
+                                              : config.max_peer_unauth_req_per_sec;
+    netConf.max_crypto_per_sec = config.max_crypto_per_sec ? config.max_crypto_per_sec : MAX_CRYPTO_PER_SEC;
+    netConf.max_peer_crypto_per_sec = peerLimit(netConf.max_crypto_per_sec, config.max_peer_crypto_per_sec);
     netConf.is_client = config.client_mode;
     netConf.transport = config.transport;
     auto& transport = netConf.transport;
