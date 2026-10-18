@@ -3,6 +3,7 @@
 #pragma once
 
 #include "net.h"
+#include "scheduler.h"
 #include "value.h"
 
 namespace dht {
@@ -133,6 +134,9 @@ private:
 
     void clear()
     {
+        if (retryJob)
+            retryJob->cancel();
+        retryJob.reset();
         on_done = {};
         on_error = {};
         on_expired = {};
@@ -159,6 +163,9 @@ private:
     bool initial {false};
     /* the last attempt waited for the session recovery: never sent in an Initial envelope */
     bool withheld {false};
+    bool sessionProbe {false};
+    bool timeoutNotified {false};
+    Sp<Scheduler::Job> retryJob;
 };
 
 } /* namespace net  */

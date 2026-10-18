@@ -10,6 +10,12 @@ constexpr size_t CLEANUP_FREQ {4 * 1024};
 
 NodeCache::~NodeCache()
 {
+    clear();
+}
+
+void
+NodeCache::clear()
+{
     cache_4.setExpired();
     cache_6.setExpired();
 }
