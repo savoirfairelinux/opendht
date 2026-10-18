@@ -1182,8 +1182,6 @@ NetworkEngine::Epoch::store(const SockAddr& addr, const Session& session)
     if (it == sessions.end()) {
         if (sessions.size() >= MAX_SESSIONS) {
             auto evicted = sessions.find(used.back());
-            transport::wipe(evicted->second.session.keys.tx);
-            transport::wipe(evicted->second.session.keys.rx);
             sessions.erase(evicted);
             used.pop_back();
         }
@@ -1191,8 +1189,6 @@ NetworkEngine::Epoch::store(const SockAddr& addr, const Session& session)
         sessions.emplace(addr, Entry {session, used.begin()});
         return;
     }
-    transport::wipe(it->second.session.keys.tx);
-    transport::wipe(it->second.session.keys.rx);
     it->second.session = session;
     used.splice(used.begin(), used, it->second.used);
 }
@@ -1200,11 +1196,6 @@ NetworkEngine::Epoch::store(const SockAddr& addr, const Session& session)
 void
 NetworkEngine::Epoch::wipe()
 {
-    for (auto& [addr, entry] : sessions) {
-        (void) addr;
-        transport::wipe(entry.session.keys.tx);
-        transport::wipe(entry.session.keys.rx);
-    }
     sessions.clear();
     used.clear();
     transport::wipe(secret);
@@ -1271,8 +1262,6 @@ NetworkEngine::openSession(const transport::Header& header, const uint8_t* buf, 
             epoch->store(from, Session {ephemeral.pub, header.sender, header.ephemeral, *keys});
             return payload;
         }
-        transport::wipe(keys->tx);
-        transport::wipe(keys->rx);
     }
     return std::nullopt;
 }
@@ -1381,8 +1370,15 @@ NetworkEngine::openEnvelope(const uint8_t* buf, size_t buflen, const SockAddr& f
         if (auto key = transport::initialReceiveKey(config.transport.key,
                                                     header->sender,
                                                     header->ephemeral,
-                                                    config.network))
-            payload = transport::open(*key, buf, buflen);
+                                                    config.network)) {
+            try {
+                payload = transport::open(*key, buf, buflen);
+            } catch (...) {
+                transport::wipe(*key);
+                throw;
+            }
+            transport::wipe(*key);
+        }
     } else if (header->type == EnvelopeType::Data) {
         payload = openData(*header, buf, buflen, from);
     } else {
@@ -1463,8 +1459,6 @@ NetworkEngine::send(const Node& node, const SockAddr& addr, const char* buf, siz
                                                     data,
                                                     len,
                                                     isPrivate ? credential_ : Blob {});
-            transport::wipe(s->keys.tx);
-            transport::wipe(s->keys.rx);
         }
         if (not packet.empty())
             return sendRaw(addr, packet.data(), packet.size(), confirmed);
