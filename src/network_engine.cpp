@@ -1337,6 +1337,23 @@ NetworkEngine::send(const Node& node, const SockAddr& addr, const char* buf, siz
     return sendRaw(addr, data, len, confirmed);
 }
 
+size_t
+NetworkEngine::envelopeOverhead(const Node& node, const SockAddr& addr)
+{
+    if (not transport_)
+        return 0;
+    const size_t credential = config.transport.isPrivate() ? credential_.size() : 0;
+    if (const auto& peer = node.getTransport()) {
+        if (peer->ephemeral and peer->validatedAddress and peer->validatedAddress == addr)
+            if (auto s = epoch_.find(addr, peer->key, *peer->ephemeral); s and s->confirmed)
+                return transport::DATA_ENVELOPE_OVERHEAD;
+        return transport::ENVELOPE_OVERHEAD + credential;
+    }
+    if (config.transport.isPrivate() and not node.id)
+        return transport::HEADER_SIZE + credential;
+    return 0;
+}
+
 Sp<Request>
 NetworkEngine::sendPing(const Sp<Node>& node, RequestCb&& on_done, RequestExpiredCb&& on_expired)
 {
@@ -1636,7 +1653,7 @@ NetworkEngine::packValueHeader(msgpack::sbuffer& buffer,
 void
 NetworkEngine::sendValueParts(Tid tid, const std::vector<Blob>& svals, const Node& node, const SockAddr& addr)
 {
-    const size_t fragmentSize = transport_ and node.getTransport() ? ENCRYPTED_FRAGMENT_SIZE : FRAGMENT_SIZE;
+    const size_t fragmentSize = FRAGMENT_SIZE - envelopeOverhead(node, addr);
     msgpack::sbuffer buffer;
     unsigned i = 0;
     for (const auto& v : svals) {

@@ -497,7 +497,7 @@ private:
     static constexpr size_t MAX_PACKET_SIZE {1280 - 40 - 8};
     /* Upper bound of the msgpack framing around a value fragment */
     static constexpr size_t FRAGMENT_HEADER_SIZE {48};
-    /* Value fragment sizes keeping each packet within the minimum MTU */
+    /* Value fragment sizes keeping each packet within the minimum MTU, less the envelope */
     static constexpr size_t FRAGMENT_SIZE {MAX_PACKET_SIZE - FRAGMENT_HEADER_SIZE};
     static constexpr size_t ENCRYPTED_FRAGMENT_SIZE {FRAGMENT_SIZE - transport::MAX_ENVELOPE_OVERHEAD};
     static constexpr size_t MAX_PACKET_VALUE_SIZE {600};
@@ -622,6 +622,8 @@ private:
     int sendRaw(const SockAddr& addr, const uint8_t* buf, size_t len, bool confirmed = false);
     // send to a node, encrypted if supported
     int send(const Node& node, const SockAddr& addr, const char* buf, size_t len, bool confirmed = false);
+    /* Bytes added by the envelope that send() uses for the node at `addr` */
+    size_t envelopeOverhead(const Node& node, const SockAddr& addr);
 
     void sendValueParts(Tid tid, const std::vector<Blob>& svals, const Node& node, const SockAddr& addr);
     std::vector<Blob> packValueHeader(msgpack::sbuffer&,
