@@ -38,6 +38,7 @@ class NetworkEngineTester : public CppUnit::TestFixture
     CPPUNIT_TEST(testTransportHelloIsUnauthenticated);
     CPPUNIT_TEST(testTransportSessionAuthorizesWrites);
     CPPUNIT_TEST(testTransportInitialWriteIsUnauthorized);
+    CPPUNIT_TEST(testTransportUnvalidatedGetIsUnauthorized);
     CPPUNIT_TEST(testTransportEphemeralBoundToAddress);
     CPPUNIT_TEST(testTransportRestartedPeerReconnects);
     CPPUNIT_TEST(testTransportSpoofedInitialKeepsSession);
@@ -93,6 +94,7 @@ public:
     void testTransportHelloIsUnauthenticated();
     void testTransportSessionAuthorizesWrites();
     void testTransportInitialWriteIsUnauthorized();
+    void testTransportUnvalidatedGetIsUnauthorized();
     void testTransportEphemeralBoundToAddress();
     void testTransportRestartedPeerReconnects();
     void testTransportSpoofedInitialKeepsSession();

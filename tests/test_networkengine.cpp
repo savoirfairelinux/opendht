@@ -785,6 +785,7 @@ struct TransportTestNode
             [](Sp<Node>) { return net::RequestAnswer {}; },
             [](Sp<Node>, const InfoHash&, want_t) { return net::RequestAnswer {}; },
             [this](Sp<Node>, const InfoHash&, want_t, const Query&) {
+                ++gets;
                 net::RequestAnswer answer {};
                 answer.values = values;
                 return answer;
@@ -841,6 +842,7 @@ struct TransportTestNode
     std::unique_ptr<net::NetworkEngine> engine;
     int newNodes {0};
     int listens {0};
+    int gets {0};
     /* answered to get requests */
     std::vector<Sp<Value>> values;
     /* held by the routing table in a Dht */
@@ -1463,6 +1465,67 @@ NetworkEngineTester::testTransportInitialWriteIsUnauthorized()
                                    listen.size());
     b.engine->processMessage(session.data(), session.size(), from);
     CPPUNIT_ASSERT_EQUAL(1, b.listens);
+}
+
+void
+NetworkEngineTester::testTransportUnvalidatedGetIsUnauthorized()
+{
+    TransportTestNode receiver("127.0.0.3", {}, 2);
+    auto from = makeIPv4("127.0.0.4", 4222);
+    auto sender = transport::KeyPair::generate();
+    auto ephemeral = transport::KeyPair::generate();
+    receiver.values = {std::make_shared<Value>(Blob(65536, 'x'))};
+    for (bool select : {false, true}) {
+        msgpack::sbuffer buffer;
+        msgpack::packer<msgpack::sbuffer> pk(&buffer);
+        pk.pack_map(5);
+        pk.pack(KEY_A);
+        pk.pack_map(select ? 3 : 2);
+        pk.pack(KEY_REQ_ID);
+        pk.pack(transport::nodeId(sender.pub));
+        pk.pack(KEY_REQ_H);
+        pk.pack(receiver.id);
+        if (select) {
+            Query query;
+            query.select.field(Value::Field::Id);
+            pk.pack(KEY_Q);
+            pk.pack(query);
+        }
+        pk.pack(KEY_Q);
+        pk.pack(QUERY_GET);
+        pk.pack(KEY_TID);
+        pk.pack(Tid(42));
+        pk.pack(KEY_Y);
+        pk.pack(KEY_Q);
+        pk.pack(KEY_TRANSPORT);
+        pk.pack_bin(sender.pub.size());
+        pk.pack_bin_body((const char*) sender.pub.data(), sender.pub.size());
+        auto initial = transport::seal(*transport::initialSendKey(sender, ephemeral, receiver.key.pub, 0),
+                                       transport::EnvelopeType::Initial,
+                                       sender.pub,
+                                       ephemeral.pub,
+                                       (const uint8_t*) buffer.data(),
+                                       buffer.size());
+        for (bool encrypted : {true, false}) {
+            if (encrypted)
+                receiver.engine->processMessage(initial.data(), initial.size(), from);
+            else
+                receiver.engine->processMessage((const uint8_t*) buffer.data(), buffer.size(), from);
+            CPPUNIT_ASSERT_EQUAL(0, receiver.gets);
+            auto replies = receiver.takeSent();
+            CPPUNIT_ASSERT_EQUAL(size_t(1), replies.size());
+            CPPUNIT_ASSERT(replies[0].data.size() < 512);
+            auto keys = *transport::sessionKeys(sender, ephemeral, receiver.key.pub, ephemeralKey(replies[0]), 0);
+            auto payload = transport::open(keys.rx, replies[0].data.data(), replies[0].data.size());
+            if (encrypted) {
+                CPPUNIT_ASSERT(payload);
+                ParsedMessage error;
+                parseMessage(error, *payload);
+                CPPUNIT_ASSERT(error.type == MessageType::Error);
+                CPPUNIT_ASSERT_EQUAL(DhtProtocolException::UNAUTHORIZED, error.error_code);
+            }
+        }
+    }
 }
 
 void
