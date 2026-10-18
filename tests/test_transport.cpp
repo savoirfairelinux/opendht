@@ -8,6 +8,9 @@
 
 #include <msgpack.hpp>
 
+#include <algorithm>
+#include <new>
+
 using namespace std::chrono_literals;
 
 namespace test {
@@ -71,6 +74,25 @@ TransportTester::testSessionKeys()
         CPPUNIT_ASSERT(other);
         CPPUNIT_ASSERT(other->tx != ab->tx and other->rx != ab->rx);
     }
+}
+
+void
+TransportTester::testSessionKeysErasure()
+{
+    alignas(SessionKeys) std::array<uint8_t, sizeof(SessionKeys)> storage {};
+    Key tx, rx;
+    tx.fill(0xA5);
+    rx.fill(0x5A);
+    auto keys = new (storage.data()) SessionKeys {tx, rx};
+    SessionKeys copied = *keys;
+    SessionKeys assigned {};
+    assigned = *keys;
+
+    keys->~SessionKeys();
+
+    CPPUNIT_ASSERT(std::all_of(storage.begin(), storage.end(), [](uint8_t byte) { return byte == 0; }));
+    CPPUNIT_ASSERT(copied.tx == tx and copied.rx == rx);
+    CPPUNIT_ASSERT(assigned.tx == tx and assigned.rx == rx);
 }
 
 void

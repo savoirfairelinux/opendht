@@ -12,6 +12,7 @@ class TransportTester : public CppUnit::TestFixture
     CPPUNIT_TEST_SUITE(TransportTester);
     CPPUNIT_TEST(testX25519Rfc7748);
     CPPUNIT_TEST(testSessionKeys);
+    CPPUNIT_TEST(testSessionKeysErasure);
     CPPUNIT_TEST(testInitialKey);
     CPPUNIT_TEST(testRejectsLowOrderKey);
     CPPUNIT_TEST(testNodeId);
@@ -32,6 +33,7 @@ public:
 
     void testX25519Rfc7748();
     void testSessionKeys();
+    void testSessionKeysErasure();
     void testInitialKey();
     void testRejectsLowOrderKey();
     void testNodeId();
