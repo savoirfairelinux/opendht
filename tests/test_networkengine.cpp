@@ -783,7 +783,10 @@ struct TransportTestNode
             },
             [](const InfoHash&, const SockAddr&) {},
             [](Sp<Node>) { return net::RequestAnswer {}; },
-            [](Sp<Node>, const InfoHash&, want_t) { return net::RequestAnswer {}; },
+            [this](Sp<Node>, const InfoHash&, want_t) {
+                ++finds;
+                return routing;
+            },
             [this](Sp<Node>, const InfoHash&, want_t, const Query&) {
                 ++gets;
                 net::RequestAnswer answer {};
@@ -843,6 +846,8 @@ struct TransportTestNode
     int newNodes {0};
     int listens {0};
     int gets {0};
+    int finds {0};
+    net::RequestAnswer routing;
     /* answered to get requests */
     std::vector<Sp<Value>> values;
     /* held by the routing table in a Dht */
@@ -2085,11 +2090,6 @@ NetworkEngineTester::testTransportColdRequestsShareProbe()
     b.engine->processMessage(packets.back().data.data(), packets.back().data.size(), a.addr);
     b.deliverTo(a);
     CPPUNIT_ASSERT_EQUAL(size_t(1), a.socket->sends.size());
-    CPPUNIT_ASSERT(isEnvelope(a.socket->sends.front(), transport::EnvelopeType::Initial));
-    CPPUNIT_ASSERT(initialMessageType(a.socket->sends.front(), b.key) == MessageType::Ping);
-    a.deliverTo(b);
-    b.deliverTo(a);
-    CPPUNIT_ASSERT_EQUAL(size_t(1), a.socket->sends.size());
     CPPUNIT_ASSERT(isEnvelope(a.socket->sends.front(), transport::EnvelopeType::Session));
     a.deliverTo(b);
     b.deliverTo(a);
@@ -2139,6 +2139,107 @@ NetworkEngineTester::testTransportRecoveryRefreshesDeadline()
     a.engine->clear();
     advance(a, std::chrono::seconds(30));
     CPPUNIT_ASSERT(a.socket->sends.empty());
+}
+
+void
+NetworkEngineTester::testTransportSearchRoutesBeforeFetching()
+{
+    TransportTestNode b("127.0.0.3", {}, 2);
+    TransportTestNode c("127.0.0.4", {}, 3);
+    Config config {};
+    config.max_req_per_sec = config.max_peer_req_per_sec = -1;
+    auto socket = std::make_unique<TestDatagramSocket>();
+    auto* packets = socket.get();
+    Dht local(std::move(socket), config, {}, std::make_unique<std::mt19937_64>(1));
+    auto sr = std::make_shared<Dht::Search>();
+    sr->id = c.id;
+    sr->af = AF_INET;
+    sr->refill_time = local.scheduler.time();
+    sr->nextSearchStep = local.scheduler.add(time_point::max(), [&] { local.searchStep(sr); });
+    auto query = std::make_shared<Query>();
+    size_t received = 0;
+    sr->get({}, query, {}, [&](const auto& values) { received += values.size(); return true; },
+            [](bool, const auto&) {}, local.scheduler);
+    local.searches(AF_INET).emplace(sr->id, sr);
+    auto node = local.network_engine.insertNode(b.id, b.addr);
+    node->setTransport(std::make_shared<transport::Peer>(b.key.pub));
+    auto closer = b.node(c);
+    closer->setTransport(std::make_shared<transport::Peer>(c.key.pub));
+    b.routing.nodes4.emplace_back(closer);
+    c.values = {std::make_shared<Value>(Blob(4096, 'v'))};
+    c.values.front()->id = 42;
+    local.searchSendGetValues(sr);
+    CPPUNIT_ASSERT_EQUAL(size_t(1), packets->sends.size());
+    CPPUNIT_ASSERT(initialMessageType(packets->sends.front(), b.key) == MessageType::FindNode);
+    auto deliver = [&](TransportTestNode& peer) {
+        auto sent = std::exchange(packets->sends, {});
+        for (const auto& packet : sent)
+            if (packet.dest == peer.addr)
+                peer.engine->processMessage(packet.data.data(), packet.data.size(), packets->bound_);
+        for (const auto& packet : peer.takeSent())
+            local.network_engine.processMessage(packet.data.data(), packet.data.size(), peer.addr);
+    };
+    deliver(b);
+    CPPUNIT_ASSERT_EQUAL(size_t(1), sr->callbacks.size());
+    CPPUNIT_ASSERT_EQUAL(size_t(0), received);
+    CPPUNIT_ASSERT(sr->getNode(node)->getStatus.empty());
+    local.scheduler.run();
+    CPPUNIT_ASSERT(not packets->sends.empty());
+    CPPUNIT_ASSERT(packets->sends.front().dest == c.addr);
+    CPPUNIT_ASSERT(initialMessageType(packets->sends.front(), c.key) == MessageType::FindNode);
+    deliver(c);
+    CPPUNIT_ASSERT_EQUAL(1, c.finds);
+    CPPUNIT_ASSERT_EQUAL(0, c.gets);
+    CPPUNIT_ASSERT_EQUAL(size_t(0), received);
+    local.scheduler.run();
+    CPPUNIT_ASSERT(not packets->sends.empty());
+    CPPUNIT_ASSERT(isEnvelope(packets->sends.front(), transport::EnvelopeType::Session));
+    deliver(c);
+    CPPUNIT_ASSERT_EQUAL(1, c.gets);
+    deliver(c);
+    CPPUNIT_ASSERT_EQUAL(2, c.gets);
+    CPPUNIT_ASSERT_EQUAL(size_t(1), received);
+}
+
+void
+NetworkEngineTester::testTransportSearchProbeSlots()
+{
+    Config config {};
+    config.max_req_per_sec = config.max_peer_req_per_sec = -1;
+    auto socket = std::make_unique<TestDatagramSocket>();
+    auto* packets = socket.get();
+    Dht local(std::move(socket), config, {}, std::make_unique<std::mt19937_64>(1));
+    auto sr = std::make_shared<Dht::Search>();
+    sr->id = InfoHash::getRandom(local.rd);
+    sr->af = AF_INET;
+    sr->refill_time = local.scheduler.time();
+    sr->nextSearchStep = local.scheduler.add(time_point::max(), [&] { local.searchStep(sr); });
+    auto query = std::make_shared<Query>();
+    sr->get({}, query, {}, [](const auto&) { return true; }, [](bool, const auto&) {}, local.scheduler);
+    local.searches(AF_INET).emplace(sr->id, sr);
+    for (int index = 0; index < 8; ++index) {
+        auto key = transport::KeyPair::generate();
+        auto node = local.network_engine.insertNode(transport::nodeId(key.pub), makeIPv4("127.0.0.3", 4200 + index));
+        node->setTransport(std::make_shared<transport::Peer>(key.pub));
+    }
+    local.scheduler.run();
+    CPPUNIT_ASSERT_EQUAL(size_t(4), packets->sends.size());
+    CPPUNIT_ASSERT_EQUAL(4u, sr->currentlySolicitedNodeCount());
+    CPPUNIT_ASSERT(not local.searchSendGetValues(sr));
+    local.scheduler.syncTime(local.scheduler.time() + std::chrono::milliseconds(1500));
+    local.scheduler.run();
+    CPPUNIT_ASSERT_EQUAL(4u, sr->currentlySolicitedNodeCount());
+    size_t candidates = 0;
+    for (const auto& node : sr->nodes)
+        candidates += node->candidate;
+    CPPUNIT_ASSERT_EQUAL(size_t(4), candidates);
+    CPPUNIT_ASSERT_EQUAL(size_t(1), sr->callbacks.size());
+    CPPUNIT_ASSERT(not sr->isDone(sr->callbacks.begin()->second));
+    sr->nodes.clear();
+    packets->sends.clear();
+    local.scheduler.syncTime(local.scheduler.time() + std::chrono::seconds(30));
+    local.scheduler.run();
+    CPPUNIT_ASSERT(packets->sends.empty());
 }
 
 void
