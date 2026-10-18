@@ -157,6 +157,8 @@ private:
     std::vector<Blob> parts;
     /* the last attempt was an Initial envelope, answered without caching our session */
     bool initial {false};
+    /* waiting for a ping to recover the session: never sent in an Initial envelope */
+    bool recovering {false};
 };
 
 } /* namespace net  */

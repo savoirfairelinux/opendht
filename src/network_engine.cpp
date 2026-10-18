@@ -390,18 +390,23 @@ NetworkEngine::requestStep(Sp<Request> sreq)
     } else if (req.attempt_count == 1) {
         if (req.on_expired)
             req.on_expired(req, false);
-        // The peer may have lost our ephemeral key or credential: retry with an Initial envelope
-        if (const auto& peer = node.getTransport())
+        // The peer may have lost our session or credential: start a new one
+        if (const auto& peer = node.getTransport(); peer and peer->ephemeral) {
             peer->resetEphemeral();
+            if (req.type != MessageType::Ping)
+                recoverSession(sreq);
+        }
     }
     if (const auto& peer = node.getTransport())
         req.initial = not peer->ephemeral;
+    const bool withheld = req.recovering and req.initial;
 
-    auto err = send(node,
-                    node.getAddr(),
-                    (char*) req.msg.data(),
-                    req.msg.size(),
-                    node.getReplyTime() < now - UDP_REPLY_TIME);
+    auto err = withheld ? 0
+                        : send(node,
+                               node.getAddr(),
+                               (char*) req.msg.data(),
+                               req.msg.size(),
+                               node.getReplyTime() < now - UDP_REPLY_TIME);
     if (err == ENETUNREACH || err == EHOSTUNREACH || err == EAFNOSUPPORT || err == EPIPE || err == EPERM) {
         node.setExpired();
         if (not node.id)
@@ -412,7 +417,7 @@ NetworkEngine::requestStep(Sp<Request> sreq)
             ++req.attempt_count;
             req.attempt_duration += req.attempt_duration
                                     + uniform_duration_distribution<>(0ms, ((duration) Node::MAX_RESPONSE_TIME) / 4)(rd);
-            if (not req.parts.empty()) {
+            if (not withheld and not req.parts.empty()) {
                 sendValueParts(req.tid, req.parts, node, node.getAddr());
             }
         }
@@ -422,6 +427,29 @@ NetworkEngine::requestStep(Sp<Request> sreq)
                 requestStep(req);
         });
     }
+}
+
+void
+NetworkEngine::recoverSession(const Sp<Request>& sreq)
+{
+    // A retransmitted payload stays out of Initial envelopes, which a later compromise of the receiver key reveals
+    sreq->recovering = true;
+    std::weak_ptr<Request> wreq = sreq;
+    sendPing(sreq->node,
+             [this, wreq](const Request&, RequestAnswer&&) {
+                 auto req = wreq.lock();
+                 if (not req or not req->pending())
+                     return;
+                 auto& node = *req->node;
+                 const auto& peer = node.getTransport();
+                 if (not peer or not peer->ephemeral)
+                     return;
+                 req->initial = false;
+                 if (send(node, node.getAddr(), (char*) req->msg.data(), req->msg.size()) == 0
+                     and not req->parts.empty())
+                     sendValueParts(req->tid, req->parts, node, node.getAddr());
+             },
+             {});
 }
 
 /**
