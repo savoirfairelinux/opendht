@@ -4,6 +4,7 @@
 
 #include "def.h"
 #include "infohash.h"
+#include "sockaddr.h"
 #include "utils.h"
 
 #include <array>
@@ -85,21 +86,21 @@ struct Peer
     const Key key;
     /** Last authenticated ephemeral key of the peer */
     std::optional<Key> ephemeral {};
-    /** The ephemeral key came in an envelope opened with our key for the peer address: the peer receives there */
-    bool ephemeralValidated {false};
+    /** Address proven by the Session or Data envelope carrying the ephemeral key */
+    SockAddr validatedAddress {};
     /** Private networks: expiration of the verified peer credential */
     SystemTime authorizedUntil {};
 
     bool isAuthorized(SystemTime now) const { return now < authorizedUntil; }
-    void setEphemeral(const Key& k, bool validated)
+    void setEphemeral(const Key& k, const SockAddr& address = {})
     {
         ephemeral = k;
-        ephemeralValidated = validated;
+        validatedAddress = address;
     }
     void resetEphemeral()
     {
         ephemeral.reset();
-        ephemeralValidated = false;
+        validatedAddress = {};
     }
 };
 
