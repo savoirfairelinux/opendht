@@ -4,6 +4,7 @@
 #include "node.h"
 #include "request.h"
 #include "rng.h"
+#include "transport.h"
 
 #include <sstream>
 
@@ -147,14 +148,21 @@ Node::closeSocket(Tid id)
 std::string
 Node::toString() const
 {
-    return fmt::format("{} {:<21}", id, addr.toString());
+    auto state = "plaintext"sv;
+    auto authorization = ""sv;
+    if (transport_) {
+        state = transport_->ephemeral && transport_->validatedAddress == addr ? "authenticated"sv : "key-known"sv;
+        if (transport_->authorizedUntil != transport::SystemTime {})
+            authorization = transport_->isAuthorized(std::chrono::system_clock::now()) ? ", authorized"sv
+                                                                                     : ", authorization-expired"sv;
+    }
+    return fmt::format("{} {:<21} [transport: {}{}]", id, addr.toString(), state, authorization);
 }
 
 std::ostream&
 operator<<(std::ostream& s, const Node& h)
 {
-    s << h.id << " " << h.addr.toString();
-    return s;
+    return s << h.toString();
 }
 
 void
