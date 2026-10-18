@@ -1475,61 +1475,95 @@ NetworkEngineTester::testTransportInitialWriteIsUnauthorized()
 void
 NetworkEngineTester::testTransportUnvalidatedGetIsUnauthorized()
 {
-    TransportTestNode receiver("127.0.0.3", {}, 2);
-    auto from = makeIPv4("127.0.0.4", 4222);
-    auto sender = transport::KeyPair::generate();
-    auto ephemeral = transport::KeyPair::generate();
-    receiver.values = {std::make_shared<Value>(Blob(65536, 'x'))};
-    for (bool select : {false, true}) {
-        msgpack::sbuffer buffer;
-        msgpack::packer<msgpack::sbuffer> pk(&buffer);
-        pk.pack_map(5);
-        pk.pack(KEY_A);
-        pk.pack_map(select ? 3 : 2);
-        pk.pack(KEY_REQ_ID);
-        pk.pack(transport::nodeId(sender.pub));
-        pk.pack(KEY_REQ_H);
-        pk.pack(receiver.id);
-        if (select) {
-            Query query;
-            query.select.field(Value::Field::Id);
-            pk.pack(KEY_Q);
-            pk.pack(query);
-        }
-        pk.pack(KEY_Q);
-        pk.pack(QUERY_GET);
-        pk.pack(KEY_TID);
-        pk.pack(Tid(42));
-        pk.pack(KEY_Y);
-        pk.pack(KEY_Q);
-        pk.pack(KEY_TRANSPORT);
-        pk.pack_bin(sender.pub.size());
-        pk.pack_bin_body((const char*) sender.pub.data(), sender.pub.size());
-        auto initial = transport::seal(*transport::initialSendKey(sender, ephemeral, receiver.key.pub, 0),
-                                       transport::EnvelopeType::Initial,
-                                       sender.pub,
-                                       ephemeral.pub,
-                                       (const uint8_t*) buffer.data(),
-                                       buffer.size());
-        for (bool encrypted : {true, false}) {
-            if (encrypted)
-                receiver.engine->processMessage(initial.data(), initial.size(), from);
-            else
-                receiver.engine->processMessage((const uint8_t*) buffer.data(), buffer.size(), from);
-            CPPUNIT_ASSERT_EQUAL(0, receiver.gets);
-            auto replies = receiver.takeSent();
-            CPPUNIT_ASSERT_EQUAL(size_t(1), replies.size());
-            CPPUNIT_ASSERT(replies[0].data.size() < 512);
-            auto keys = *transport::sessionKeys(sender, ephemeral, receiver.key.pub, ephemeralKey(replies[0]), 0);
-            auto payload = transport::open(keys.rx, replies[0].data.data(), replies[0].data.size());
-            if (encrypted) {
-                CPPUNIT_ASSERT(payload);
-                ParsedMessage error;
-                parseMessage(error, *payload);
-                CPPUNIT_ASSERT(error.type == MessageType::Error);
-                CPPUNIT_ASSERT_EQUAL(DhtProtocolException::UNAUTHORIZED, error.error_code);
+    auto authority = transport::Authority::generate();
+    for (bool privateNetwork : {false, true}) {
+        TransportTestNode receiver("127.0.0.3", privateNetwork ? privateTransport(authority) : TransportConfig {}, 2);
+        auto from = makeIPv4("127.0.0.4", 4222);
+        auto senderConfig = privateTransport(authority);
+        auto sender = senderConfig.key;
+        auto ephemeral = transport::KeyPair::generate();
+        receiver.values = {std::make_shared<Value>(Blob(65536, 'x'))};
+        std::optional<transport::Key> receiverEphemeral;
+        for (bool select : {false, true}) {
+            for (bool advertise : {true, false}) {
+                msgpack::sbuffer buffer;
+                msgpack::packer<msgpack::sbuffer> pk(&buffer);
+                pk.pack_map(advertise ? 5 : 4);
+                pk.pack(KEY_A);
+                pk.pack_map(select ? 3 : 2);
+                pk.pack(KEY_REQ_ID);
+                pk.pack(transport::nodeId(sender.pub));
+                pk.pack(KEY_REQ_H);
+                pk.pack(receiver.id);
+                if (select) {
+                    Query query;
+                    query.select.field(Value::Field::Id);
+                    pk.pack(KEY_Q);
+                    pk.pack(query);
+                }
+                pk.pack(KEY_Q);
+                pk.pack(QUERY_GET);
+                pk.pack(KEY_TID);
+                pk.pack(Tid(42));
+                pk.pack(KEY_Y);
+                pk.pack(KEY_Q);
+                if (advertise) {
+                    pk.pack(KEY_TRANSPORT);
+                    pk.pack_bin(sender.pub.size());
+                    pk.pack_bin_body((const char*) sender.pub.data(), sender.pub.size());
+                } else {
+                    auto node = receiver.engine->insertNode(transport::nodeId(sender.pub), from);
+                    node->setTransport(std::make_shared<transport::Peer>(sender.pub));
+                }
+                auto initial = transport::seal(*transport::initialSendKey(sender, ephemeral, receiver.key.pub, 0),
+                                               transport::EnvelopeType::Initial,
+                                               sender.pub,
+                                               ephemeral.pub,
+                                               (const uint8_t*) buffer.data(),
+                                               buffer.size(),
+                                               privateNetwork ? senderConfig.credential.pack() : Blob {});
+                for (bool encrypted : {true, false}) {
+                    if (encrypted)
+                        receiver.engine->processMessage(initial.data(), initial.size(), from);
+                    else
+                        receiver.engine->processMessage((const uint8_t*) buffer.data(), buffer.size(), from);
+                    CPPUNIT_ASSERT_EQUAL(0, receiver.gets);
+                    auto replies = receiver.takeSent();
+                    if (privateNetwork and not encrypted) {
+                        CPPUNIT_ASSERT(replies.empty());
+                        continue;
+                    }
+                    CPPUNIT_ASSERT_EQUAL(size_t(1), replies.size());
+                    CPPUNIT_ASSERT(replies[0].data.size() < 512);
+                    receiverEphemeral = ephemeralKey(replies[0]);
+                    auto key = encrypted
+                                   ? transport::sessionKeys(sender, ephemeral, receiver.key.pub, *receiverEphemeral, 0)
+                                         ->rx
+                                   : *transport::initialReceiveKey(sender, receiver.key.pub, *receiverEphemeral, 0);
+                    auto payload = transport::open(key, replies[0].data.data(), replies[0].data.size());
+                    CPPUNIT_ASSERT(payload);
+                    if (privateNetwork)
+                        payload->erase(payload->begin(), payload->begin() + transport::Credential::PACKED_SIZE);
+                    ParsedMessage error;
+                    parseMessage(error, *payload);
+                    CPPUNIT_ASSERT(error.type == MessageType::Error);
+                    CPPUNIT_ASSERT_EQUAL(DhtProtocolException::UNAUTHORIZED, error.error_code);
+                    CPPUNIT_ASSERT_EQUAL(Tid(42), error.tid);
+                    CPPUNIT_ASSERT(error.id == receiver.id);
+                }
             }
         }
+        TransportTestNode senderNode("127.0.0.4", privateNetwork ? senderConfig : TransportConfig {}, 5);
+        bool done = false;
+        senderNode.ping(receiver.addr, done);
+        senderNode.deliverTo(receiver);
+        receiver.deliverTo(senderNode);
+        std::optional<std::vector<Sp<Value>>> got;
+        senderNode.get(senderNode.node(receiver), got);
+        senderNode.deliverTo(receiver);
+        receiver.deliverTo(senderNode);
+        CPPUNIT_ASSERT_EQUAL(1, receiver.gets);
+        CPPUNIT_ASSERT(got and got->size() == 1 and got->front()->data == receiver.values.front()->data);
     }
 }
 
@@ -1956,6 +1990,8 @@ initialMessageType(const TestDatagramSocket::SentPacket& p, const transport::Key
     CPPUNIT_ASSERT(key);
     auto payload = transport::open(*key, p.data.data(), p.data.size());
     CPPUNIT_ASSERT(payload);
+    if (header->credential)
+        payload->erase(payload->begin(), payload->begin() + transport::Credential::PACKED_SIZE);
     ParsedMessage msg;
     parseMessage(msg, *payload);
     return msg.type;
@@ -2119,6 +2155,30 @@ NetworkEngineTester::testTransportDelayedReplyDoesNotResend()
 }
 
 void
+NetworkEngineTester::testTransportAuthenticatedReplyCanMoveNode()
+{
+    TransportTestNode a("127.0.0.2", {}, 1);
+    TransportTestNode b("127.0.0.3", {}, 2);
+    establishSession(a, b);
+    auto node = a.node(b);
+    std::optional<std::vector<Sp<Value>>> got;
+    auto req = a.get(node, got);
+    a.takeSent();
+    auto moved = makeIPv4("127.0.0.4", 4222);
+    auto reply = std::make_unique<ParsedMessage>();
+    reply->type = MessageType::Reply;
+    reply->id = b.id;
+    reply->tid = req->getTid();
+    reply->session = reply->encrypted = true;
+    reply->peer = std::make_shared<transport::Peer>(b.key.pub);
+    reply->peer->setEphemeral(*node->getTransport()->ephemeral, moved);
+    a.engine->process(std::move(reply), moved);
+    CPPUNIT_ASSERT(req->completed());
+    CPPUNIT_ASSERT(node->getAddr() == moved);
+    CPPUNIT_ASSERT(got);
+}
+
+void
 NetworkEngineTester::testTransportRecoveryRefreshesDeadline()
 {
     TransportTestNode a("127.0.0.2", {}, 1);
@@ -2144,61 +2204,81 @@ NetworkEngineTester::testTransportRecoveryRefreshesDeadline()
 void
 NetworkEngineTester::testTransportSearchRoutesBeforeFetching()
 {
-    TransportTestNode b("192.0.2.3", {}, 2);
-    TransportTestNode c("192.0.2.4", {}, 3);
-    Config config {};
-    config.max_req_per_sec = config.max_peer_req_per_sec = -1;
-    auto socket = std::make_unique<TestDatagramSocket>();
-    auto* packets = socket.get();
-    Dht local(std::move(socket), config, {}, std::make_unique<std::mt19937_64>(1));
-    auto sr = std::make_shared<Dht::Search>();
-    sr->id = c.id;
-    sr->af = AF_INET;
-    sr->refill_time = local.scheduler.time();
-    sr->nextSearchStep = local.scheduler.add(time_point::max(), [&] { local.searchStep(sr); });
-    auto query = std::make_shared<Query>();
-    size_t received = 0;
-    sr->get({}, query, {}, [&](const auto& values) { received += values.size(); return true; },
-            [](bool, const auto&) {}, local.scheduler);
-    local.searches(AF_INET).emplace(sr->id, sr);
-    auto node = local.network_engine.insertNode(b.id, b.addr);
-    node->setTransport(std::make_shared<transport::Peer>(b.key.pub));
-    auto closer = b.node(c);
-    closer->setTransport(std::make_shared<transport::Peer>(c.key.pub));
-    b.routing.nodes4.emplace_back(closer);
-    c.values = {std::make_shared<Value>(Blob(4096, 'v'))};
-    c.values.front()->id = 42;
-    local.searchSendGetValues(sr);
-    CPPUNIT_ASSERT_EQUAL(size_t(1), packets->sends.size());
-    CPPUNIT_ASSERT(initialMessageType(packets->sends.front(), b.key) == MessageType::FindNode);
-    auto deliver = [&](TransportTestNode& peer) {
-        auto sent = std::exchange(packets->sends, {});
-        for (const auto& packet : sent)
-            if (packet.dest == peer.addr)
-                peer.engine->processMessage(packet.data.data(), packet.data.size(), packets->bound_);
-        for (const auto& packet : peer.takeSent())
-            local.network_engine.processMessage(packet.data.data(), packet.data.size(), peer.addr);
-    };
-    deliver(b);
-    CPPUNIT_ASSERT_EQUAL(size_t(1), sr->callbacks.size());
-    CPPUNIT_ASSERT_EQUAL(size_t(0), received);
-    CPPUNIT_ASSERT(sr->getNode(node)->getStatus.empty());
-    local.scheduler.run();
-    CPPUNIT_ASSERT(not packets->sends.empty());
-    CPPUNIT_ASSERT(packets->sends.front().dest == c.addr);
-    CPPUNIT_ASSERT(initialMessageType(packets->sends.front(), c.key) == MessageType::FindNode);
-    deliver(c);
-    CPPUNIT_ASSERT_EQUAL(1, c.finds);
-    CPPUNIT_ASSERT_EQUAL(0, c.gets);
-    CPPUNIT_ASSERT_EQUAL(size_t(0), received);
-    local.scheduler.run();
-    CPPUNIT_ASSERT(not packets->sends.empty());
-    CPPUNIT_ASSERT(isEnvelope(packets->sends.front(), transport::EnvelopeType::Session));
-    deliver(c);
-    CPPUNIT_ASSERT_EQUAL(1, c.gets);
-    deliver(c);
-    CPPUNIT_ASSERT_EQUAL(2, c.gets);
-    CPPUNIT_ASSERT_EQUAL(size_t(1), received);
+    auto authority = transport::Authority::generate();
+    for (int mode = 0; mode < 3; ++mode) {
+        bool privateNetwork = mode == 2;
+        TransportTestNode b("192.0.2.3", privateNetwork ? privateTransport(authority) : TransportConfig {}, 2);
+        TransportTestNode c("192.0.2.4", privateNetwork ? privateTransport(authority) : TransportConfig {}, 3);
+        Config config {};
+        if (privateNetwork)
+            config.transport = privateTransport(authority);
+        config.max_req_per_sec = config.max_peer_req_per_sec = -1;
+        auto socket = std::make_unique<TestDatagramSocket>();
+        auto* packets = socket.get();
+        Dht local(std::move(socket), config, {}, std::make_unique<std::mt19937_64>(1));
+        auto sr = std::make_shared<Dht::Search>();
+        sr->id = c.id;
+        sr->af = AF_INET;
+        sr->refill_time = local.scheduler.time();
+        sr->nextSearchStep = local.scheduler.add(time_point::max(), [&] { local.searchStep(sr); });
+        auto query = std::make_shared<Query>();
+        size_t received = 0;
+        sr->get(
+            {},
+            query,
+            {},
+            [&](const auto& values) {
+                received += values.size();
+                return true;
+            },
+            [](bool, const auto&) {},
+            local.scheduler);
+        local.searches(AF_INET).emplace(sr->id, sr);
+        auto node = local.network_engine.insertNode(b.id, b.addr);
+        if (mode != 0)
+            node->setTransport(std::make_shared<transport::Peer>(b.key.pub));
+        auto closer = b.node(c);
+        closer->setTransport(std::make_shared<transport::Peer>(c.key.pub));
+        b.routing.nodes4.emplace_back(closer);
+        c.values = {std::make_shared<Value>(Blob(4096, 'v'))};
+        c.values.front()->id = 42;
+        local.searchSendGetValues(sr);
+        CPPUNIT_ASSERT_EQUAL(size_t(1), packets->sends.size());
+        if (mode == 0) {
+            ParsedMessage msg;
+            parseMessage(msg, packets->sends.front().data);
+            CPPUNIT_ASSERT(msg.type == MessageType::FindNode);
+        } else
+            CPPUNIT_ASSERT(initialMessageType(packets->sends.front(), b.key) == MessageType::FindNode);
+        auto deliver = [&](TransportTestNode& peer) {
+            auto sent = std::exchange(packets->sends, {});
+            for (const auto& packet : sent)
+                if (packet.dest == peer.addr)
+                    peer.engine->processMessage(packet.data.data(), packet.data.size(), packets->bound_);
+            for (const auto& packet : peer.takeSent())
+                local.network_engine.processMessage(packet.data.data(), packet.data.size(), peer.addr);
+        };
+        deliver(b);
+        CPPUNIT_ASSERT_EQUAL(size_t(1), sr->callbacks.size());
+        CPPUNIT_ASSERT_EQUAL(size_t(0), received);
+        CPPUNIT_ASSERT(sr->getNode(node)->getStatus.empty());
+        local.scheduler.run();
+        CPPUNIT_ASSERT(not packets->sends.empty());
+        CPPUNIT_ASSERT(packets->sends.front().dest == c.addr);
+        CPPUNIT_ASSERT(initialMessageType(packets->sends.front(), c.key) == MessageType::FindNode);
+        deliver(c);
+        CPPUNIT_ASSERT_EQUAL(1, c.finds);
+        CPPUNIT_ASSERT_EQUAL(0, c.gets);
+        CPPUNIT_ASSERT_EQUAL(size_t(0), received);
+        local.scheduler.run();
+        CPPUNIT_ASSERT(not packets->sends.empty());
+        CPPUNIT_ASSERT(isEnvelope(packets->sends.front(), transport::EnvelopeType::Session, privateNetwork));
+        deliver(c);
+        CPPUNIT_ASSERT_EQUAL(1, c.gets);
+        deliver(c);
+        CPPUNIT_ASSERT_EQUAL(2, c.gets);
+        CPPUNIT_ASSERT_EQUAL(size_t(1), received);
+    }
 }
 
 void
@@ -2242,6 +2322,60 @@ NetworkEngineTester::testTransportSearchProbeSlots()
     sr->nodes.clear();
     for (const auto& probe : probes)
         CPPUNIT_ASSERT(probe->cancelled());
+}
+
+void
+NetworkEngineTester::testTransportSearchHalfUnreachable()
+{
+    Config config {};
+    config.max_req_per_sec = config.max_peer_req_per_sec = -1;
+    auto socket = std::make_unique<TestDatagramSocket>();
+    auto* packets = socket.get();
+    Dht local(std::move(socket), config, {}, std::make_unique<std::mt19937_64>(1));
+    auto sr = std::make_shared<Dht::Search>();
+    sr->id = InfoHash::getRandom(local.rd);
+    sr->af = AF_INET;
+    sr->refill_time = local.scheduler.time();
+    sr->nextSearchStep = local.scheduler.add(time_point::max(), [&] { local.searchStep(sr); });
+    auto query = std::make_shared<Query>();
+    bool done = false;
+    sr->get({}, query, {}, [](const auto&) { return true; }, [&](bool ok, const auto&) { done = ok; }, local.scheduler);
+    local.searches(AF_INET).emplace(sr->id, sr);
+    std::vector<std::unique_ptr<TransportTestNode>> peers;
+    for (int index = 0; index < 8; ++index) {
+        auto peer = std::make_unique<TransportTestNode>("192.0.2.3", TransportConfig {}, index + 2);
+        peer->addr.setPort(4200 + index);
+        auto node = local.network_engine.insertNode(peer->id, peer->addr);
+        node->setTransport(std::make_shared<transport::Peer>(peer->key.pub));
+        peers.emplace_back(std::move(peer));
+    }
+    std::set<uint16_t> contacted;
+    for (int step = 0; step < 24 and not done; ++step) {
+        local.scheduler.run();
+        CPPUNIT_ASSERT(sr->currentlySolicitedNodeCount() <= 4);
+        for (const auto& packet : std::exchange(packets->sends, {})) {
+            for (size_t index = 0; index < peers.size(); ++index) {
+                auto& peer = *peers[index];
+                if (packet.dest != peer.addr)
+                    continue;
+                contacted.insert(peer.addr.getPort());
+                if (index % 2 == 0) {
+                    peer.engine->processMessage(packet.data.data(), packet.data.size(), packets->bound_);
+                    for (const auto& reply : peer.takeSent())
+                        local.network_engine.processMessage(reply.data.data(), reply.data.size(), peer.addr);
+                }
+            }
+        }
+        local.scheduler.syncTime(local.scheduler.time() + std::chrono::milliseconds(250));
+    }
+    CPPUNIT_ASSERT(done);
+    CPPUNIT_ASSERT_EQUAL(size_t(8), contacted.size());
+    for (size_t index = 0; index < peers.size(); ++index) {
+        if (index % 2 == 0)
+            CPPUNIT_ASSERT(peers[index]->gets > 0);
+        else
+            CPPUNIT_ASSERT_EQUAL(0, peers[index]->gets);
+    }
 }
 
 void
