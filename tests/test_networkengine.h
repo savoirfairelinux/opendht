@@ -58,6 +58,10 @@ class NetworkEngineTester : public CppUnit::TestFixture
     CPPUNIT_TEST(testTransportRecoveryRefreshesDeadline);
     CPPUNIT_TEST(testTransportSearchRoutesBeforeFetching);
     CPPUNIT_TEST(testTransportSearchProbeSlots);
+    CPPUNIT_TEST(testTransportProbeFailureNotifiesWaiters);
+    CPPUNIT_TEST(testTransportProbeErrorExpiresWaiters);
+    CPPUNIT_TEST(testTransportFindReleasesWaiters);
+    CPPUNIT_TEST(testTransportColdLegacyGet);
     CPPUNIT_TEST(testTransportPlaintextCannotPoisonSessionCache);
     CPPUNIT_TEST(testTransportPlaintextCannotUpdateKeyedNode);
     CPPUNIT_TEST(testTransportPlaintextCannotCompleteEncryptedRequest);
@@ -119,6 +123,10 @@ public:
     void testTransportRecoveryRefreshesDeadline();
     void testTransportSearchRoutesBeforeFetching();
     void testTransportSearchProbeSlots();
+    void testTransportProbeFailureNotifiesWaiters();
+    void testTransportProbeErrorExpiresWaiters();
+    void testTransportFindReleasesWaiters();
+    void testTransportColdLegacyGet();
     void testTransportPlaintextCannotPoisonSessionCache();
     void testTransportPlaintextCannotUpdateKeyedNode();
     void testTransportPlaintextCannotCompleteEncryptedRequest();

@@ -2144,8 +2144,8 @@ NetworkEngineTester::testTransportRecoveryRefreshesDeadline()
 void
 NetworkEngineTester::testTransportSearchRoutesBeforeFetching()
 {
-    TransportTestNode b("127.0.0.3", {}, 2);
-    TransportTestNode c("127.0.0.4", {}, 3);
+    TransportTestNode b("192.0.2.3", {}, 2);
+    TransportTestNode c("192.0.2.4", {}, 3);
     Config config {};
     config.max_req_per_sec = config.max_peer_req_per_sec = -1;
     auto socket = std::make_unique<TestDatagramSocket>();
@@ -2235,11 +2235,105 @@ NetworkEngineTester::testTransportSearchProbeSlots()
     CPPUNIT_ASSERT_EQUAL(size_t(4), candidates);
     CPPUNIT_ASSERT_EQUAL(size_t(1), sr->callbacks.size());
     CPPUNIT_ASSERT(not sr->isDone(sr->callbacks.begin()->second));
+    std::vector<Sp<Request>> probes;
+    for (const auto& node : sr->nodes)
+        if (node->routingProbe)
+            probes.emplace_back(node->routingProbe);
     sr->nodes.clear();
-    packets->sends.clear();
-    local.scheduler.syncTime(local.scheduler.time() + std::chrono::seconds(30));
-    local.scheduler.run();
-    CPPUNIT_ASSERT(packets->sends.empty());
+    for (const auto& probe : probes)
+        CPPUNIT_ASSERT(probe->cancelled());
+}
+
+void
+NetworkEngineTester::testTransportProbeFailureNotifiesWaiters()
+{
+    TransportTestNode a("127.0.0.2", {}, 1);
+    TransportTestNode b("127.0.0.3", {}, 2);
+    auto node = a.node(b);
+    node->setTransport(std::make_shared<transport::Peer>(b.key.pub));
+    size_t stalled = 0, expired = 0;
+    auto req = a.engine->sendGetValues(node, b.id, {}, -1, {}, [&](const Request&, bool over) {
+        if (over)
+            ++expired;
+        else
+            ++stalled;
+    });
+    for (int step = 0; step < 60; ++step) {
+        for (const auto& packet : a.takeSent())
+            CPPUNIT_ASSERT(initialMessageType(packet, b.key) == MessageType::Ping);
+        advance(a, std::chrono::milliseconds(250));
+    }
+    CPPUNIT_ASSERT_EQUAL(size_t(1), stalled);
+    CPPUNIT_ASSERT_EQUAL(size_t(1), expired);
+    CPPUNIT_ASSERT(req->expired());
+    CPPUNIT_ASSERT(node->isExpired());
+}
+
+void
+NetworkEngineTester::testTransportProbeErrorExpiresWaiters()
+{
+    TransportTestNode a("127.0.0.2", {}, 1);
+    TransportTestNode b("127.0.0.3", {}, 2);
+    b.engine->onPing = [](Sp<Node>) -> RequestAnswer {
+        throw DhtProtocolException {DhtProtocolException::UNAUTHORIZED, "Rejected"};
+    };
+    std::optional<std::vector<Sp<Value>>> got;
+    auto req = a.get(a.node(b), got);
+    a.deliverTo(b);
+    b.deliverTo(a);
+    CPPUNIT_ASSERT(req->expired());
+    CPPUNIT_ASSERT(not got);
+    advance(a, std::chrono::seconds(15));
+    CPPUNIT_ASSERT(a.socket->sends.empty());
+}
+
+void
+NetworkEngineTester::testTransportFindReleasesWaiters()
+{
+    auto authority = transport::Authority::generate();
+    for (bool privateNetwork : {false, true}) {
+        TransportTestNode a("127.0.0.2", privateNetwork ? privateTransport(authority) : TransportConfig {}, 1);
+        TransportTestNode b("127.0.0.3", privateNetwork ? privateTransport(authority) : TransportConfig {}, 2);
+        auto node = a.node(b);
+        node->setTransport(std::make_shared<transport::Peer>(b.key.pub));
+        std::optional<std::vector<Sp<Value>>> got;
+        auto req = a.get(node, got);
+        a.takeSent();
+        bool found = false;
+        a.engine->sendFindNode(node, b.id, -1, [&](const Request&, RequestAnswer&&) { found = true; }, {});
+        a.deliverTo(b);
+        b.deliverTo(a);
+        CPPUNIT_ASSERT(found);
+        CPPUNIT_ASSERT_EQUAL(size_t(1), a.socket->sends.size());
+        CPPUNIT_ASSERT(isEnvelope(a.socket->sends.front(), transport::EnvelopeType::Session, privateNetwork));
+        a.deliverTo(b);
+        b.deliverTo(a);
+        CPPUNIT_ASSERT(req->completed());
+        CPPUNIT_ASSERT(got);
+        advance(a, std::chrono::seconds(15));
+        CPPUNIT_ASSERT(a.socket->sends.empty());
+        CPPUNIT_ASSERT(not node->isExpired());
+    }
+}
+
+void
+NetworkEngineTester::testTransportColdLegacyGet()
+{
+    TransportTestNode a("127.0.0.2", {}, 1);
+    TransportTestNode legacy("127.0.0.3", legacyTransport(), 2);
+    legacy.values = {std::make_shared<Value>(Blob(4096, 'x'))};
+    std::optional<std::vector<Sp<Value>>> got;
+    auto req = a.get(a.node(legacy), got);
+    a.deliverTo(legacy);
+    CPPUNIT_ASSERT_EQUAL(0, legacy.gets);
+    legacy.deliverTo(a);
+    CPPUNIT_ASSERT_EQUAL(size_t(1), a.socket->sends.size());
+    CPPUNIT_ASSERT(not transport::parseHeader(a.socket->sends.front().data.data(), a.socket->sends.front().data.size()));
+    a.deliverTo(legacy);
+    legacy.deliverTo(a);
+    CPPUNIT_ASSERT(req->completed());
+    CPPUNIT_ASSERT(got and got->size() == 1);
+    CPPUNIT_ASSERT(got->front()->data == legacy.values.front()->data);
 }
 
 void
