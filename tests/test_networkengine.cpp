@@ -1827,18 +1827,20 @@ NetworkEngineTester::testTransportEncryptedFragmentsRequireSenderKey()
     CPPUNIT_ASSERT(r.received());
 }
 
-/* every packet of a fragmented value fits the IPv6 minimum MTU, less the IPv6 and UDP headers */
+/* every packet of a fragmented value fits the IPv6 minimum MTU, less the IPv6 and UDP headers,
+ * with fragments as large as the envelope `overhead` allows */
 static void
-checkFragmentsFitMinimumMtu(TransportTestNode& a, TransportTestNode& b)
+checkFragmentsFitMinimumMtu(TransportTestNode& a, TransportTestNode& b, size_t overhead)
 {
     constexpr size_t MAX_PAYLOAD {1280 - 40 - 8};
     const Blob data(5000, 'x');
+    const size_t fragment = net::NetworkEngine::FRAGMENT_SIZE - overhead;
     b.values = {std::make_shared<Value>(data.data(), data.size())};
     std::optional<std::vector<Sp<Value>>> got;
     a.get(a.node(b), got);
     a.deliverTo(b);
     auto reply = b.takeSent();
-    CPPUNIT_ASSERT(reply.size() > 2);
+    CPPUNIT_ASSERT_EQUAL(1 + (data.size() + fragment - 1) / fragment, reply.size());
     for (const auto& p : reply)
         CPPUNIT_ASSERT_LESSEQUAL(MAX_PAYLOAD, p.data.size());
     for (const auto& p : reply)
@@ -1853,7 +1855,14 @@ NetworkEngineTester::testValueFragmentsFitMinimumMtu()
     {
         TransportTestNode a("127.0.0.2", legacyTransport(), 1, network);
         TransportTestNode b("127.0.0.3", legacyTransport(), 2, network);
-        checkFragmentsFitMinimumMtu(a, b);
+        checkFragmentsFitMinimumMtu(a, b, 0);
+    }
+    {
+        // Smallest overhead: Data envelopes, once the session is confirmed
+        TransportTestNode a("127.0.0.2", {}, 1, network);
+        TransportTestNode b("127.0.0.3", {}, 2, network);
+        establishSession(a, b);
+        checkFragmentsFitMinimumMtu(a, b, transport::DATA_ENVELOPE_OVERHEAD);
     }
     {
         // Largest overhead: Session envelopes with a credential, until a confirms b's session
@@ -1865,8 +1874,95 @@ NetworkEngineTester::testValueFragmentsFitMinimumMtu()
         a.deliverTo(b);
         b.deliverTo(a);
         CPPUNIT_ASSERT(done);
-        checkFragmentsFitMinimumMtu(a, b);
+        checkFragmentsFitMinimumMtu(a, b, transport::MAX_ENVELOPE_OVERHEAD);
     }
+}
+
+/* Type of the message in an Initial envelope, opened by its receiver */
+static MessageType
+initialMessageType(const TestDatagramSocket::SentPacket& p, const transport::KeyPair& receiver)
+{
+    auto header = transport::parseHeader(p.data.data(), p.data.size());
+    CPPUNIT_ASSERT(header and header->type == transport::EnvelopeType::Initial);
+    auto key = transport::initialReceiveKey(receiver, header->sender, header->ephemeral, 0);
+    CPPUNIT_ASSERT(key);
+    auto payload = transport::open(*key, p.data.data(), p.data.size());
+    CPPUNIT_ASSERT(payload);
+    ParsedMessage msg;
+    parseMessage(msg, *payload);
+    return msg.type;
+}
+
+static Sp<Request>
+sendTestListen(TransportTestNode& a, const Sp<Node>& dest, std::optional<Blob>& token)
+{
+    return a.engine->sendListen(dest,
+                                InfoHash::getRandom(a.rd),
+                                {},
+                                {},
+                                1,
+                                [&token](const net::Request&, net::RequestAnswer&& answer) {
+                                    token = std::move(answer.ntoken);
+                                },
+                                {});
+}
+
+void
+NetworkEngineTester::testTransportRetryRecoversSessionBeforePayload()
+{
+    TransportConfig configB;
+    configB.key = transport::KeyPair::generate();
+    TransportTestNode a("127.0.0.2", {}, 1);
+    auto b = std::make_unique<TransportTestNode>("127.0.0.3", configB, 2);
+    establishSession(a, *b);
+
+    // b restarts with the same key: it lost the session and drops a's Data envelope
+    b = std::make_unique<TransportTestNode>("127.0.0.3", configB, 3);
+    std::optional<Blob> token;
+    sendTestListen(a, a.node(*b), token);
+    CPPUNIT_ASSERT(isEnvelope(a.socket->sends.at(0), transport::EnvelopeType::Data));
+    a.deliverTo(*b);
+    CPPUNIT_ASSERT(b->socket->sends.empty());
+
+    // The retry recovers the session with a ping in an Initial envelope, without the listen
+    advance(a, std::chrono::milliseconds(1500));
+    CPPUNIT_ASSERT_EQUAL((size_t) 1, a.socket->sends.size());
+    CPPUNIT_ASSERT(initialMessageType(a.socket->sends[0], b->key) == MessageType::Ping);
+    a.deliverTo(*b);
+    CPPUNIT_ASSERT(isEnvelope(b->socket->sends.at(0), transport::EnvelopeType::Session));
+    b->deliverTo(a);
+
+    // The pong carries b's ephemeral key: the listen follows at once, in a Session envelope b accepts
+    CPPUNIT_ASSERT_EQUAL((size_t) 1, a.socket->sends.size());
+    CPPUNIT_ASSERT(isEnvelope(a.socket->sends[0], transport::EnvelopeType::Session));
+    a.deliverTo(*b);
+    CPPUNIT_ASSERT_EQUAL(1, b->listens);
+    b->deliverTo(a);
+    CPPUNIT_ASSERT(token and token->empty());
+}
+
+void
+NetworkEngineTester::testTransportRetryNeverResendsPayloadInInitial()
+{
+    TransportTestNode a("127.0.0.2", {}, 1);
+    TransportTestNode b("127.0.0.3", {}, 2);
+    establishSession(a, b);
+
+    // Nothing reaches b: until the listen expires, Initial envelopes only carry pings
+    std::optional<Blob> token;
+    auto req = sendTestListen(a, a.node(b), token);
+    a.takeSent();
+    size_t initials = 0;
+    for (int i = 0; i < 60; i++) {
+        advance(a, std::chrono::milliseconds(250));
+        for (const auto& p : a.takeSent()) {
+            CPPUNIT_ASSERT(initialMessageType(p, b.key) == MessageType::Ping);
+            ++initials;
+        }
+    }
+    CPPUNIT_ASSERT(initials > 0);
+    CPPUNIT_ASSERT(req->expired());
+    CPPUNIT_ASSERT(not token);
 }
 
 void
