@@ -18,6 +18,7 @@
 #include <string>
 #include <functional>
 #include <algorithm>
+#include <list>
 #include <memory>
 #include <queue>
 
@@ -515,22 +516,34 @@ private:
         /* the peer has these keys and accepted us: send Data envelopes */
         bool confirmed {false};
     };
-    /* The secret from which ephemeral keys and tokens derive, and session keys, all erased together */
+    /* The secret from which ephemeral keys and tokens derive, and session keys, all erased together.
+     * A session is cached for an address only once its peer proved to receive there: it opened an envelope
+     * encrypted with our key for that address. Replies to Initial and Hello envelopes never cache one,
+     * since their source address can be spoofed. */
     struct Epoch
     {
+        struct Entry
+        {
+            Session session;
+            std::list<SockAddr>::iterator used;
+        };
         transport::Key secret {};
-        std::map<SockAddr, Session> sessions {};
+        std::map<SockAddr, Entry> sessions {};
+        /* most recently used first */
+        std::list<SockAddr> used {};
 
         explicit operator bool() const { return secret != transport::Key {}; }
         transport::KeyPair ephemeral(const SockAddr& addr) const;
         Blob token(const SockAddr& addr) const;
+        /* Marks the session as used */
         Session* find(const SockAddr& addr);
         Session* find(const SockAddr& addr, const transport::Key& peer, const transport::Key& peerEphemeral);
+        /* Evicts the least recently used session when full */
         void store(const SockAddr& addr, const Session& session);
         void wipe();
     };
     void rotateEpoch();
-    /* Session with the peer at `addr`, or nullopt for an invalid peer key */
+    /* Session with the peer at `addr`, or nullopt for an invalid peer key. Cached if the peer ephemeral key is validated. */
     std::optional<Session> session(const transport::Peer& peer, const SockAddr& addr);
     std::optional<Blob> openSession(const transport::Header& header,
                                     const uint8_t* buf,

@@ -85,10 +85,22 @@ struct Peer
     const Key key;
     /** Last authenticated ephemeral key of the peer */
     std::optional<Key> ephemeral {};
+    /** The ephemeral key came in an envelope opened with our key for the peer address: the peer receives there */
+    bool ephemeralValidated {false};
     /** Private networks: expiration of the verified peer credential */
     SystemTime authorizedUntil {};
 
     bool isAuthorized(SystemTime now) const { return now < authorizedUntil; }
+    void setEphemeral(const Key& k, bool validated)
+    {
+        ephemeral = k;
+        ephemeralValidated = validated;
+    }
+    void resetEphemeral()
+    {
+        ephemeral.reset();
+        ephemeralValidated = false;
+    }
 };
 
 /*

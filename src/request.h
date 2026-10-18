@@ -155,6 +155,8 @@ private:
 
     Blob msg {}; /* the serialized message. */
     std::vector<Blob> parts;
+    /* the last attempt was an Initial envelope, answered without caching our session */
+    bool initial {false};
 };
 
 } /* namespace net  */
