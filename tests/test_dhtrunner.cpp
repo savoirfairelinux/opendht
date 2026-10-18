@@ -1754,7 +1754,9 @@ void
 DhtRunnerTransportTester::testPersistedTransportKey()
 {
     const std::string path = "/tmp/opendht_test_transport_state";
+    const auto previous = path + ".previous";
     std::remove(path.c_str());
+    std::remove(previous.c_str());
     auto runNode = [&](const dht::TransportConfig& transport) {
         auto config = transportTestConfig(transport);
         config.dht_config.node_config.persist_path = path;
@@ -1778,13 +1780,25 @@ DhtRunnerTransportTester::testPersistedTransportKey()
     // A configured key takes precedence and isn't persisted
     dht::TransportConfig configured;
     configured.key = dht::transport::KeyPair::generate();
+    std::filesystem::create_hard_link(path, previous);
+    auto previousSize = std::filesystem::file_size(previous);
     CPPUNIT_ASSERT_EQUAL(dht::transport::nodeId(configured.key.pub), runNode(configured));
+    CPPUNIT_ASSERT(not std::filesystem::equivalent(path, previous));
+    CPPUNIT_ASSERT_EQUAL(previousSize, std::filesystem::file_size(previous));
     auto newId = runNode({});
     CPPUNIT_ASSERT(newId != generatedId);
     CPPUNIT_ASSERT(newId != dht::transport::nodeId(configured.key.pub));
     CPPUNIT_ASSERT_EQUAL(newId, runNode({}));
 
+#ifndef _WIN32
+    std::filesystem::remove(path);
+    std::filesystem::create_symlink(previous, path);
+    CPPUNIT_ASSERT_EQUAL(generatedId, runNode({}));
+    CPPUNIT_ASSERT(not std::filesystem::is_symlink(path));
+    CPPUNIT_ASSERT_EQUAL(previousSize, std::filesystem::file_size(previous));
+#endif
     std::remove(path.c_str());
+    std::remove(previous.c_str());
 }
 
 void
