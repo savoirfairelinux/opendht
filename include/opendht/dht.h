@@ -569,6 +569,8 @@ private:
      * @param query   The query sent to the node.
      */
     void searchNodeGetExpired(const net::Request& status, bool over, std::weak_ptr<Search> ws, Sp<Query> query);
+    void searchNodeRoutingDone(const net::Request& req, net::RequestAnswer&& answer, std::weak_ptr<Search> ws);
+    void searchNodeRoutingExpired(const net::Request& req, bool over, std::weak_ptr<Search> ws);
 
     /**
      * This method recovers sends individual request for values per id.

@@ -89,6 +89,7 @@ struct Dht::SearchNode
     std::map<Sp<Query>, std::vector<Sp<Query>>> pagination_queries {};
 
     SyncStatus getStatus {};            /* get/sync status */
+    Sp<net::Request> routingProbe;
     NodeListenerStatus listenStatus {}; /* listen status */
     AnnounceStatusMap acked {};         /* announcement status for a given value id */
 
@@ -172,7 +173,7 @@ struct Dht::SearchNode
      */
     bool canGet(time_point now, time_point update, const Sp<Query>& q) const
     {
-        if (node->isExpired())
+        if (node->isExpired() or (routingProbe and routingProbe->pending()))
             return false;
 
         bool is_pending {false}, completed_sq_status {false}, pending_sq_status {false};
@@ -227,6 +228,8 @@ struct Dht::SearchNode
      */
     bool isDone(const Get& get) const
     {
+        if (routingProbe and routingProbe->pending())
+            return false;
         if (hasStartedPagination(get.query)) {
             const auto& pqs = pagination_queries.find(get.query);
             auto paginationPending = std::find_if(pqs->second.cbegin(),
@@ -246,6 +249,9 @@ struct Dht::SearchNode
 
     void cancelGet()
     {
+        if (routingProbe)
+            node->cancelRequest(routingProbe);
+        routingProbe.reset();
         for (const auto& status : getStatus) {
             if (status.second->pending()) {
                 node->cancelRequest(status.second);
@@ -515,7 +521,7 @@ struct Dht::Search
     {
         unsigned count = 0;
         for (const auto& n : nodes)
-            if (not n->isBad() and n->pendingGet())
+            if (not n->isBad() and (n->pendingGet() or (n->routingProbe and n->routingProbe->pending())))
                 count++;
         return count;
     }
@@ -571,7 +577,7 @@ struct Dht::Search
     void setDone()
     {
         for (auto& n : nodes) {
-            n->getStatus.clear();
+            n->cancelGet();
             n->listenStatus.clear();
             n->acked.clear();
         }

@@ -335,6 +335,30 @@ Dht::searchNodeGetExpired(const net::Request& status, bool over, std::weak_ptr<S
 }
 
 void
+Dht::searchNodeRoutingDone(const net::Request& req, net::RequestAnswer&& answer, std::weak_ptr<Search> ws)
+{
+    if (auto sr = ws.lock()) {
+        if (auto sn = sr->getNode(req.node); sn and sn->routingProbe.get() == &req) {
+            sr->insertNode(req.node, scheduler.time(), answer.ntoken);
+            scheduler.edit(sr->nextSearchStep, scheduler.time());
+        }
+    }
+}
+
+void
+Dht::searchNodeRoutingExpired(const net::Request& req, bool over, std::weak_ptr<Search> ws)
+{
+    if (auto sr = ws.lock()) {
+        if (auto sn = sr->getNode(req.node); sn and sn->routingProbe.get() == &req) {
+            sn->candidate = not over;
+            if (over)
+                sn->routingProbe.reset();
+            scheduler.edit(sr->nextSearchStep, scheduler.time());
+        }
+    }
+}
+
+void
 Dht::paginate(std::weak_ptr<Search> ws, Sp<Query> query, SearchNode* n)
 {
     auto sr = ws.lock();
@@ -437,6 +461,16 @@ Dht::searchSendGetValues(Sp<Search> sr, SearchNode* pn, bool update)
         } else { /* 'get' request */
             if (not n)
                 continue;
+
+            if (network_engine.needsSession(*n->node)) {
+                n->routingProbe = network_engine
+                                      .sendFindNode(n->node,
+                                                    sr->id,
+                                                    -1,
+                                                    std::bind(&Dht::searchNodeRoutingDone, this, _1, _2, ws),
+                                                    std::bind(&Dht::searchNodeRoutingExpired, this, _1, _2, ws));
+                return n;
+            }
 
             if (query and not query->select.empty()) {
                 /* The request contains a select. No need to paginate… */
