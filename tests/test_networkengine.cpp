@@ -754,11 +754,12 @@ NetworkEngineTester::testUnauthorizedListenFlushClearsListenState()
 /* A NetworkEngine with its own socket, delivering its packets to other engines */
 struct TransportTestNode
 {
-    TransportTestNode(const char* ip, TransportConfig transport, uint64_t seed)
+    TransportTestNode(const char* ip, TransportConfig transport, uint64_t seed, NetId network = 0)
         : rd(seed)
         , addr(makeIPv4(ip, 4222))
     {
         net::NetworkConfig config {};
+        config.network = network;
         config.max_req_per_sec = -1;
         config.max_peer_req_per_sec = -1;
         if (transport.enabled and not transport.key)
@@ -1737,8 +1738,10 @@ NetworkEngineTester::testTransportInitialSenderConfirmsAfterSessionEnvelope()
 /* a requests a value from b that b answers in a header and two encrypted fragments, kept in `reply` */
 struct FragmentedReply
 {
+    static constexpr size_t FRAGMENT {net::NetworkEngine::ENCRYPTED_FRAGMENT_SIZE};
+
     FragmentedReply(TransportTestNode& a, TransportTestNode& b)
-        : data(2000, 'x')
+        : data(FRAGMENT + FRAGMENT / 2, 'x')
     {
         b.values = {std::make_shared<Value>((const uint8_t*) data.data(), data.size())};
         request = a.get(a.node(b), got);
@@ -1768,13 +1771,13 @@ NetworkEngineTester::testTransportEncryptedFragmentsIgnorePlaintextParts()
     establishSession(a, b);
     FragmentedReply r(a, b);
     const auto tid = r.request->getTid();
-    const Blob forged(1081, 'z');
+    const Blob forged(r.FRAGMENT, 'z');
 
     // Plaintext fragments spoofed from b's address, before and after the header, must not be merged
     auto early = makeValueDataPacketBlob(tid, 0, 0, forged);
     a.engine->processMessage(early.data(), early.size(), b.addr);
     r.deliver(a, b.addr, 0);
-    auto late = makeValueDataPacketBlob(tid, 0, 1081, Blob(919, 'z'));
+    auto late = makeValueDataPacketBlob(tid, 0, r.FRAGMENT, Blob(r.data.size() - r.FRAGMENT, 'z'));
     a.engine->processMessage(late.data(), late.size(), b.addr);
     r.deliver(a, b.addr, 1);
     r.deliver(a, b.addr, 2);
@@ -1791,7 +1794,7 @@ NetworkEngineTester::testTransportEncryptedFragmentsIgnorePlaintextHeader()
     const auto tid = r.request->getTid();
 
     // A plaintext header spoofed from b's address must not claim the transaction
-    auto header = makeReplyHeaderPacketBlob(b.id, tid, {2000});
+    auto header = makeReplyHeaderPacketBlob(b.id, tid, {r.data.size()});
     a.engine->processMessage(header.data(), header.size(), b.addr);
     for (size_t i = 0; i < 3; i++)
         r.deliver(a, b.addr, i);
@@ -1810,7 +1813,7 @@ NetworkEngineTester::testTransportEncryptedFragmentsRequireSenderKey()
     // A fragment under another key, in an Initial envelope spoofed from b's address, must not be merged
     auto sender = transport::KeyPair::generate();
     auto ephemeral = transport::KeyPair::generate();
-    auto fragment = makeValueDataPacketBlob(tid, 0, 0, Blob(1081, 'z'));
+    auto fragment = makeValueDataPacketBlob(tid, 0, 0, Blob(r.FRAGMENT, 'z'));
     auto initial = transport::seal(*transport::initialSendKey(sender, ephemeral, a.key.pub, 0),
                                    transport::EnvelopeType::Initial,
                                    sender.pub,
@@ -1822,6 +1825,48 @@ NetworkEngineTester::testTransportEncryptedFragmentsRequireSenderKey()
     r.deliver(a, b.addr, 1);
     r.deliver(a, b.addr, 2);
     CPPUNIT_ASSERT(r.received());
+}
+
+/* every packet of a fragmented value fits the IPv6 minimum MTU, less the IPv6 and UDP headers */
+static void
+checkFragmentsFitMinimumMtu(TransportTestNode& a, TransportTestNode& b)
+{
+    constexpr size_t MAX_PAYLOAD {1280 - 40 - 8};
+    const Blob data(5000, 'x');
+    b.values = {std::make_shared<Value>(data.data(), data.size())};
+    std::optional<std::vector<Sp<Value>>> got;
+    a.get(a.node(b), got);
+    a.deliverTo(b);
+    auto reply = b.takeSent();
+    CPPUNIT_ASSERT(reply.size() > 2);
+    for (const auto& p : reply)
+        CPPUNIT_ASSERT_LESSEQUAL(MAX_PAYLOAD, p.data.size());
+    for (const auto& p : reply)
+        a.engine->processMessage(p.data.data(), p.data.size(), b.addr);
+    CPPUNIT_ASSERT(got and got->size() == 1 and (*got)[0]->data == data);
+}
+
+void
+NetworkEngineTester::testValueFragmentsFitMinimumMtu()
+{
+    constexpr NetId network = 0x7fffffff;
+    {
+        TransportTestNode a("127.0.0.2", legacyTransport(), 1, network);
+        TransportTestNode b("127.0.0.3", legacyTransport(), 2, network);
+        checkFragmentsFitMinimumMtu(a, b);
+    }
+    {
+        // Largest overhead: Session envelopes with a credential, until a confirms b's session
+        auto authority = transport::Authority::generate();
+        TransportTestNode a("127.0.0.2", privateTransport(authority), 1, network);
+        TransportTestNode b("127.0.0.3", privateTransport(authority), 2, network);
+        bool done = false;
+        a.ping(b.addr, done);
+        a.deliverTo(b);
+        b.deliverTo(a);
+        CPPUNIT_ASSERT(done);
+        checkFragmentsFitMinimumMtu(a, b);
+    }
 }
 
 void
