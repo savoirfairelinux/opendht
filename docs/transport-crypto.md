@@ -287,7 +287,7 @@ For each received packet, a node applies the following checks in order:
 
 4. **Parsing.** Parse the msgpack message and apply the network ID check. This is unchanged.
 
-5. **Envelope ID binding.** For an envelope, the message's node ID must equal `nodeId(pk_sender)`, otherwise drop the message. Value data fragments are exempt because they carry no node ID. Their reassembly is still keyed by source address and transaction ID.
+5. **Envelope ID binding.** For an envelope, the message's node ID must equal `nodeId(pk_sender)`, otherwise drop the message. Value data fragments are exempt because they carry no node ID. Instead, the parts of a fragmented message, keyed by source address and transaction ID, are bound to the envelope state of the first part received: all plaintext, or all in envelopes from the same `pk_sender`. A part that does not match is dropped, except that an encrypted part replaces plaintext state, which anyone can forge from a spoofed address. Transaction IDs are predictable, so without this binding a spoofed plaintext fragment, received first, would displace the real one.
 
 6. **Plaintext with `k`.** For a plaintext message carrying `k`, attach the key to the sender if it matches the sender's ID.
 
@@ -408,6 +408,7 @@ Against an attacker who controls the network but holds no node's secret key:
 - **Forward secrecy.** Session envelopes recorded by the attacker stay confidential if static keys are compromised later, once both ephemeral secrets are erased (at most one hour after use). Initial envelopes stay confidential if the sender's static key is compromised, but not the receiver's.
 - **Key-compromise impersonation.** With a node's static secret, an attacker can decrypt the Initial envelopes sent to it and impersonate other nodes to it in Initial envelopes, but not in Session envelopes.
 - **Address stickiness.** Spoofed plaintext and Hellos cannot redirect a node record whose key is known (see [§6.2](#62-hello-private-networks-only) and [§6.5](#65-receiving)).
+- **Fragment integrity.** Once a fragmented message arrives in envelopes, only parts from the same sender key are merged. Spoofed plaintext or foreign-key parts cannot alter or block it ([§6.5](#65-receiving), step 5).
 - **Address validation.** Session and Data envelopes only open from the address our ephemeral key was sent to. An off-path attacker cannot send one from a spoofed address, even with its own valid static key, so it cannot `put`, `refresh` or `listen` on behalf of another address.
 - **Private-network admission.** Without a valid credential and its matching secret key, a node:
   - cannot read any traffic;
