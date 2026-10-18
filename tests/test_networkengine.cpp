@@ -2064,6 +2064,84 @@ NetworkEngineTester::testTransportRecoveryWithholdsAllRequests()
 }
 
 void
+NetworkEngineTester::testTransportColdRequestsShareProbe()
+{
+    TransportTestNode a("127.0.0.2", {}, 1);
+    TransportTestNode b("127.0.0.3", {}, 2);
+    bool callerDone = false;
+    auto caller = a.ping(a.node(b), callerDone);
+    caller->cancel();
+    std::optional<std::vector<Sp<Value>>> first, second;
+    auto req = a.get(a.node(b), first);
+    auto cancelled = a.get(a.node(b), second);
+    cancelled->cancel();
+    auto packets = a.takeSent();
+    CPPUNIT_ASSERT_EQUAL(size_t(2), packets.size());
+    for (const auto& packet : packets) {
+        ParsedMessage msg;
+        parseMessage(msg, packet.data);
+        CPPUNIT_ASSERT(msg.type == MessageType::Ping);
+    }
+    b.engine->processMessage(packets.back().data.data(), packets.back().data.size(), a.addr);
+    b.deliverTo(a);
+    CPPUNIT_ASSERT_EQUAL(size_t(1), a.socket->sends.size());
+    CPPUNIT_ASSERT(isEnvelope(a.socket->sends.front(), transport::EnvelopeType::Initial));
+    CPPUNIT_ASSERT(initialMessageType(a.socket->sends.front(), b.key) == MessageType::Ping);
+    a.deliverTo(b);
+    b.deliverTo(a);
+    CPPUNIT_ASSERT_EQUAL(size_t(1), a.socket->sends.size());
+    CPPUNIT_ASSERT(isEnvelope(a.socket->sends.front(), transport::EnvelopeType::Session));
+    a.deliverTo(b);
+    b.deliverTo(a);
+    CPPUNIT_ASSERT(req->completed());
+    CPPUNIT_ASSERT(first and first->empty());
+    CPPUNIT_ASSERT(not second);
+    CPPUNIT_ASSERT(not callerDone);
+}
+
+void
+NetworkEngineTester::testTransportDelayedReplyDoesNotResend()
+{
+    TransportTestNode a("127.0.0.2", {}, 1);
+    TransportTestNode b("127.0.0.3", {}, 2);
+    establishSession(a, b);
+    std::optional<std::vector<Sp<Value>>> got;
+    auto req = a.get(a.node(b), got);
+    a.deliverTo(b);
+    auto reply = b.takeSent();
+    advance(a, std::chrono::milliseconds(1500));
+    a.takeSent();
+    for (const auto& packet : reply)
+        a.engine->processMessage(packet.data.data(), packet.data.size(), b.addr);
+    CPPUNIT_ASSERT(req->completed());
+    CPPUNIT_ASSERT(got);
+    CPPUNIT_ASSERT(a.socket->sends.empty());
+}
+
+void
+NetworkEngineTester::testTransportRecoveryRefreshesDeadline()
+{
+    TransportTestNode a("127.0.0.2", {}, 1);
+    TransportTestNode b("127.0.0.3", {}, 2);
+    establishSession(a, b);
+    std::optional<std::vector<Sp<Value>>> got;
+    auto req = a.get(a.node(b), got);
+    a.takeSent();
+    advance(a, std::chrono::milliseconds(1500));
+    a.deliverTo(b);
+    advance(a, std::chrono::milliseconds(3000));
+    a.takeSent();
+    b.deliverTo(a);
+    CPPUNIT_ASSERT_EQUAL(size_t(1), a.takeSent().size());
+    advance(a, std::chrono::milliseconds(250));
+    CPPUNIT_ASSERT(a.socket->sends.empty());
+    CPPUNIT_ASSERT(req->pending());
+    a.engine->clear();
+    advance(a, std::chrono::seconds(30));
+    CPPUNIT_ASSERT(a.socket->sends.empty());
+}
+
+void
 NetworkEngineTester::testTransportPlaintextCannotPoisonSessionCache()
 {
     TransportTestNode receiver("127.0.0.2", {}, 1);
