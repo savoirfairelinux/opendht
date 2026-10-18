@@ -148,15 +148,14 @@ Node::closeSocket(Tid id)
 std::string
 Node::toString() const
 {
-    auto state = "plaintext"sv;
-    auto authorization = ""sv;
+    auto state = 'P';
+    auto authorization = '-';
     if (transport_) {
-        state = transport_->ephemeral && transport_->validatedAddress == addr ? "authenticated"sv : "key-known"sv;
+        state = transport_->ephemeral && transport_->validatedAddress == addr ? 'A' : 'K';
         if (transport_->authorizedUntil != transport::SystemTime {})
-            authorization = transport_->isAuthorized(std::chrono::system_clock::now()) ? ", authorized"sv
-                                                                                     : ", authorization-expired"sv;
+            authorization = transport_->isAuthorized(std::chrono::system_clock::now()) ? '+' : '!';
     }
-    return fmt::format("{} {:<21} [transport: {}{}]", id, addr.toString(), state, authorization);
+    return fmt::format("{} {:<21} [{}{}]", id, addr.toString(), state, authorization);
 }
 
 std::ostream&
