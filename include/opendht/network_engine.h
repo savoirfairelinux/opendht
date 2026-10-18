@@ -36,8 +36,15 @@ struct TransId;
 struct NetworkConfig
 {
     NetId network {0};
+    /* Requests in Session or Data envelopes, from a validated address */
     ssize_t max_req_per_sec {0};
     ssize_t max_peer_req_per_sec {0};
+    /* Other requests. 0: same as above */
+    ssize_t max_unauth_req_per_sec {0};
+    ssize_t max_peer_unauth_req_per_sec {0};
+    /* Packets needing a key agreement or signature check. 0: same as max_req_per_sec */
+    ssize_t max_crypto_per_sec {0};
+    ssize_t max_peer_crypto_per_sec {0};
     bool is_client {false};
     /** Transport encryption is used only if enabled and a key is set */
     TransportConfig transport {};
@@ -470,7 +477,10 @@ public:
     size_t getNodeCacheSize() const { return cache.size(); }
     size_t getNodeCacheSize(sa_family_t af) const { return cache.size(af); }
 
-    size_t getRateLimiterSize() const { return address_rate_limiter.size(); }
+    size_t getRateLimiterSize() const
+    {
+        return requestLimiter_.size() + unauthLimiter_.size() + cryptoLimiter_.size() + replyCryptoLimiter_.size();
+    }
 
     size_t getPartialCount() const { return partial_messages.size(); }
 
@@ -596,7 +606,12 @@ private:
     bool isExpectedReply(const ParsedMessage&, const SockAddr& from);
     bool tryCompleteMessage(PartialMessage&, const SockAddr& from);
 
-    bool rateLimit(const SockAddr& addr);
+    /* Admits a request, unless `charged` already: Session and Data senders have their own budget.
+     * A plaintext request whose answer takes an Initial envelope also needs crypto budget. */
+    bool limitRequest(const ParsedMessage& msg, const SockAddr& from, bool charged = false);
+    /* Admits a packet needing a key agreement, from a separate budget if we await a reply from there */
+    bool limitCrypto(const transport::Key& sender, const SockAddr& from);
+    bool expectsReply(const transport::Key& sender, const SockAddr& from);
 
     static bool isMartian(const SockAddr& addr);
     bool isNodeBlacklisted(const SockAddr& addr) const;
@@ -699,12 +714,11 @@ private:
 
     NodeCache cache;
 
-    // global limiting should be triggered by at least 8 different IPs
-    using IpLimiter = RateLimiter;
-    using IpLimiterMap = std::map<SockAddr, IpLimiter, SockAddr::ipCmp>;
-    IpLimiterMap address_rate_limiter;
-    RateLimiter rate_limiter;
-    ssize_t limiter_maintenance {0};
+    /* Requests from Session/Data senders, other requests, public-key work for unexpected and expected senders */
+    AddressRateLimiter requestLimiter_;
+    AddressRateLimiter unauthLimiter_;
+    AddressRateLimiter cryptoLimiter_;
+    AddressRateLimiter replyCryptoLimiter_;
 
     // requests handling
     std::map<Tid, Sp<Request>> requests {};

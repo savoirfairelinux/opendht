@@ -123,6 +123,20 @@ struct OPENDHT_PUBLIC Config
     /** If non-0, overrides the default per-IP address rate-limit. -1 means no limit. */
     ssize_t max_peer_req_per_sec {0};
 
+    /**
+     * If non-0, override the rate-limits of requests from senders without an encrypted session
+     * (default: same as above). -1 means no limit.
+     */
+    ssize_t max_unauth_req_per_sec {0};
+    ssize_t max_peer_unauth_req_per_sec {0};
+
+    /**
+     * If non-0, override the rate-limits of packets needing a transport key agreement
+     * or credential check. -1 means no limit.
+     */
+    ssize_t max_crypto_per_sec {0};
+    ssize_t max_peer_crypto_per_sec {0};
+
     /* If non-0, overrides the default maximum number of searches. -1 means no limit.  */
     ssize_t max_searches {0};
 
