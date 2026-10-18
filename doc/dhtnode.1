@@ -136,7 +136,8 @@ Enable public stable mode.
 .TP
 \fB\-f\fP \fIpath\fP, \fB\-\-persist\fP \fIpath\fP
 Specify a file path to persist/load the node state (routing table, values and
-generated transport key).
+generated transport key). State is written to a temporary file and renamed
+over the destination only after the write succeeds. Save failures are logged.
 .TP
 \fB\-n\fP \fInetwork_id\fP, \fB\-\-net\fP \fInetwork_id\fP
 Specify the network id. This lets you connect to distinct networks and prevents
@@ -200,7 +201,8 @@ Credential of our transport key, issued by a network authority.
 .TP
 \fB\-\-gen\-network\-authority\fP \fIprefix\fP
 Generate a network authority, save its secret key to \fIprefix\fP.key and its
-public key to \fIprefix\fP.pub, and exit.
+public key to \fIprefix\fP.pub, and exit. Refuses to overwrite either existing
+output path, including a dangling symlink.
 .TP
 \fB\-\-issue\-credential\fP \fIfile\fP
 Issue a credential for the key in \fB\-\-transport\-key\fP (created if needed),

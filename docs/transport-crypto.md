@@ -390,12 +390,17 @@ If the following conditions all hold, the static secret key is saved in the stat
 - `Config::persist_path` is set.
 
 When the key is saved:
-- the state file's permissions are set to `0600` before any data is written;
+- the state is written to a randomly named temporary file in the destination directory;
+- owner-only read/write permissions are requested before any secret data is written;
+- the temporary file is closed successfully before it is renamed over the state file;
+- a save failure is logged, the temporary file is removed, and the previous state file is left intact;
 - on start, the key is restored before any packet is exchanged, so the node keeps its ID across restarts.
 
 The node also stores its ID in the state file, so older versions reading this state keep the same ID. A configured key is never written to the state file. Ephemeral keys and session keys are never persisted.
 
-`dhtnode --transport-key <file>` loads the raw 32-byte secret from `<file>`. If the file does not exist, `dhtnode` creates it with mode `0600`.
+`dhtnode --transport-key <file>` loads the raw 32-byte secret from `<file>`. If the file does not exist, `dhtnode` creates it using the same temporary-file and permission handling. Unreadable or invalid existing keys are not replaced.
+
+File operations use portable C++ filesystem APIs. Permission semantics depend on the platform; exclusive file creation and power-loss durability are not guaranteed. Use an owner-controlled directory and a single writer for each path.
 
 ## 9. Security analysis
 
@@ -454,6 +459,8 @@ dhtnode --transport-key node1.key --issue-credential node1.cred --authority-key 
 # Run a node
 dhtnode --transport-key node1.key --network-credential node1.cred --network-authority $(cat net.pub)
 ```
+
+Authority generation refuses to run if either output path already exists, including a dangling symlink.
 
 `--network-authority` can be repeated to trust several authorities, for example during an authority rotation. Keep the authority secret offline. Distribute only `net.pub` and the per-node credentials.
 
