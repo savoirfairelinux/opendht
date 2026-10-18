@@ -426,24 +426,69 @@ Against an attacker who controls the network but holds no node's secret key:
 
 ### 9.2 Limitations
 
-- **Public mode is opportunistic.** An active attacker on the path of a first contact can strip or replace `k`. The two nodes then talk in plaintext, or the attacker relays traffic between them as a man-in-the-middle. This is trust on first use, with no downgrade protection.
-  - Nodes learned from node lists with keys are not exposed this way, unless the lister itself is malicious or attacked.
-  - The first request to a node whose key is unknown, for example a bootstrap ping, is visible.
-- **Static key compromise.** The static secret lets an attacker impersonate its owner from then on, and read the Initial envelopes sent to it, including recorded ones. Rotate a key by changing it, which also changes the node ID.
-- **No replay protection.** The transport layer accepts a captured envelope again while the receiver still has the keys for it:
-  - Initial envelopes decrypt from any address, at any time. Replayed read-only requests may receive another encrypted answer, but do not change established peer or session state. Writes receive `401`, updates are dropped, and replies require a matching pending request at the expected address ([§6.5](#65-receiving)). This limits replay effects without adding a transport replay window.
-  - Session and Data envelopes only from their original source address, for up to one hour.
+Each item states who it applies to, what that party can do, and what it cannot do.
 
-  Transaction IDs limit the effect of replayed replies.
-- **On-path attackers** can learn the ephemeral key sent to an address, and therefore write on its behalf. This is the same exposure as legacy tokens.
-- **Address changes.** A peer whose address or port changes, for example after a NAT rebinding, can no longer use our ephemeral key. Its next retry starts over with an Initial envelope.
-- **No revocation.** A credential remains valid until it expires. Keep validity periods short, or replace the authority key to exclude nodes.
-- **Clock dependence.** Credential expiration is checked against local system clocks. Clock skew shifts when a credential is accepted.
-- **Metadata.** The following are visible to an observer:
-  - the sender's static key, and therefore its node ID, and its ephemeral key in Initial and Session envelopes; Data envelopes only show their type;
-  - envelope type, credential flag, packet sizes and timing;
-  - the contents of Hello messages and the credentials they carry.
-- **Node state.** The saved node list does not include peer keys. In a private network, saved nodes are only used again once they are learned with their key.
+- **Encryption is hop-by-hop.** Nodes that store values read them. Only `SecureDht` protects values end to end ([§1](#1-scope)).
+
+- **Public mode is trust on first use.** Applies in public networks, to an attacker who modifies traffic on the path between two nodes A and B before A knows B's key.
+  - A node learns a peer's key from the first plaintext message that carries it with the peer's ID: `k` in a message from the peer, or `k4`/`k6` in a reply from any node. An attacker that removes these fields from every such message keeps A and B in plaintext, and reads and modifies their traffic. The downgrade ends with the first message carrying a key that the attacker misses: the node that receives it then sends only envelopes to that peer, which the attacker cannot alter, and treats plaintext claiming the peer's ID as untrusted ([§6.5](#65-receiving), step 7). The attacker can still drop their traffic.
+  - The attacker cannot bind its own key to B's ID. It can rewrite B's plaintext messages under an ID and key of its own, so that A talks to the attacker's node at B's address, and the attacker relays to B. A then knows the attacker's node at that address, not B.
+  - Until A knows a key for an ID, any plaintext sender can claim that ID from any address. The claim lasts until A learns the key: plaintext claiming the ID is untrusted from then on, and the first Session or Data envelope under it moves the node record to its sender's address.
+  - A key received in an encrypted reply cannot be stripped. One received in a plaintext reply can, by an attacker on that reply's path.
+  - The first request to a node with an unknown key, for example a bootstrap ping, is in plaintext.
+  - Private networks are not affected: they never send or accept plaintext, and credentials authenticate keys.
+
+- **Compromise of a static secret key.** Applies to whoever obtains `sk_B`, for example from B's key file or state file, for as long as B keeps that key.
+  - It can act as B from any address, and talk to any node under B's ID.
+  - It can read every Initial envelope ever sent to B, including recorded ones. Initial keys depend only on `sk_B` and the sender's public keys.
+  - It can send Initial envelopes to B under any other node's ID. B answers read-only requests in them, under keys the attacker cannot derive, and changes no state ([§6.5](#65-receiving), step 7). Writes are refused with `401`.
+  - It cannot read Session or Data envelopes between B and other nodes, recorded or live, nor impersonate another node to B in them. That requires B's ephemeral secret, or the other node's static secret.
+  - In a private network, it stays admitted until B's credential expires. The credential is not secret: Hellos carry it in clear.
+  - Compromise of a running node also exposes its epoch secrets, and with them all sessions of its current and previous epoch.
+
+  Recover by changing the key. This changes the node ID, and in a private network needs a new credential. The old key cannot be revoked in a public network.
+
+- **Initial envelopes are not forward-secret against the receiver.** An Initial envelope stays confidential if the sender's static key is compromised later, but not if the receiver's is. Initial envelopes are sent:
+  - as the first packet to a node whose ephemeral key is unknown: one learned from a node list, or one that just sent us plaintext ([§6.4](#64-sending));
+  - as the first retransmission of any request, which resends the whole request, including value data in a `put`.
+
+  Any request lost once is therefore exposed to a later compromise of the receiver's static key. Answers to Initial envelopes are Session envelopes, and are forward-secret.
+
+- **No replay protection.** Nodes keep no record of received nonces. A captured envelope is accepted again as long as the receiver holds the keys that open it:
+  - **Initial envelopes** open from any address, for as long as the receiver's static key is unchanged. A replayed read-only request is answered again, to the replayer's source address, under keys the replayer cannot derive. Nothing else happens: writes are refused with `401`, value updates are dropped, and replies and errors are accepted only for a request pending toward that address ([§6.5](#65-receiving), step 7). What remains is reflection: anyone holding a captured Initial request, or a Hello, can make the receiver send an encrypted answer to an address of its choice. In a private network this includes outsiders, because the captured packet carries its sender's credential. The rate limiter bounds it.
+  - **Session and Data envelopes** open only from their original source address, which the replayer must spoof, and only until the epoch that opened them is erased: at most one hour. A replayed request is processed again as its sender, including a write the sender did make: a repeated `put`, `refresh` or `listen` extends the life of a value or of a listener. A replayed value update is accepted while its listen is open, and repeats it: the values it lists are added or refreshed again, and the expirations it announces are signaled again. A replayed reply or error is accepted only if its transaction ID is pending. Transaction IDs are 32-bit counters per peer with a random start, so an old ID is pending again only after $2^{32}$ requests to that peer.
+
+- **On-path attackers get write authorization for the addresses they observe.** Applies to an attacker that reads the packets we send to an address `addr`. Our ephemeral key `epk(addr)` is in the clear header of every Initial and Session envelope we send there: at each first contact, retransmission and epoch rotation. Data envelopes do not carry it.
+  - With its own key pair, the attacker can send us Session envelopes with source address `addr`, and they open. It then has what the owner of `addr` has: write authorization ([§6.6](#66-write-authorization)). Its `put` and `refresh` consume the storage quota of `addr`, and its `listen` directs value updates to `addr`, all under the attacker's own node ID. Each such envelope also replaces the session cached for `addr`, so Data envelopes from the real owner are dropped until it retransmits with an Initial envelope and establishes a new session ([§6.4](#64-sending), recovery).
+  - It cannot impersonate the node at `addr`, nor read or alter its traffic. That requires the static secret of that node.
+  - A captured `epk(addr)` is usable until the epoch that produced it is erased: at most one hour.
+  - In a private network, the attacker's key must also hold a valid credential.
+
+  This is the same exposure as legacy tokens, which are sent in clear to the address they authorize. Address validation defends against off-path spoofing only.
+
+- **Address changes.** Our ephemeral key for a peer is derived from its address. When a peer's address or port changes, for example after a NAT rebinding, its Session and Data envelopes to us no longer open, and ours no longer reach it. Its next retransmission is an Initial envelope, which starts a new session for the new address as for a first contact: the request is exposed as described above, and writes in it are refused until the next Session envelope.
+
+- **No Sybil resistance.** An identity costs one key generation. Encryption prevents choosing a node ID ([§9.1](#91-properties)), not creating many of them. In public networks, legacy nodes still choose their IDs freely.
+
+- **Denial of service.** Public-key operations on unauthenticated packets are bounded only by the rate limiter, which is shared with request processing: by default 8192 packets per second globally, and 1024 per source address.
+  - An attacker spending the global budget from many or spoofed addresses drops every rate-limited packet: Initial, Hello and uncached Session envelopes from new peers, and requests from established peers, as in the legacy protocol. Opening Data envelopes and cached sessions is never rate limited.
+  - A budgeted Initial envelope costs two X25519 operations, and a Session envelope five per epoch tried, far more than a legacy request, so the default budget can exceed the CPU available to a node. `Config::max_req_per_sec` lowers it.
+  - An attacker reachable at many addresses, for example an IPv6 prefix, can fill the session cache of an epoch: one slot costs it one round trip. Evicted peers have their Data envelopes dropped until their next retransmission, which starts a new session.
+
+- **No revocation.** Applies to private networks. A credential cannot be revoked before it expires. A peer that presented a valid credential stays authorized until that credential's expiry, so a compromised or excluded node keeps participating until then. To exclude it earlier, every other node must stop trusting the authority that signed its credential. That also excludes every other node that only holds credentials from that authority. Keep validity periods short.
+
+- **Clock dependence.** Applies to private networks. Credential expiry is checked against each verifier's system clock. A verifier whose clock is behind keeps accepting an expired credential for as long as it is behind; one whose clock is ahead rejects a valid credential early. A node checks its own credential the same way at startup.
+
+- **Metadata.** Anyone observing the traffic sees:
+  - in Initial and Session envelopes, the sender's static key, hence its node ID, and its ephemeral key: who talks to whom, at each first contact, retransmission and epoch rotation;
+  - in Data envelopes, only the type; the sender is still identified by its address, from the Session envelopes that preceded;
+  - in every envelope, the type, the credential flag, the size and the timing, which can reveal the kind of message, for example fragmented value data;
+  - Hello messages entirely, including the credential, which reveals the node's key and the credential's expiry. A copied credential is useless without the matching secret key;
+  - in public networks, plaintext messages entirely, including node lists.
+
+  Node addresses are not hidden: they are in node lists, and on the packets themselves.
+
+- **Node state.** The saved node list holds IDs and addresses, but no keys. In a public network, saved nodes are contacted again in plaintext, with the first-contact exposure above. In a private network, a saved node with an ID but no key cannot be contacted ([§6.4](#64-sending), step 3): a restarted node needs a bootstrap address to rejoin, and reuses saved nodes once it learns their keys from node lists.
 
 ## 10. Operating a private network
 
