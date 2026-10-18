@@ -73,6 +73,10 @@ class NetworkEngineTester : public CppUnit::TestFixture
     CPPUNIT_TEST(testTransportInitialReplayKeepsPeerState);
     CPPUNIT_TEST(testTransportInitialAddressChangeNeedsSession);
     CPPUNIT_TEST(testTransportEncryptionFailureDoesNotSendPlaintext);
+    CPPUNIT_TEST(testRateLimitSeparatesSessionRequests);
+    CPPUNIT_TEST(testRateLimitCryptoAdmission);
+    CPPUNIT_TEST(testRateLimitCryptoPerPrefix);
+    CPPUNIT_TEST(testRateLimitReservesExpectedReplies);
 #endif
     CPPUNIT_TEST_SUITE_END();
 
@@ -143,6 +147,10 @@ public:
     void testTransportInitialReplayKeepsPeerState();
     void testTransportInitialAddressChangeNeedsSession();
     void testTransportEncryptionFailureDoesNotSendPlaintext();
+    void testRateLimitSeparatesSessionRequests();
+    void testRateLimitCryptoAdmission();
+    void testRateLimitCryptoPerPrefix();
+    void testRateLimitReservesExpectedReplies();
 #endif
 };
 
