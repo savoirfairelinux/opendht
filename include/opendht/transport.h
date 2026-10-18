@@ -90,6 +90,8 @@ struct Peer
     SockAddr validatedAddress {};
     /** Private networks: expiration of the verified peer credential */
     SystemTime authorizedUntil {};
+    /** Our session was lost: requests other than pings wait for a new ephemeral key */
+    bool recovering {false};
 
     bool isAuthorized(SystemTime now) const { return now < authorizedUntil; }
     void setEphemeral(const Key& k, const SockAddr& address = {})

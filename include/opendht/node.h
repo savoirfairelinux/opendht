@@ -91,6 +91,7 @@ struct Node
     void requested(const Sp<net::Request>& req);
     void received(time_point now, const Sp<net::Request>& req);
     Sp<net::Request> getRequest(Tid tid);
+    const std::map<Tid, Sp<net::Request>>& getRequests() const { return requests_; }
     void cancelRequest(const Sp<net::Request>& req);
 
     void setExpired();
