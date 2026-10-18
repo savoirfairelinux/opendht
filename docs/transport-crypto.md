@@ -14,7 +14,7 @@ Implementation: [include/opendht/transport.h](../include/opendht/transport.h), [
 - **Optional private networks**: when configured, a node only talks to nodes holding a credential signed by a trusted authority.
 - **Forward secrecy**: recorded traffic stays confidential after a node's long-term key is compromised, once the ephemeral keys used for it are erased (at most one hour later). The first packet to a peer has weaker guarantees ([§5.2](#52-key-schedule)).
 - **Address validation**: a Session or Data envelope proves that its sender receives packets at its source address. It replaces the legacy write tokens between encrypted nodes ([§6.6](#66-write-authorization)).
-- **Low cost**: no handshake round trip, a few X25519 operations per peer every 30 minutes. Once a session is established, 30 bytes of overhead per packet, minus the 40-byte token in messages that carried one.
+- **Low cost**: routing discovery also establishes the session, with a few X25519 operations per peer every 30 minutes. Once a session is established, 30 bytes of overhead per packet, minus the 40-byte token in messages that carried one.
 
 ### Non-goals
 
@@ -256,9 +256,15 @@ Once a node's key is known, nothing is ever sent to it in plaintext. Failed key 
 
 The confirmation is lost when the session keys change: on epoch rotation, or when B's ephemeral key changes through accepted traffic. An Initial request leaves existing state untouched and is answered without reusing a cached session or its confirmation.
 
-**Recovery.** On the first retransmission of a request sent in a Session or Data envelope, the node forgets B's ephemeral key and starts recovering the session with B. This recovers when B no longer has the session or our authorization, for example after a restart. Until an envelope from B brings its ephemeral key again, every request to B other than a ping is withheld, including requests made meanwhile, and a ping to B in an Initial envelope is kept pending, with our credential in a private network. The requests are then sent at once in Session envelopes. Their payloads are never sent in an Initial envelope ([§9.2](#92-limitations)), and writes are accepted without a `401` round trip. If B answers none of the pings, the pending requests expire with the node. Requests to a node whose ephemeral key was never known are first contacts: they are sent and retransmitted in Initial envelopes. In public mode, a plaintext read-only request claiming B's ID is answered with an Initial envelope to B's known static key. The answer uses a transient node record: it does not reset B's existing ephemeral key, address or session. A restarted peer can read this answer and establish a new session.
+**Establishment.** Only `ping` and `find_node` requests may precede address validation. Application requests wait until B's ephemeral key is known, or a successful control reply identifies a genuinely keyless legacy peer. Learning the ephemeral from an accepted Initial reply is enough to send a Session: neither address-indexed cache admission nor Data confirmation requires another handshake. Direct NetworkEngine application requests share one engine-owned ping; canceling a caller's ping cannot strand them. Private bare-address bootstrap remains a ping-only Hello.
+
+**Recovery.** At the first response timeout, a request forgets B's ephemeral key and starts recovering the session, for example after B restarts. Application requests to B are withheld, including new requests, while one internal ping retries in Initial envelopes (with our credential in a private network). `find_node` remains available and its successful reply can also release the waiters. An accepted reply completes its own request before held work is released, so a delayed original reply is not retransmitted during attachment. Released requests receive fresh response timers; withholding consumes no transmission attempts. The internal probe's first timeout notifies waiting operations so searches can replace unresponsive peers promptly. Probe exhaustion or rejection terminates the waiters. Their payloads never enter Initial envelopes, and no `401` challenge/retry exchange is used.
+
+**Value searches.** A cold peer first receives `find_node(search_target)`. Its reply supplies its ephemeral and closer candidates in the same exchange. The existing distance-ordered search dispatch contacts closer candidates immediately, within the existing four-active-peer limit; it does not wait for a SELECT reply from the farther responder. This routing probe has separate state: it cannot satisfy a GET, pagination, or an empty-result callback. Responders remain eligible for subsequent value retrieval. A cold holder typically needs three exchanges (`find_node`, SELECT IDs, GET by ID), while a session-ready holder retains its usual two. A routing probe's first timeout frees its active search slot while protocol retries continue, rather than waiting for final expiration.
 
 Value data is fragmented so that each packet fits in the 1280-byte IPv6 minimum MTU: `1280 − 40 − 8 = 1232` bytes of UDP payload, less 48 bytes reserved for the msgpack framing of a fragment, less the overhead of the envelope the fragments are sent in. Fragments carry `1184` bytes of value data in plaintext, `1154` in Data envelopes, `1090` in Initial or Session envelopes, and `985` with a credential.
+
+This sizes value fragments only. Complete replies and node lists are not yet subject to a whole-datagram MTU budget; node-list trimming and packet-size enforcement remain separate work.
 
 ### 6.5 Receiving
 
@@ -293,14 +299,14 @@ For each received packet, a node applies the following checks in order:
 
 7. **Processing.**
   - A Session or Data envelope can move the sender's node record to the packet's source address.
-  - Initial requests use transient node records. Read-only requests are answered, writes receive `401`, and value updates are dropped. They do not add or move an established node, count as activity, or change its ephemeral key or session confirmation.
+  - Initial requests use transient node records. Only `ping` and `find_node` receive successful replies; GET (including SELECT) and writes receive a short `401` error, and value updates are dropped. Rejected GETs never invoke storage or serialize values. These requests do not add or move an established node, count as activity, or change its ephemeral key or session confirmation.
   - Initial replies and errors are accepted only for a pending request at the expected source address, never for a listener. They cannot move a known keyed node to a different address.
    - Replies and Data envelopes can confirm the session ([§6.4](#64-sending)).
 
   A **plaintext** message claiming the ID of a node whose key is known is untrusted, even from that node's recorded address:
    - it does not move the node record and does not count as activity from that node;
   - replies, errors, value updates and writes are dropped;
-  - only read-only requests (`ping`, `find`, `get`) are answered, using a transient node record and an Initial envelope to the known key.
+  - `ping` and `find_node` receive control replies using a transient node record and an Initial envelope to the known key; GET receives a short `401`, even when the plaintext packet is the first advertisement of a matching `k`. Truly keyless legacy GETs remain unchanged.
 
 The rate limiter is the existing per-address and global request limiter. It runs before every expensive public-key operation on unauthenticated input:
 - each Initial envelope (two X25519 operations);
@@ -313,7 +319,7 @@ Packets from peers with cached session keys cost one AEAD operation. Each epoch 
 
 `put`, `refresh` and `listen` create state on the receiver, and `listen` makes it send value updates to the requester's address. The receiver therefore requires proof that the requester receives packets at its source address. Without it, an attacker could spoof a victim's address to fill its storage quota, or direct update traffic to it.
 
-- **Encrypted requests** must arrive in a **Session** or **Data** envelope. Our ephemeral key for the source address is only sent to that address ([§5.1](#51-ephemeral-keys)), so opening the envelope proves the sender received one of our packets there. Requests in Initial envelopes are refused with error `401`. The requester then forgets its sync state with us and sends a new `get`. The answer carries our ephemeral key for its address, and the request is retried in a Session envelope.
+- **Encrypted requests** must arrive in a **Session** or **Data** envelope. Our ephemeral key for the source address is only sent to that address ([§5.1](#51-ephemeral-keys)), so opening the envelope proves the sender received one of our packets there. Requests in Initial envelopes are refused with error `401`; normal senders establish the session through `ping` or `find_node` before sending application requests.
 - **Plaintext requests** must carry a token, as in the legacy protocol. The token is sent in answers to `find`, `get` and `listen`, and in value updates, to the address of the node record:
 
   ```
@@ -441,7 +447,7 @@ Each item states who it applies to, what that party can do, and what it cannot d
 - **Compromise of a static secret key.** Applies to whoever obtains `sk_B`, for example from B's key file or state file, for as long as B keeps that key.
   - It can act as B from any address, and talk to any node under B's ID.
   - It can read every Initial envelope ever sent to B, including recorded ones. Initial keys depend only on `sk_B` and the sender's public keys.
-  - It can send Initial envelopes to B under any other node's ID. B answers read-only requests in them, under keys the attacker cannot derive, and changes no state ([§6.5](#65-receiving), step 7). Writes are refused with `401`.
+  - It can send Initial envelopes to B under any other node's ID. B answers `ping` and `find_node` in them, under keys the attacker cannot derive, and changes no state ([§6.5](#65-receiving), step 7). GET and writes are refused with `401`.
   - It cannot read Session or Data envelopes between B and other nodes, recorded or live, nor impersonate another node to B in them. That requires B's ephemeral secret, or the other node's static secret.
   - In a private network, it stays admitted until B's credential expires. The credential is not secret: Hellos carry it in clear.
   - Compromise of a running node also exposes its epoch secrets, and with them all sessions of its current and previous epoch.
@@ -449,13 +455,13 @@ Each item states who it applies to, what that party can do, and what it cannot d
   Recover by changing the key. This changes the node ID, and in a private network needs a new credential. The old key cannot be revoked in a public network.
 
 - **Initial envelopes are not forward-secret against the receiver.** An Initial envelope stays confidential if the sender's static key is compromised later, but not if the receiver's is. Initial envelopes carry:
-  - the first request to a node whose ephemeral key is unknown: one learned from a node list, or one that just sent us plaintext ([§6.4](#64-sending)), and the retransmissions of that request;
-  - pings, while a lost session is recovered. Other requests wait for the new session ([§6.4](#64-sending), recovery).
+  - `ping` or `find_node` to a node whose ephemeral key is unknown, including their retransmissions;
+  - control replies to plaintext requests advertising a key. Application requests wait for a Session ([§6.4](#64-sending)).
 
-  Requests are therefore exposed to a later compromise of the receiver's static key only at first contact. Answers to Initial envelopes are Session envelopes, and are forward-secret.
+  Routing targets and control traffic remain exposed to a later compromise of the receiver's static key. Application GET/SELECT and write payloads do not enter Initial envelopes. Answers to Initial envelopes are Session envelopes, and are forward-secret.
 
 - **No replay protection.** Nodes keep no record of received nonces. A captured envelope is accepted again as long as the receiver holds the keys that open it:
-  - **Initial envelopes** open from any address, for as long as the receiver's static key is unchanged. A replayed read-only request is answered again, to the replayer's source address, under keys the replayer cannot derive. Nothing else happens: writes are refused with `401`, value updates are dropped, and replies and errors are accepted only for a request pending toward that address ([§6.5](#65-receiving), step 7). What remains is reflection: anyone holding a captured Initial request, or a Hello, can make the receiver send an encrypted answer to an address of its choice. In a private network this includes outsiders, because the captured packet carries its sender's credential. The rate limiter bounds it.
+  - **Initial envelopes** open from any address, for as long as the receiver's static key is unchanged. A replayed `ping` or `find_node` is answered again, to the replayer's source address, under keys the replayer cannot derive. GET and writes are refused with `401`, value updates are dropped, and replies and errors are accepted only for a request pending toward that address ([§6.5](#65-receiving), step 7). Reflection remains for control replies: anyone holding a captured Initial request, or a Hello, can make the receiver send an encrypted answer to an address of its choice. In a private network this includes outsiders, because the captured packet carries its sender's credential. The rate limiter bounds request frequency, not reply size; node-list packet-size limits remain separate work.
   - **Session and Data envelopes** open only from their original source address, which the replayer must spoof, and only until the epoch that opened them is erased: at most one hour. A replayed request is processed again as its sender, including a write the sender did make: a repeated `put`, `refresh` or `listen` extends the life of a value or of a listener. A replayed value update is accepted while its listen is open, and repeats it: the values it lists are added or refreshed again, and the expirations it announces are signaled again. A replayed reply or error is accepted only if its transaction ID is pending. Transaction IDs are 32-bit counters per peer with a random start, so an old ID is pending again only after $2^{32}$ requests to that peer.
 
 - **On-path attackers get write authorization for the addresses they observe.** Applies to an attacker that reads the packets we send to an address `addr`. Our ephemeral key `epk(addr)` is in the clear header of every Initial and Session envelope we send there: at each first contact, retransmission and epoch rotation. Data envelopes do not carry it.
