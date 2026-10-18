@@ -44,6 +44,9 @@ class NetworkEngineTester : public CppUnit::TestFixture
     CPPUNIT_TEST(testTransportSpoofedInitialsDoNotFillSessionCache);
     CPPUNIT_TEST(testTransportSessionCacheEvictsLeastRecentlyUsed);
     CPPUNIT_TEST(testTransportInitialSenderConfirmsAfterSessionEnvelope);
+    CPPUNIT_TEST(testTransportEncryptedFragmentsIgnorePlaintextParts);
+    CPPUNIT_TEST(testTransportEncryptedFragmentsIgnorePlaintextHeader);
+    CPPUNIT_TEST(testTransportEncryptedFragmentsRequireSenderKey);
 #endif
     CPPUNIT_TEST_SUITE_END();
 
@@ -85,6 +88,9 @@ public:
     void testTransportSpoofedInitialsDoNotFillSessionCache();
     void testTransportSessionCacheEvictsLeastRecentlyUsed();
     void testTransportInitialSenderConfirmsAfterSessionEnvelope();
+    void testTransportEncryptedFragmentsIgnorePlaintextParts();
+    void testTransportEncryptedFragmentsIgnorePlaintextHeader();
+    void testTransportEncryptedFragmentsRequireSenderKey();
 #endif
 };
 

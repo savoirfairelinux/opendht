@@ -740,7 +740,11 @@ struct TransportTestNode
             [](const InfoHash&, const SockAddr&) {},
             [](Sp<Node>) { return net::RequestAnswer {}; },
             [](Sp<Node>, const InfoHash&, want_t) { return net::RequestAnswer {}; },
-            [](Sp<Node>, const InfoHash&, want_t, const Query&) { return net::RequestAnswer {}; },
+            [this](Sp<Node>, const InfoHash&, want_t, const Query&) {
+                net::RequestAnswer answer {};
+                answer.values = values;
+                return answer;
+            },
             [this](Sp<Node>, const InfoHash&, Tid, const Query&, int) {
                 ++listens;
                 return net::RequestAnswer {};
@@ -770,6 +774,17 @@ struct TransportTestNode
     {
         return engine->sendPing(dest, [&done](const net::Request&, net::RequestAnswer&&) { done = true; }, {});
     }
+    Sp<Request> get(const Sp<Node>& dest, std::optional<std::vector<Sp<Value>>>& got)
+    {
+        return engine->sendGetValues(dest,
+                                     InfoHash::getRandom(rd),
+                                     {},
+                                     -1,
+                                     [&got](const net::Request&, net::RequestAnswer&& answer) {
+                                         got = std::move(answer.values);
+                                     },
+                                     {});
+    }
 
     Sp<Node> node(const TransportTestNode& other) { return engine->insertNode(other.id, other.addr); }
 
@@ -782,6 +797,8 @@ struct TransportTestNode
     std::unique_ptr<net::NetworkEngine> engine;
     int newNodes {0};
     int listens {0};
+    /* answered to get requests */
+    std::vector<Sp<Value>> values;
     /* held by the routing table in a Dht */
     std::vector<Sp<Node>> known;
 };
@@ -1672,6 +1689,96 @@ NetworkEngineTester::testTransportInitialSenderConfirmsAfterSessionEnvelope()
     CPPUNIT_ASSERT(isEnvelope(b.socket->sends.at(0), transport::EnvelopeType::Data));
     b.deliverTo(a);
     CPPUNIT_ASSERT(done);
+}
+
+/* a requests a value from b that b answers in a header and two encrypted fragments, kept in `reply` */
+struct FragmentedReply
+{
+    FragmentedReply(TransportTestNode& a, TransportTestNode& b)
+        : data(2000, 'x')
+    {
+        b.values = {std::make_shared<Value>((const uint8_t*) data.data(), data.size())};
+        request = a.get(a.node(b), got);
+        a.deliverTo(b);
+        reply = b.takeSent();
+        CPPUNIT_ASSERT_EQUAL((size_t) 3, reply.size());
+        for (const auto& p : reply)
+            CPPUNIT_ASSERT(isEnvelope(p, transport::EnvelopeType::Data));
+    }
+    void deliver(TransportTestNode& a, const SockAddr& from, size_t index)
+    {
+        a.engine->processMessage(reply[index].data.data(), reply[index].data.size(), from);
+    }
+    bool received() const { return got and got->size() == 1 and (*got)[0]->data == data; }
+
+    Blob data;
+    std::optional<std::vector<Sp<Value>>> got;
+    Sp<Request> request;
+    std::vector<TestDatagramSocket::SentPacket> reply;
+};
+
+void
+NetworkEngineTester::testTransportEncryptedFragmentsIgnorePlaintextParts()
+{
+    TransportTestNode a("127.0.0.2", {}, 1);
+    TransportTestNode b("127.0.0.3", {}, 2);
+    establishSession(a, b);
+    FragmentedReply r(a, b);
+    const auto tid = r.request->getTid();
+    const Blob forged(1081, 'z');
+
+    // Plaintext fragments spoofed from b's address, before and after the header, must not be merged
+    auto early = makeValueDataPacketBlob(tid, 0, 0, forged);
+    a.engine->processMessage(early.data(), early.size(), b.addr);
+    r.deliver(a, b.addr, 0);
+    auto late = makeValueDataPacketBlob(tid, 0, 1081, Blob(919, 'z'));
+    a.engine->processMessage(late.data(), late.size(), b.addr);
+    r.deliver(a, b.addr, 1);
+    r.deliver(a, b.addr, 2);
+    CPPUNIT_ASSERT(r.received());
+}
+
+void
+NetworkEngineTester::testTransportEncryptedFragmentsIgnorePlaintextHeader()
+{
+    TransportTestNode a("127.0.0.2", {}, 1);
+    TransportTestNode b("127.0.0.3", {}, 2);
+    establishSession(a, b);
+    FragmentedReply r(a, b);
+    const auto tid = r.request->getTid();
+
+    // A plaintext header spoofed from b's address must not claim the transaction
+    auto header = makeReplyHeaderPacketBlob(b.id, tid, {2000});
+    a.engine->processMessage(header.data(), header.size(), b.addr);
+    for (size_t i = 0; i < 3; i++)
+        r.deliver(a, b.addr, i);
+    CPPUNIT_ASSERT(r.received());
+}
+
+void
+NetworkEngineTester::testTransportEncryptedFragmentsRequireSenderKey()
+{
+    TransportTestNode a("127.0.0.2", {}, 1);
+    TransportTestNode b("127.0.0.3", {}, 2);
+    establishSession(a, b);
+    FragmentedReply r(a, b);
+    const auto tid = r.request->getTid();
+
+    // A fragment under another key, in an Initial envelope spoofed from b's address, must not be merged
+    auto sender = transport::KeyPair::generate();
+    auto ephemeral = transport::KeyPair::generate();
+    auto fragment = makeValueDataPacketBlob(tid, 0, 0, Blob(1081, 'z'));
+    auto initial = transport::seal(*transport::initialSendKey(sender, ephemeral, a.key.pub, 0),
+                                   transport::EnvelopeType::Initial,
+                                   sender.pub,
+                                   ephemeral.pub,
+                                   fragment.data(),
+                                   fragment.size());
+    r.deliver(a, b.addr, 0);
+    a.engine->processMessage(initial.data(), initial.size(), b.addr);
+    r.deliver(a, b.addr, 1);
+    r.deliver(a, b.addr, 2);
+    CPPUNIT_ASSERT(r.received());
 }
 
 } // namespace test
