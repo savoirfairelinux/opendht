@@ -272,6 +272,9 @@ private:
     {
         std::mutex lock;
         std::string sessionId;
+        /** Where to push: follows the latest subscription refresh of the device. */
+        PushType type {PushType::None};
+        std::string topic;
         PushSessionContext(const std::string& id)
             : sessionId(id)
         {}
@@ -341,20 +344,16 @@ private:
      *
      * @param infoHash The information hash associated with the push listen request.
      * @param pushToken The push token associated with the push listen request.
-     * @param type The type of the push listen request.
      * @param clientId The client ID associated with the push listen request.
-     * @param sessionCtx The shared pointer to the push session context associated with the push listen request.
-     * @param topic The topic associated with the push listen request.
+     * @param sessionCtx The push session context of the listener, giving the session, push type and topic to use.
      * @param values The vector of shared pointers to values associated with the push listen request.
      * @param expired A boolean indicating whether the push listen request has expired.
      * @return true.
      */
     bool handlePushListen(const InfoHash& infoHash,
                           const std::string& pushToken,
-                          PushType type,
                           const std::string& clientId,
                           const std::shared_ptr<DhtProxyServer::PushSessionContext>& sessionCtx,
-                          const std::string& topic,
                           const std::vector<std::shared_ptr<Value>>& values,
                           bool expired);
 
