@@ -196,7 +196,7 @@ private:
         for (auto i = copy.size(); i < size; i++)
             copy.push_back(0);
 
-        swapBit(copy, size_ + 1);
+        swapBit(copy, size_);
         return copy;
     }
 
