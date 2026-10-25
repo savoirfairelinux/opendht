@@ -1689,6 +1689,15 @@ NetworkEngineTester::testTransportPrivateClientKeepsAuthorization()
         CPPUNIT_ASSERT(server.known.empty());
         CPPUNIT_ASSERT(not server.engine->cache.getNode(client.id, AF_INET));
     }
+    auto cached = server.engine->epoch_.find(client.addr);
+    CPPUNIT_ASSERT(cached);
+    cached->authorizedUntil = std::chrono::system_clock::now() - std::chrono::seconds(1);
+    bool done = false;
+    client.ping(client.node(server), done);
+    CPPUNIT_ASSERT(isEnvelope(client.socket->sends.at(0), transport::EnvelopeType::Data));
+    client.deliverTo(server);
+    CPPUNIT_ASSERT(server.takeSent().empty());
+    CPPUNIT_ASSERT(not done);
 }
 
 /* Initial envelope from a fresh identity, as anyone can send from any address */
@@ -2899,6 +2908,28 @@ NetworkEngineTester::testRateLimitCachedSessionCredentials()
 
         send(sender.credential.pack());
         CPPUNIT_ASSERT_EQUAL(size_t {1}, receiver.takeSent().size());
+
+        auto past = std::chrono::system_clock::now() - std::chrono::seconds(1);
+        auto node = receiver.engine->cache.getNode(transport::nodeId(sender.key.pub), AF_INET);
+        CPPUNIT_ASSERT(node and node->getTransport());
+        node->getTransport()->authorizedUntil = past;
+        receiver.engine->epoch_.find(from)->authorizedUntil = past;
+        receiver.engine->processMessage(data.data(), data.size(), from);
+        CPPUNIT_ASSERT(receiver.takeSent().empty());
+        send(sender.credential.pack());
+        CPPUNIT_ASSERT(receiver.takeSent().empty());
+
+        advanceTime(receiver, std::chrono::seconds(2));
+        send(authority.issue(sender.key.pub, past).pack());
+        CPPUNIT_ASSERT(receiver.takeSent().empty());
+        CPPUNIT_ASSERT(receiver.engine->epoch_.find(from)->authorizedUntil == past);
+        send(sender.credential.pack());
+        CPPUNIT_ASSERT(receiver.takeSent().empty());
+
+        advanceTime(receiver, std::chrono::seconds(2));
+        send(sender.credential.pack());
+        CPPUNIT_ASSERT_EQUAL(size_t {1}, receiver.takeSent().size());
+        CPPUNIT_ASSERT(receiver.engine->epoch_.find(from)->authorizedUntil == sender.credential.expiration);
     }
 }
 
