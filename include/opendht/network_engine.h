@@ -532,6 +532,7 @@ private:
         transport::SessionKeys keys;
         /* the peer has these keys and accepted us: send Data envelopes */
         bool confirmed {false};
+        transport::SystemTime authorizedUntil {};
     };
     /* The secret from which ephemeral keys and tokens derive, and session keys, all erased together.
      * A session is cached for an address only once its peer proved to receive there: it opened an envelope
@@ -571,9 +572,11 @@ private:
                                     const uint8_t* buf,
                                     size_t buflen,
                                     const SockAddr& from,
-                                    std::optional<PendingSession>& pending);
+                                    std::optional<PendingSession>& pending,
+                                    Session*& cached);
     /* Fills the sender keys of `header` from the session */
-    std::optional<Blob> openData(transport::Header& header, const uint8_t* buf, size_t buflen, const SockAddr& from);
+    std::optional<Blob> openData(
+        transport::Header& header, const uint8_t* buf, size_t buflen, const SockAddr& from, Session*& cached);
 
     struct OpenedEnvelope
     {
@@ -584,6 +587,7 @@ private:
         /* Session or Data envelope: the sender got our ephemeral key for its address */
         bool session {false};
         std::optional<PendingSession> pending {};
+        Session* cached {};
     };
     std::optional<OpenedEnvelope> openEnvelope(const uint8_t* buf, size_t buflen, const SockAddr& from);
     bool authorize(transport::Peer& peer, const uint8_t* credential, size_t size) const;
