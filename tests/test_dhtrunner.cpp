@@ -1753,7 +1753,8 @@ DhtRunnerTransportTester::testNodeIdFromTransportKey()
 void
 DhtRunnerTransportTester::testPersistedTransportKey()
 {
-    const std::string path = "/tmp/opendht_test_transport_state";
+    const auto path = (std::filesystem::temp_directory_path()
+                       / ("opendht_test_transport_state_" + dht::InfoHash::getRandom().toString())).string();
     const auto previous = path + ".previous";
     std::remove(path.c_str());
     std::remove(previous.c_str());
@@ -1772,10 +1773,13 @@ DhtRunnerTransportTester::testPersistedTransportKey()
 
     // A generated key is persisted, keeping the node ID
     auto generatedId = runNode({});
+    CPPUNIT_ASSERT(std::filesystem::exists(path));
     CPPUNIT_ASSERT_EQUAL(generatedId, runNode({}));
+#ifndef _WIN32
     auto perms = std::filesystem::status(path).permissions();
     CPPUNIT_ASSERT((perms & (std::filesystem::perms::group_all | std::filesystem::perms::others_all))
                    == std::filesystem::perms::none);
+#endif
 
     // A configured key takes precedence and isn't persisted
     dht::TransportConfig configured;
