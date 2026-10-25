@@ -2,6 +2,10 @@ FROM ghcr.io/savoirfairelinux/opendht/opendht-deps:latest
 LABEL maintainer="Adrien Béraud <adrien.beraud@savoirfairelinux.com>"
 LABEL org.opencontainers.image.source=https://github.com/savoirfairelinux/opendht
 
+RUN apt-get update && apt-get install -y --no-install-recommends \
+	libmsgpack-cxx-dev libllhttp-dev libsimdutf-dev \
+	&& rm -rf /var/lib/apt/lists/* /var/cache/apt/*
+
 COPY . opendht
 
 RUN cd opendht && mkdir build && cd build \

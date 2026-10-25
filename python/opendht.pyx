@@ -613,6 +613,9 @@ cdef class DhtConfig(object):
     def setRateLimit(self, ssize_t max_req_per_sec, ssize_t max_peer_req_per_sec):
         self._config.dht_config.node_config.max_req_per_sec = max_req_per_sec
         self._config.dht_config.node_config.max_peer_req_per_sec = max_peer_req_per_sec
+    def setCryptoRateLimit(self, ssize_t max_crypto_per_sec, ssize_t max_peer_crypto_per_sec):
+        self._config.dht_config.node_config.max_crypto_per_sec = max_crypto_per_sec
+        self._config.dht_config.node_config.max_peer_crypto_per_sec = max_peer_crypto_per_sec
     def setProxyInfo(self, str proxy_server, str push_node_id="", str push_token="", str push_topic="", str push_platform="", str user_agent="", Certificate server_ca = Certificate()):
         self._config.proxy_server = proxy_server.encode()
         self._config.push_node_id = push_node_id.encode()

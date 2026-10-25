@@ -11,6 +11,7 @@ from opendht import aio as dht
 async def main():
 	config = dht.DhtConfig()
 	config.setRateLimit(-1, -1)
+	config.setCryptoRateLimit(-1, -1)
 
 	ping_node = dht.DhtRunner()
 	pong_node = dht.DhtRunner()

@@ -117,6 +117,7 @@ if (NOT MSVC)
         find_package (PkgConfig REQUIRED)
         pkg_search_module (GnuTLS REQUIRED IMPORTED_TARGET gnutls)
         pkg_search_module (Nettle REQUIRED IMPORTED_TARGET nettle)
+        pkg_search_module (Hogweed REQUIRED IMPORTED_TARGET hogweed>=3.1)
         pkg_search_module (argon2 REQUIRED IMPORTED_TARGET libargon2)
         set(argon2_lib ", libargon2")
         pkg_search_module (Jsoncpp IMPORTED_TARGET jsoncpp)
@@ -467,6 +468,7 @@ list (APPEND opendht_SOURCES
     src/routing_table.cpp
     src/node_cache.cpp
     src/network_engine.cpp
+    src/transport.cpp
     src/securedht.cpp
     src/dhtrunner.cpp
     src/log.cpp
@@ -491,6 +493,7 @@ list (APPEND opendht_HEADERS
     include/opendht/routing_table.h
     include/opendht/node_cache.h
     include/opendht/network_engine.h
+    include/opendht/transport.h
     include/opendht/scheduler.h
     include/opendht/rate_limiter.h
     include/opendht/securedht.h
@@ -613,6 +616,7 @@ else()
             PRIVATE
                 PkgConfig::argon2
                 PkgConfig::Nettle
+                PkgConfig::Hogweed
                 ${SIMDUTF_LIBRARIES}
             PUBLIC
                 ${CMAKE_THREAD_LIBS_INIT}
@@ -637,6 +641,7 @@ else()
             PRIVATE
                 argon2
                 nettle
+                hogweed
             PUBLIC
                 ${CMAKE_THREAD_LIBS_INIT}
                 ${GNUTLS_LIBRARIES}
@@ -860,6 +865,8 @@ if (BUILD_TESTING)
         tests/test_value.cpp
         tests/test_crypto.h
         tests/test_crypto.cpp
+        tests/test_transport.h
+        tests/test_transport.cpp
         tests/test_dhtrunner.h
         tests/test_dhtrunner.cpp
         tests/test_storage.h

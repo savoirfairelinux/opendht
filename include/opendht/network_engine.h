@@ -12,13 +12,16 @@
 #include "rate_limiter.h"
 #include "logger.h"
 #include "network_utils.h"
+#include "transport.h"
 
 #include <vector>
 #include <string>
 #include <functional>
 #include <algorithm>
+#include <list>
 #include <memory>
 #include <queue>
+#include <tuple>
 
 namespace dht {
 namespace net {
@@ -34,9 +37,18 @@ struct TransId;
 struct NetworkConfig
 {
     NetId network {0};
+    /* Requests in Session or Data envelopes, from a validated address */
     ssize_t max_req_per_sec {0};
     ssize_t max_peer_req_per_sec {0};
+    /* Other requests. 0: same as above */
+    ssize_t max_unauth_req_per_sec {0};
+    ssize_t max_peer_unauth_req_per_sec {0};
+    /* Packets needing a key agreement or signature check. 0: same as max_req_per_sec */
+    ssize_t max_crypto_per_sec {0};
+    ssize_t max_peer_crypto_per_sec {0};
     bool is_client {false};
+    /** Transport encryption is used only if enabled and a key is set */
+    TransportConfig transport {};
 };
 
 class DhtProtocolException : public DhtException
@@ -83,7 +95,8 @@ struct ParsedMessage;
  */
 struct RequestAnswer
 {
-    Blob ntoken {};
+    /* Write token of the node; empty if it needs none (encrypted), nullopt if not granted. */
+    std::optional<Blob> ntoken {};
     Value::Id vid {};
     std::vector<Sp<Value>> values {};
     std::vector<Value::Id> refreshed_values {};
@@ -160,34 +173,31 @@ private:
      */
     std::function<RequestAnswer(Sp<Node>, const InfoHash&, want_t, const Query&)> onGetValues {};
     /**
-     * Called on listen request.
+     * Called on listen request, from a node proven to receive at its address.
      *
      * @param node (type: Sp<Node>) the requesting node.
      * @param h (type: InfoHash) hash of the value of interest.
-     * @param token (type: Blob) security token.
      * @param rid (type: uint16_t) request id.
      */
-    std::function<RequestAnswer(Sp<Node>, const InfoHash&, const Blob&, Tid, const Query&, int)> onListen {};
+    std::function<RequestAnswer(Sp<Node>, const InfoHash&, Tid, const Query&, int)> onListen {};
     /**
-     * Called on announce request.
+     * Called on announce request, from a node proven to receive at its address.
      *
      * @param node (type: Sp<Node>) the requesting node.
      * @param h (type: InfoHash) hash of the value of interest.
-     * @param token (type: Blob) security token.
      * @param values (type: std::vector<Sp<Value>>) values to store.
      * @param created (type: time_point) time when the value was created.
      */
-    std::function<RequestAnswer(Sp<Node>, const InfoHash&, const Blob&, const std::vector<Sp<Value>>&, const time_point&)>
+    std::function<RequestAnswer(Sp<Node>, const InfoHash&, const std::vector<Sp<Value>>&, const time_point&)>
         onAnnounce {};
     /**
-     * Called on refresh request.
+     * Called on refresh request, from a node proven to receive at its address.
      *
      * @param node (type: Sp<Node>) the requesting node.
      * @param h (type: InfoHash) hash of the value of interest.
-     * @param token (type: Blob) security token.
      * @param vid (type: Value::id) the value id.
      */
-    std::function<RequestAnswer(Sp<Node>, const InfoHash&, const Blob&, const Value::Id&)> onRefresh {};
+    std::function<RequestAnswer(Sp<Node>, const InfoHash&, const Value::Id&)> onRefresh {};
 
 public:
     using RequestCb = std::function<void(const Request&, RequestAnswer&&)>;
@@ -214,6 +224,15 @@ public:
 
     net::DatagramSocket* getSocket() const { return dht_socket.get(); };
 
+    /** Our transport key, or nullptr if transport encryption is disabled */
+    const transport::KeyPair* getTransportKey() const { return transport_ ? &config.transport.key : nullptr; }
+    /** Replaces our transport key. Only valid before any message is exchanged. */
+    void setTransportKey(const transport::KeyPair& key)
+    {
+        if (transport_)
+            config.transport.key = key;
+    }
+
     void clear();
 
     /**
@@ -225,7 +244,6 @@ public:
      * @param socket_id  The tid to use to write to the request socket.
      * @param hash        The hash key of the value.
      * @param want        Wether to send ipv4 and/or ipv6 nodes.
-     * @param ntoken      Listen security token.
      * @param nodes       The ipv4 closest nodes.
      * @param nodes6      The ipv6 closest nodes.
      * @param values      The values to send.
@@ -235,7 +253,6 @@ public:
                       Tid socket_id,
                       const InfoHash& hash,
                       want_t want,
-                      const Blob& ntoken,
                       std::vector<Sp<Node>>&& nodes,
                       std::vector<Sp<Node>>&& nodes6,
                       std::vector<Sp<Value>>&& values,
@@ -245,13 +262,11 @@ public:
     void tellListenerRefreshed(const Sp<Node>& n,
                                Tid socket_id,
                                const InfoHash& hash,
-                               const Blob& ntoken,
                                const std::vector<Value::Id>& values,
                                int version);
     void tellListenerExpired(const Sp<Node>& n,
                              Tid socket_id,
                              const InfoHash& hash,
-                             const Blob& ntoken,
                              const std::vector<Value::Id>& values,
                              int version);
 
@@ -263,6 +278,8 @@ public:
     /**************
      *  Requests  *
      **************/
+
+    bool needsSession(const Node& node) const;
 
     /**
      * Send a "ping" request to a given node.
@@ -461,7 +478,10 @@ public:
     size_t getNodeCacheSize() const { return cache.size(); }
     size_t getNodeCacheSize(sa_family_t af) const { return cache.size(af); }
 
-    size_t getRateLimiterSize() const { return address_rate_limiter.size(); }
+    size_t getRateLimiterSize() const
+    {
+        return requestLimiter_.size() + unauthLimiter_.size() + cryptoLimiter_.size() + replyCryptoLimiter_.size();
+    }
 
     size_t getPartialCount() const { return partial_messages.size(); }
 
@@ -486,22 +506,136 @@ private:
         reason to increase this value. */
     static constexpr unsigned BLACKLISTED_MAX {10};
 
-    static constexpr size_t MTU {1280};
+    /* IPv6 minimum MTU, less the IPv6 and UDP headers */
+    static constexpr size_t MAX_PACKET_SIZE {1280 - 40 - 8};
+    /* Upper bound of the msgpack framing around a value fragment */
+    static constexpr size_t FRAGMENT_HEADER_SIZE {48};
+    /* Value fragment sizes keeping each packet within the minimum MTU, less the envelope */
+    static constexpr size_t FRAGMENT_SIZE {MAX_PACKET_SIZE - FRAGMENT_HEADER_SIZE};
+    static constexpr size_t ENCRYPTED_FRAGMENT_SIZE {FRAGMENT_SIZE - transport::MAX_ENVELOPE_OVERHEAD};
     static constexpr size_t MAX_PACKET_VALUE_SIZE {600};
     static constexpr size_t MAX_MESSAGE_VALUE_SIZE {56 * 1024};
     static constexpr size_t RX_MAX_EARLY_BYTES {MAX_MESSAGE_VALUE_SIZE + MAX_VALUE_SIZE + 32};
-    static constexpr size_t RX_MAX_EARLY_PARTS {RX_MAX_EARLY_BYTES / MTU + 2};
+    static constexpr size_t RX_MAX_EARLY_PARTS {RX_MAX_EARLY_BYTES / ENCRYPTED_FRAGMENT_SIZE + 2};
+    /* Lifetime of ephemeral transport keys and write tokens: in use for one period, then accepted for another */
+    static constexpr std::chrono::minutes EPOCH_DURATION {30};
+    /* Cached session keys per epoch */
+    static constexpr size_t MAX_SESSIONS {16 * 1024};
+    static constexpr size_t TOKEN_SIZE {transport::KEY_SIZE};
+
+    struct Session
+    {
+        /* our ephemeral key for the peer address */
+        transport::Key ephemeral;
+        transport::Key peer;
+        transport::Key peerEphemeral;
+        transport::SessionKeys keys;
+        /* the peer has these keys and accepted us: send Data envelopes */
+        bool confirmed {false};
+        transport::SystemTime authorizedUntil {};
+    };
+    /* The secret from which ephemeral keys and tokens derive, and session keys, all erased together.
+     * A session is cached for an address only once its peer proved to receive there: it opened an envelope
+     * encrypted with our key for that address. Replies to Initial and Hello envelopes never cache one,
+     * since their source address can be spoofed. */
+    struct Epoch
+    {
+        struct Entry
+        {
+            Session session;
+            std::list<SockAddr>::iterator used;
+        };
+        transport::Key secret {};
+        std::map<SockAddr, Entry> sessions {};
+        /* most recently used first */
+        std::list<SockAddr> used {};
+
+        explicit operator bool() const { return secret != transport::Key {}; }
+        transport::KeyPair ephemeral(const SockAddr& addr) const;
+        Blob token(const SockAddr& addr) const;
+        /* Marks the session as used */
+        Session* find(const SockAddr& addr);
+        Session* find(const SockAddr& addr, const transport::Key& peer, const transport::Key& peerEphemeral);
+        /* Evicts the least recently used session when full */
+        void store(const SockAddr& addr, const Session& session);
+        void wipe();
+    };
+    struct PendingSession
+    {
+        Epoch* epoch;
+        Session session;
+    };
+    void rotateEpoch();
+    /* Session with the peer at `addr`, or nullopt for an invalid peer key. Cached if the peer ephemeral key is validated. */
+    std::optional<Session> session(const transport::Peer& peer, const SockAddr& addr);
+    std::optional<Blob> openSession(const transport::Header& header,
+                                    const uint8_t* buf,
+                                    size_t buflen,
+                                    const SockAddr& from,
+                                    std::optional<PendingSession>& pending,
+                                    Session*& cached);
+    /* Fills the sender keys of `header` from the session */
+    std::optional<Blob> openData(
+        transport::Header& header, const uint8_t* buf, size_t buflen, const SockAddr& from, Session*& cached);
+
+    struct OpenedEnvelope
+    {
+        Sp<transport::Peer> peer;
+        Blob payload;
+        /* unauthenticated */
+        bool hello {false};
+        /* Session or Data envelope: the sender got our ephemeral key for its address */
+        bool session {false};
+        std::optional<PendingSession> pending {};
+        Session* cached {};
+    };
+    std::optional<OpenedEnvelope> openEnvelope(const uint8_t* buf, size_t buflen, const SockAddr& from);
+    bool authorize(transport::Peer& peer, const uint8_t* credential, size_t size) const;
+    void attachPeer(Node& node, const Sp<transport::Peer>& peer);
+    Sp<transport::Peer> makePeer(const InfoHash& id, const transport::Key& key) const;
+    void processHello(const ParsedMessage& msg, const Sp<transport::Peer>& peer, const SockAddr& from);
+
+    /* Advertise our transport key in plaintext messages to nodes not known to support encryption */
+    bool advertiseKey(const Node& node) const
+    {
+        return transport_ and not config.transport.isPrivate() and not node.getTransport();
+    }
+    /* Messages to the node are encrypted */
+    bool encrypts(const Node& node) const { return transport_ and node.getTransport(); }
+    /* Token granting writes to a plaintext node. Encrypted nodes need none. */
+    Blob writeToken(const Node& node) const { return encrypts(node) ? Blob {} : epoch_.token(node.getAddr()); }
+    bool tokenMatch(const Blob& token, const SockAddr& addr) const;
+    /* Writes need proof that the sender receives at its address: a Session envelope, or else a token */
+    void authorizeWrite(const ParsedMessage& msg, const Node& node, const std::string& error) const;
+    /* Number of optional top-level fields packed by packOptionalFields */
+    unsigned optionalFields(bool key) const
+    {
+        return (config.network ? 1 : 0) + (config.is_client ? 1 : 0) + (key ? 1 : 0);
+    }
+    void packOptionalFields(msgpack::packer<msgpack::sbuffer>& pk, bool key) const;
 
     void process(std::unique_ptr<ParsedMessage>&&, const SockAddr& from);
     bool isExpectedReply(const ParsedMessage&, const SockAddr& from);
     bool tryCompleteMessage(PartialMessage&, const SockAddr& from);
 
-    bool rateLimit(const SockAddr& addr);
+    /* Admits a request, unless `charged` already: Session and Data senders have their own budget.
+     * A plaintext request whose answer takes an Initial envelope also needs crypto budget. */
+    bool limitRequest(const ParsedMessage& msg, const SockAddr& from, bool charged = false);
+    /* Admits a packet needing a key agreement, from a separate budget if we await a reply from there */
+    bool limitCrypto(const transport::Key& sender, const SockAddr& from);
+    bool expectsReply(const transport::Key& sender, const SockAddr& from);
 
     static bool isMartian(const SockAddr& addr);
     bool isNodeBlacklisted(const SockAddr& addr) const;
 
     void requestStep(Sp<Request> req);
+    void transmitRequest(const Sp<Request>& req);
+    void notifyRequestTimeout(Request& req);
+    void completeSession(Node& node);
+    /* Re-establishes the session with a ping in an Initial envelope, unless one is pending */
+    void recoverSession(const Sp<Node>& node);
+    /* Sends the requests withheld during the recovery, under the new session */
+    void resumeRequests(Node& node);
 
     /**
      * Sends a request to a node. Request::MAX_ATTEMPT_COUNT attempts will
@@ -521,9 +655,13 @@ private:
     };
 
     // basic wrapper for socket sendto function
-    int send(const SockAddr& addr, const char* buf, size_t len, bool confirmed = false);
+    int sendRaw(const SockAddr& addr, const uint8_t* buf, size_t len, bool confirmed = false);
+    // send to a node, encrypted if supported
+    int send(const Node& node, const SockAddr& addr, const char* buf, size_t len, bool confirmed = false);
+    /* Bytes added by the envelope that send() uses for the node at `addr` */
+    size_t envelopeOverhead(const Node& node, const SockAddr& addr);
 
-    void sendValueParts(Tid tid, const std::vector<Blob>& svals, const SockAddr& addr);
+    void sendValueParts(Tid tid, const std::vector<Blob>& svals, const Node& node, const SockAddr& addr);
     std::vector<Blob> packValueHeader(msgpack::sbuffer&,
                                       std::vector<Sp<Value>>::const_iterator,
                                       std::vector<Sp<Value>>::const_iterator) const;
@@ -531,50 +669,65 @@ private:
     {
         return packValueHeader(buf, values.begin(), values.end());
     }
-    using PartialMessageKey = std::pair<SockAddr, Tid>;
+    using PartialMessageKey = std::tuple<SockAddr, Tid, transport::Key>;
     void maintainRxBuffer(const PartialMessageKey& key);
 
     /*************
      *  Answers  *
      *************/
     /* answer to a ping  request */
-    void sendPong(const SockAddr& addr, Tid tid);
+    void sendPong(const Node& node, const SockAddr& addr, Tid tid);
+    struct BufferedNodes
+    {
+        Blob nodes4, nodes6;
+        /* transport keys, aligned with nodes, zeros if unknown. Empty if none is known. */
+        Blob keys4, keys6;
+    };
     /* answer to findnodes/getvalues request */
-    void sendNodesValues(const SockAddr& addr,
+    void sendNodesValues(const Node& node,
+                         const SockAddr& addr,
                          Tid tid,
-                         const Blob& nodes,
-                         const Blob& nodes6,
+                         const BufferedNodes& nodes,
                          const std::vector<Sp<Value>>& st,
                          const Query& query,
                          const Blob& token);
-    Blob bufferNodes(sa_family_t af, const InfoHash& id, std::vector<Sp<Node>>& nodes);
+    std::pair<Blob, Blob> bufferNodes(sa_family_t af, const InfoHash& id, std::vector<Sp<Node>>& nodes);
 
-    std::pair<Blob, Blob> bufferNodes(
+    BufferedNodes bufferNodes(
         sa_family_t af, const InfoHash& id, want_t want, std::vector<Sp<Node>>& nodes, std::vector<Sp<Node>>& nodes6);
     /* answer to a listen request */
-    void sendListenConfirmation(const SockAddr& addr, Tid tid, const Blob& token = {});
+    void sendListenConfirmation(const Node& node, const SockAddr& addr, Tid tid, const Blob& token = {});
     /* answer to put request */
-    void sendValueAnnounced(const SockAddr& addr, Tid, Value::Id);
+    void sendValueAnnounced(const Node& node, const SockAddr& addr, Tid, Value::Id);
     /* answer in case of error */
-    void sendError(const SockAddr& addr, Tid tid, uint16_t code, const std::string& message, bool include_id = false);
+    void sendError(const Node& node,
+                   const SockAddr& addr,
+                   Tid tid,
+                   uint16_t code,
+                   const std::string& message,
+                   bool include_id = false);
 
     void deserializeNodes(ParsedMessage& msg, const SockAddr& from);
 
     /* DHT info */
     const InfoHash& myid;
-    const NetworkConfig config {};
+    NetworkConfig config {};
+    const bool transport_ {false};
+    const Blob credential_ {};
+    Epoch epoch_ {};
+    Epoch previousEpoch_ {};
+    Sp<Scheduler::Job> epochRotation_ {};
     const std::unique_ptr<DatagramSocket> dht_socket;
     Sp<Logger> logger_;
     std::mt19937_64& rd;
 
     NodeCache cache;
 
-    // global limiting should be triggered by at least 8 different IPs
-    using IpLimiter = RateLimiter;
-    using IpLimiterMap = std::map<SockAddr, IpLimiter, SockAddr::ipCmp>;
-    IpLimiterMap address_rate_limiter;
-    RateLimiter rate_limiter;
-    ssize_t limiter_maintenance {0};
+    /* Requests from Session/Data senders, other requests, public-key work for unexpected and expected senders */
+    AddressRateLimiter requestLimiter_;
+    AddressRateLimiter unauthLimiter_;
+    AddressRateLimiter cryptoLimiter_;
+    AddressRateLimiter replyCryptoLimiter_;
 
     // requests handling
     std::map<Tid, Sp<Request>> requests {};

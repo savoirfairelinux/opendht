@@ -54,7 +54,7 @@ NetworkEngine::isExpectedReply(const ParsedMessage& msg, const SockAddr& from)
         return true;
 
     auto node = cache.getNode(msg.id, from.getFamily());
-    if (!node || node->getAddr() != from)
+    if (!node || (not msg.session and node->getAddr() != from))
         return false;
 
     auto pending = node->getRequest(msg.tid);
@@ -96,14 +96,18 @@ packToken(msgpack::packer<msgpack::sbuffer>& pk, const Blob& token)
 }
 
 RequestAnswer::RequestAnswer(ParsedMessage&& msg)
-    : ntoken(std::move(msg.token))
-    , values(std::move(msg.values))
+    : values(std::move(msg.values))
     , refreshed_values(std::move(msg.refreshed_values))
     , expired_values(std::move(msg.expired_values))
     , fields(std::move(msg.fields))
     , nodes4(std::move(msg.nodes4))
     , nodes6(std::move(msg.nodes6))
-{}
+{
+    if (msg.encrypted)
+        ntoken.emplace();
+    else if (not msg.token.empty())
+        ntoken = std::move(msg.token);
+}
 
 NetworkEngine::NetworkEngine(InfoHash& myid,
                              NetworkConfig c,
@@ -131,17 +135,33 @@ NetworkEngine::NetworkEngine(InfoHash& myid,
     , onRefresh(std::move(onRefresh))
     , myid(myid)
     , config(c)
+    , transport_(config.transport.enabled and config.transport.key)
+    , credential_(transport_ and config.transport.isPrivate() ? config.transport.credential.pack() : Blob {})
     , dht_socket(std::move(sock))
     , logger_(log)
     , rd(rand)
     , cache(rd)
-    , rate_limiter(config.max_req_per_sec)
+    , requestLimiter_(config.max_req_per_sec, config.max_peer_req_per_sec)
+    , unauthLimiter_(config.max_unauth_req_per_sec ? config.max_unauth_req_per_sec : config.max_req_per_sec,
+                     config.max_peer_unauth_req_per_sec ? config.max_peer_unauth_req_per_sec
+                                                        : config.max_peer_req_per_sec)
+    , cryptoLimiter_(config.max_crypto_per_sec ? config.max_crypto_per_sec : config.max_req_per_sec,
+                     config.max_peer_crypto_per_sec ? config.max_peer_crypto_per_sec : config.max_peer_req_per_sec)
+    , replyCryptoLimiter_(config.max_crypto_per_sec ? config.max_crypto_per_sec : config.max_req_per_sec,
+                          config.max_peer_crypto_per_sec ? config.max_peer_crypto_per_sec
+                                                         : config.max_peer_req_per_sec)
     , scheduler(scheduler)
-{}
+{
+    epoch_.secret = transport::randomSecret();
+    epochRotation_ = scheduler.add(scheduler.time() + EPOCH_DURATION, std::bind(&NetworkEngine::rotateEpoch, this));
+}
 
 NetworkEngine::~NetworkEngine()
 {
     clear();
+    scheduler.cancel(epochRotation_);
+    epoch_.wipe();
+    previousEpoch_.wipe();
 }
 
 void
@@ -149,7 +169,6 @@ NetworkEngine::tellListener(const Sp<Node>& node,
                             Tid socket_id,
                             const InfoHash& hash,
                             want_t want,
-                            const Blob& ntoken,
                             std::vector<Sp<Node>>&& nodes,
                             std::vector<Sp<Node>>&& nodes6,
                             std::vector<Sp<Value>>&& values,
@@ -157,11 +176,12 @@ NetworkEngine::tellListener(const Sp<Node>& node,
                             int version)
 {
     auto nnodes = bufferNodes(node->getFamily(), hash, want, nodes, nodes6);
+    auto ntoken = writeToken(*node);
     try {
         if (version >= 1) {
             sendUpdateValues(node, hash, std::move(values), scheduler.time(), ntoken, socket_id);
         } else {
-            sendNodesValues(node->getAddr(), socket_id, nnodes.first, nnodes.second, std::move(values), query, ntoken);
+            sendNodesValues(*node, node->getAddr(), socket_id, nnodes, std::move(values), query, ntoken);
         }
     } catch (const std::overflow_error& e) {
         if (logger_)
@@ -173,14 +193,15 @@ void
 NetworkEngine::tellListenerRefreshed(const Sp<Node>& n,
                                      Tid socket_id,
                                      const InfoHash&,
-                                     const Blob& token,
                                      const std::vector<Value::Id>& values,
                                      int version)
 {
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
+    bool advertise = advertiseKey(*n);
+    auto token = writeToken(*n);
 
-    pk.pack_map(4 + (version >= 1 ? 1 : 0) + (config.network ? 1 : 0) + (config.is_client ? 1 : 0));
+    pk.pack_map(4 + (version >= 1 ? 1 : 0) + optionalFields(advertise));
 
     pk.pack(version >= 1 ? KEY_A : KEY_U);
     pk.pack_map(1 + (version >= 1 ? 1 : 0) + (not values.empty() ? 1 : 0) + (not token.empty() ? 1 : 0));
@@ -205,14 +226,7 @@ NetworkEngine::tellListenerRefreshed(const Sp<Node>& n,
     pk.pack(version >= 1 ? KEY_Q : KEY_R);
     pk.pack(KEY_UA);
     pk.pack(OPENDHT_UA);
-    if (config.network) {
-        pk.pack(KEY_NETID);
-        pk.pack(config.network);
-    }
-    if (config.is_client) {
-        pk.pack(KEY_ISCLIENT);
-        pk.pack(config.is_client);
-    }
+    packOptionalFields(pk, advertise);
 
     if (version >= 1) {
         Tid tid(n->getNewTid());
@@ -237,21 +251,22 @@ NetworkEngine::tellListenerRefreshed(const Sp<Node>& n,
     pk.pack(socket_id);
 
     // send response
-    send(n->getAddr(), buffer.data(), buffer.size());
+    send(*n, n->getAddr(), buffer.data(), buffer.size());
 }
 
 void
 NetworkEngine::tellListenerExpired(const Sp<Node>& n,
                                    Tid socket_id,
                                    const InfoHash&,
-                                   const Blob& token,
                                    const std::vector<Value::Id>& values,
                                    int version)
 {
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
+    bool advertise = advertiseKey(*n);
+    auto token = writeToken(*n);
 
-    pk.pack_map(4 + (version >= 1 ? 1 : 0) + (config.network ? 1 : 0) + (config.is_client ? 1 : 0));
+    pk.pack_map(4 + (version >= 1 ? 1 : 0) + optionalFields(advertise));
 
     pk.pack(version >= 1 ? KEY_A : KEY_U);
     pk.pack_map(1 + (version >= 1 ? 1 : 0) + (not values.empty() ? 1 : 0) + (not token.empty() ? 1 : 0));
@@ -276,14 +291,7 @@ NetworkEngine::tellListenerExpired(const Sp<Node>& n,
     pk.pack(version >= 1 ? KEY_Q : KEY_R);
     pk.pack(KEY_UA);
     pk.pack(OPENDHT_UA);
-    if (config.network) {
-        pk.pack(KEY_NETID);
-        pk.pack(config.network);
-    }
-    if (config.is_client) {
-        pk.pack(KEY_ISCLIENT);
-        pk.pack(config.is_client);
-    }
+    packOptionalFields(pk, advertise);
 
     if (version >= 1) {
         Tid tid(n->getNewTid());
@@ -308,7 +316,7 @@ NetworkEngine::tellListenerExpired(const Sp<Node>& n,
     pk.pack(socket_id);
 
     // send response
-    send(n->getAddr(), buffer.data(), buffer.size());
+    send(*n, n->getAddr(), buffer.data(), buffer.size());
 }
 
 bool
@@ -334,6 +342,7 @@ NetworkEngine::clear()
         request.second->node->setExpired();
     }
     requests.clear();
+    cache.clear();
     partial_messages.clear();
 }
 
@@ -341,6 +350,22 @@ void
 NetworkEngine::connectivityChanged(sa_family_t af)
 {
     cache.clearBadNodes(af);
+}
+
+void
+NetworkEngine::notifyRequestTimeout(Request& req)
+{
+    if (not std::exchange(req.timeoutNotified, true) and req.on_expired)
+        req.on_expired(req, false);
+}
+
+bool
+NetworkEngine::needsSession(const Node& node) const
+{
+    if (not transport_)
+        return false;
+    const auto& peer = node.getTransport();
+    return peer ? not peer->ephemeral or peer->recovering : node.getReplyTime() == time_point::min();
 }
 
 void
@@ -356,15 +381,45 @@ NetworkEngine::requestStep(Sp<Request> sreq)
         // if (logger_)
         //     logger_->d(node.id, "[node %s] expired.", node.toString().c_str());
         node.setExpired();
+        req.setExpired();
         if (not node.id)
             requests.erase(req.tid);
         return;
     } else if (req.attempt_count == 1) {
-        if (req.on_expired)
-            req.on_expired(req, false);
+        notifyRequestTimeout(req);
+        if (not req.pending())
+            return;
+        // The peer may have lost our session or credential: start a new one
+        if (const auto& peer = node.getTransport(); peer and peer->ephemeral) {
+            peer->resetEphemeral();
+            peer->recovering = true;
+        }
     }
+    req.withheld = req.type != MessageType::Ping and req.type != MessageType::FindNode and needsSession(node);
+    if (req.withheld) {
+        scheduler.cancel(req.retryJob);
+        recoverSession(req.node);
+        return;
+    }
+    transmitRequest(sreq);
+}
 
-    auto err = send(node.getAddr(), (char*) req.msg.data(), req.msg.size(), node.getReplyTime() < now - UDP_REPLY_TIME);
+void
+NetworkEngine::transmitRequest(const Sp<Request>& sreq)
+{
+    auto& req = *sreq;
+    if (not req.pending())
+        return;
+    scheduler.cancel(req.retryJob);
+    auto now = scheduler.time();
+    auto& node = *req.node;
+    const auto& peer = node.getTransport();
+    req.initial = peer and not peer->ephemeral;
+    auto err = send(node,
+                    node.getAddr(),
+                    (char*) req.msg.data(),
+                    req.msg.size(),
+                    node.getReplyTime() < now - UDP_REPLY_TIME);
     if (err == ENETUNREACH || err == EHOSTUNREACH || err == EAFNOSUPPORT || err == EPIPE || err == EPERM) {
         node.setExpired();
         if (not node.id)
@@ -376,14 +431,77 @@ NetworkEngine::requestStep(Sp<Request> sreq)
             req.attempt_duration += req.attempt_duration
                                     + uniform_duration_distribution<>(0ms, ((duration) Node::MAX_RESPONSE_TIME) / 4)(rd);
             if (not req.parts.empty()) {
-                sendValueParts(req.tid, req.parts, node.getAddr());
+                sendValueParts(req.tid, req.parts, node, node.getAddr());
             }
         }
         std::weak_ptr<Request> wreq = sreq;
-        scheduler.add(req.last_try + req.attempt_duration, [this, wreq] {
-            if (auto req = wreq.lock())
+        req.retryJob = scheduler.add(req.last_try + req.attempt_duration, [this, wreq] {
+            if (auto req = wreq.lock()) {
+                req->retryJob.reset();
                 requestStep(req);
+            }
         });
+    }
+}
+
+void
+NetworkEngine::recoverSession(const Sp<Node>& node)
+{
+    for (const auto& [tid, req] : node->getRequests())
+        if (req->sessionProbe and req->pending())
+            return;
+    auto probe = sendPing(node, {}, [this](const Request& req, bool over) {
+        if (over)
+            return;
+        std::vector<Sp<Request>> waiting;
+        for (const auto& [tid, pending] : req.node->getRequests())
+            if (pending->pending() and pending->withheld)
+                waiting.emplace_back(pending);
+        for (const auto& pending : waiting)
+            if (pending->pending())
+                notifyRequestTimeout(*pending);
+    });
+    probe->sessionProbe = true;
+}
+
+void
+NetworkEngine::completeSession(Node& node)
+{
+    if (const auto& peer = node.getTransport()) {
+        if (not peer->ephemeral) {
+            for (const auto& [tid, req] : node.getRequests()) {
+                if (req->pending() and req->withheld) {
+                    recoverSession(req->node);
+                    break;
+                }
+            }
+            return;
+        }
+        peer->recovering = false;
+    }
+    if (not needsSession(node))
+        resumeRequests(node);
+}
+
+void
+NetworkEngine::resumeRequests(Node& node)
+{
+    std::vector<Sp<Request>> waiting;
+    std::vector<Sp<Request>> probes;
+    for (const auto& [tid, req] : node.getRequests()) {
+        if (req->pending() and req->sessionProbe)
+            probes.emplace_back(req);
+        else if (req->pending() and req->withheld)
+            waiting.emplace_back(req);
+    }
+    for (const auto& probe : probes)
+        node.cancelRequest(probe);
+    for (const auto& req : waiting) {
+        if (not req->pending() or needsSession(node))
+            continue;
+        req->withheld = false;
+        req->attempt_duration = ((duration) Node::MAX_RESPONSE_TIME) / 2;
+        transmitRequest(req);
     }
 }
 
@@ -404,25 +522,37 @@ NetworkEngine::sendRequest(const Sp<Request>& request)
 
 /* Rate control for requests we receive. */
 bool
-NetworkEngine::rateLimit(const SockAddr& addr)
+NetworkEngine::limitRequest(const ParsedMessage& msg, const SockAddr& from, bool charged)
 {
     const auto& now = scheduler.time();
-
-    // occasional IP limiter maintenance (a few times every second at max rate)
-    if (limiter_maintenance++ == config.max_peer_req_per_sec) {
-        for (auto it = address_rate_limiter.begin(); it != address_rate_limiter.end();) {
-            if (it->second.maintain(now) == 0)
-                address_rate_limiter.erase(it++);
-            else
-                ++it;
-        }
-        limiter_maintenance = 0;
+    if (not charged and not(msg.session ? requestLimiter_ : unauthLimiter_).limit(from, now))
+        return false;
+    if (not transport_ or msg.encrypted or msg.type < MessageType::Ping or msg.type > MessageType::Listen)
+        return true;
+    if (not msg.peer) {
+        auto node = cache.getNode(msg.id, from.getFamily());
+        if (not node or not node->getTransport())
+            return true;
     }
+    return cryptoLimiter_.limit(from, now);
+}
 
-    // invoke per IP, then global rate limiter
-    return (config.max_peer_req_per_sec < 0
-            or address_rate_limiter.emplace(addr, config.max_peer_req_per_sec).first->second.limit(now))
-           and rate_limiter.limit(now);
+bool
+NetworkEngine::limitCrypto(const transport::Key& sender, const SockAddr& from)
+{
+    auto& limiter = expectsReply(sender, from) ? replyCryptoLimiter_ : cryptoLimiter_;
+    return limiter.limit(from, scheduler.time());
+}
+
+bool
+NetworkEngine::expectsReply(const transport::Key& sender, const SockAddr& from)
+{
+    if (auto node = cache.getNode(transport::nodeId(sender), from.getFamily()))
+        if (node->getAddr() == from and node->isPendingMessage())
+            return true;
+    return std::any_of(requests.begin(), requests.end(), [&](const auto& r) {
+        return r.second->pending() and r.second->node->getAddr() == from;
+    });
 }
 
 bool
@@ -480,6 +610,19 @@ NetworkEngine::processMessage(const uint8_t* buf, size_t buflen, SockAddr f)
         return;
     }
 
+    std::optional<OpenedEnvelope> envelope;
+    if (transport::isEnvelope(buf, buflen)) {
+        if (not transport_)
+            return;
+        envelope = openEnvelope(buf, buflen, from);
+        if (not envelope)
+            return;
+        buf = envelope->payload.data();
+        buflen = envelope->payload.size();
+    } else if (transport_ and config.transport.isPrivate()) {
+        return;
+    }
+
     auto msg = std::make_unique<ParsedMessage>();
     try {
         msgpack::unpacked msg_res = msgpack::unpack((const char*) buf, buflen);
@@ -498,21 +641,54 @@ NetworkEngine::processMessage(const uint8_t* buf, size_t buflen, SockAddr f)
         return;
     }
 
-    const auto& now = scheduler.time();
+    if (envelope) {
+        // value fragments carry no node ID
+        if (msg->type != MessageType::ValueData and msg->id != transport::nodeId(envelope->peer->key)) {
+            if (logger_)
+                logger_->warn("Dropping encrypted message from {}: node ID doesn't match its key", from.toString());
+            return;
+        }
+        if (envelope->hello) {
+            processHello(*msg, envelope->peer, from);
+            return;
+        }
+        msg->peer = std::move(envelope->peer);
+        msg->encrypted = true;
+        msg->session = envelope->session;
+    } else if (transport_ and msg->transport_key) {
+        msg->peer = makePeer(msg->id, *msg->transport_key);
+    }
 
-    // partial value data
+    if (msg->encrypted and not msg->session
+        and (msg->type == MessageType::ValueData or not msg->value_parts.empty()))
+        return;
     if (msg->type == MessageType::ValueData) {
         if (msg->fragment_parts.empty()
             || std::any_of(msg->fragment_parts.begin(), msg->fragment_parts.end(), [](const auto& fragment) {
                    return fragment.second.second.empty();
                })) {
-            rateLimit(from);
+            limitRequest(*msg, from);
             return;
         }
-        PartialMessageKey key {from, msg->tid};
+    } else if (msg->id == myid or not msg->id) {
+        return;
+    } else if ((msg->type == MessageType::Reply or msg->type == MessageType::Error
+                or msg->type == MessageType::ValueUpdate)
+               and not isExpectedReply(*msg, from)) {
+        return;
+    }
+    if (envelope and envelope->cached)
+        envelope->cached->authorizedUntil = msg->peer->authorizedUntil;
+    if (envelope and envelope->pending)
+        envelope->pending->epoch->store(from, envelope->pending->session);
+
+    const auto& now = scheduler.time();
+    PartialMessageKey key {from, msg->tid, msg->encrypted ? msg->peer->key : transport::Key {}};
+
+    if (msg->type == MessageType::ValueData) {
         auto pmsg_it = partial_messages.find(key);
         if (pmsg_it == partial_messages.end()) {
-            if (!rateLimit(from))
+            if (not limitRequest(*msg, from))
                 return;
             auto inserted = partial_messages.emplace(key, PartialMessage {});
             pmsg_it = inserted.first;
@@ -558,16 +734,10 @@ NetworkEngine::processMessage(const uint8_t* buf, size_t buflen, SockAddr f)
         return;
     }
 
-    if (msg->id == myid or not msg->id) {
-        if (logger_)
-            logger_->debug("Received message from self");
-        return;
-    }
-
     if (msg->value_parts.empty()) {
         if (msg->type > MessageType::Reply) {
             /* Rate limit requests. */
-            if (!rateLimit(from)) {
+            if (not limitRequest(*msg, from)) {
                 if (logger_)
                     logger_->warn("Dropping request due to rate limiting");
                 return;
@@ -582,30 +752,23 @@ NetworkEngine::processMessage(const uint8_t* buf, size_t buflen, SockAddr f)
         return;
     }
 
-    PartialMessageKey partial_key {from, msg->tid};
-    if (msg->type == MessageType::Reply && !isExpectedReply(*msg, from))
-        return;
-
-    const auto partial = partial_messages.find(partial_key);
+    auto partial = partial_messages.find(key);
     const bool request_quota_consumed = partial != partial_messages.end() && !partial->second.msg
                                         && partial->second.request_quota_consumed;
-    if (msg->type > MessageType::Reply && !request_quota_consumed) {
-        /* Rate limit requests. */
-        if (!rateLimit(from)) {
-            if (logger_)
-                logger_->warn("Dropping request due to rate limiting");
-            return;
-        }
+    if (msg->type > MessageType::Reply && !limitRequest(*msg, from, request_quota_consumed)) {
+        if (logger_)
+            logger_->warn("Dropping request due to rate limiting");
+        return;
     }
 
     // starting partial message session
-    auto inserted = partial_messages.emplace(partial_key, PartialMessage {});
+    auto inserted = partial_messages.emplace(key, PartialMessage {});
     auto& pmsg = inserted.first->second;
     if (not pmsg.msg) {
         if (inserted.second) {
             pmsg.from = from;
             pmsg.start = now;
-            scheduler.add(now + RX_MAX_PACKET_TIME, std::bind(&NetworkEngine::maintainRxBuffer, this, partial_key));
+            scheduler.add(now + RX_MAX_PACKET_TIME, std::bind(&NetworkEngine::maintainRxBuffer, this, key));
         }
         pmsg.msg = std::move(msg);
         pmsg.last_part = now;
@@ -616,7 +779,7 @@ NetworkEngine::processMessage(const uint8_t* buf, size_t buflen, SockAddr f)
         if (tryCompleteMessage(pmsg, from)) {
             partial_messages.erase(inserted.first);
         } else {
-            scheduler.add(now + RX_TIMEOUT, std::bind(&NetworkEngine::maintainRxBuffer, this, partial_key));
+            scheduler.add(now + RX_TIMEOUT, std::bind(&NetworkEngine::maintainRxBuffer, this, key));
         }
     } else if (logger_)
         logger_->error("Partial message from {} with given TID {} already exists", from.toString(), msg->tid);
@@ -626,7 +789,61 @@ void
 NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& from)
 {
     const auto& now = scheduler.time();
-    auto node = cache.getNode(msg->id, from, now, true, msg->is_client);
+    auto node = cache.getNode(msg->id, from.getFamily());
+    const bool keyed = transport_ and node and node->getTransport();
+    bool trusted = msg->session or (not msg->encrypted and not keyed);
+    if (msg->encrypted and not msg->session
+        and (msg->type == MessageType::Reply or msg->type == MessageType::Error)) {
+        if (keyed and node->getAddr() != from)
+            return;
+        auto request = node and node->getAddr() == from ? node->getRequest(msg->tid) : nullptr;
+        if (not request) {
+            auto pending = requests.find(msg->tid);
+            if (pending != requests.end() and not pending->second->node->id
+                and pending->second->node->getAddr() == from)
+                request = pending->second;
+        }
+        if (not request or not request->pending())
+            return;
+        trusted = true;
+    }
+
+    if (msg->type == MessageType::Reply or msg->type == MessageType::Error) {
+        auto req = node ? node->getRequest(msg->tid) : nullptr;
+        if (not req) {
+            auto pending = requests.find(msg->tid);
+            if (pending != requests.end() and pending->second->node->getAddr() == from)
+                req = pending->second;
+        }
+        if (req ? not req->pending() : not(node and node->getSocket(msg->tid)))
+            return;
+    }
+
+    if (trusted) {
+        node = cache.getNode(msg->id, from, now, true, msg->is_client);
+        if (msg->peer)
+            attachPeer(*node, msg->peer);
+    } else {
+        switch (msg->type) {
+        case MessageType::Ping:
+        case MessageType::FindNode:
+        case MessageType::GetValues:
+            break;
+        case MessageType::AnnounceValue:
+        case MessageType::Refresh:
+        case MessageType::Listen:
+            if (msg->encrypted)
+                break;
+            return;
+        default:
+            return;
+        }
+        auto peer = msg->peer;
+        if (not peer and keyed)
+            peer = std::make_shared<transport::Peer>(node->getTransport()->key);
+        node = std::make_shared<Node>(msg->id, from, rd, msg->is_client);
+        node->setTransport(std::move(peer));
+    }
 
     if (msg->type == MessageType::ValueUpdate) {
         auto rsocket = node->getSocket(msg->tid);
@@ -644,6 +861,12 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
     } else if (msg->type == MessageType::Error or msg->type == MessageType::Reply) {
         auto rsocket = node->getSocket(msg->tid);
         auto req = node->getRequest(msg->tid);
+        // Our request reached the peer in a Session envelope, so it cached the keys it answered with
+        if (msg->session and req and not req->initial) {
+            const auto& peer = node->getTransport();
+            if (auto s = peer and peer->ephemeral ? epoch_.find(from, peer->key, *peer->ephemeral) : nullptr)
+                s->confirmed = true;
+        }
 
         /* either response for a request or data for an opened socket */
         if (not req and not rsocket) {
@@ -676,6 +899,11 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
 
         switch (msg->type) {
         case MessageType::Error: {
+            if (req and req->sessionProbe) {
+                req->setExpired();
+                node->setExpired();
+                break;
+            }
             if (msg->id and req
                 and ((msg->error_code == DhtProtocolException::NOT_FOUND and req->getType() == MessageType::Refresh)
                      or (msg->error_code == DhtProtocolException::UNAUTHORIZED
@@ -685,6 +913,8 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
                 if (not req->setError(DhtProtocolException {msg->error_code}))
                     onError(req, DhtProtocolException {msg->error_code});
             } else {
+                if (req)
+                    req->setExpired();
                 if (logIncoming_)
                     if (logger_)
                         logger_->warn("[node {} {}] received unknown error message {}",
@@ -705,6 +935,10 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
                 try {
                     deserializeNodes(*msg, from);
                     r.setDone(std::move(*msg));
+                    const auto& peer = node->getTransport();
+                    if (r.completed() and (r.getType() == MessageType::Ping or r.getType() == MessageType::FindNode
+                                          or (peer and peer->recovering)))
+                        completeSession(*node);
                 } catch (const DhtProtocolException& e) {
                     if (logger_)
                         logger_->warn("Unable to deserialize nodes {}", e.what());
@@ -724,9 +958,11 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
             break;
         }
     } else {
-        node->received(now, {});
-        if (not node->isClient())
-            onNewNode(node, 1);
+        if (trusted) {
+            node->received(now, {});
+            if (not node->isClient())
+                onNewNode(node, 1);
+        }
         try {
             switch (msg->type) {
             case MessageType::Ping:
@@ -735,7 +971,7 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
                     if (logger_)
                         logger_->debug("[node {}] sending pong", node->toString());
                 onPing(node);
-                sendPong(from, msg->tid);
+                sendPong(*node, from, msg->tid);
                 break;
             case MessageType::FindNode: {
                 // if (logger_)
@@ -744,30 +980,33 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
                 ++in_stats.find;
                 RequestAnswer answer = onFindNode(node, msg->target, msg->want);
                 auto nnodes = bufferNodes(from.getFamily(), msg->target, msg->want, answer.nodes4, answer.nodes6);
-                sendNodesValues(from, msg->tid, nnodes.first, nnodes.second, {}, {}, answer.ntoken);
+                sendNodesValues(*node, from, msg->tid, nnodes, {}, {}, writeToken(*node));
                 break;
             }
             case MessageType::GetValues: {
+                if (transport_ and node->getTransport() and not msg->session)
+                    throw DhtProtocolException {DhtProtocolException::UNAUTHORIZED, "Session required", msg->id};
                 // if (logger_)
                 //     logger_->d("[node %s] got 'get' request for %s",
                 //     node->toString().c_str(), msg->info_hash.toString().c_str());
                 ++in_stats.get;
                 RequestAnswer answer = onGetValues(node, msg->info_hash, msg->want, msg->query);
                 auto nnodes = bufferNodes(from.getFamily(), msg->info_hash, msg->want, answer.nodes4, answer.nodes6);
-                sendNodesValues(from, msg->tid, nnodes.first, nnodes.second, answer.values, msg->query, answer.ntoken);
+                sendNodesValues(*node, from, msg->tid, nnodes, answer.values, msg->query, writeToken(*node));
                 break;
             }
             case MessageType::AnnounceValue: {
                 if (logIncoming_ and logger_)
                     logger_->debug("[node {}] got 'put' request for {}", node->toString(), msg->info_hash.toString());
                 ++in_stats.put;
-                onAnnounce(node, msg->info_hash, msg->token, msg->values, msg->created);
+                authorizeWrite(*msg, *node, DhtProtocolException::PUT_WRONG_TOKEN);
+                onAnnounce(node, msg->info_hash, msg->values, msg->created);
 
                 /* Note that if storageStore failed, we lie to the requestor.
                    This is to prevent them from backtracking, and hence
                    polluting the DHT. */
                 for (auto& v : msg->values) {
-                    sendValueAnnounced(from, msg->tid, v->id);
+                    sendValueAnnounced(*node, from, msg->tid, v->id);
                 }
                 break;
             }
@@ -776,18 +1015,23 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
                     logger_->debug("[node {}] got 'refresh' request for {}",
                                    node->toString(),
                                    msg->info_hash.toString());
-                onRefresh(node, msg->info_hash, msg->token, msg->value_id);
+                authorizeWrite(*msg, *node, DhtProtocolException::PUT_WRONG_TOKEN);
+                onRefresh(node, msg->info_hash, msg->value_id);
                 /* Same note as above in MessageType::AnnounceValue applies. */
-                sendValueAnnounced(from, msg->tid, msg->value_id);
+                sendValueAnnounced(*node, from, msg->tid, msg->value_id);
                 break;
             case MessageType::Listen: {
                 if (logIncoming_ and logger_)
                     logger_->debug("[node {}] got 'listen' request for {}", node->toString(), msg->info_hash.toString());
                 ++in_stats.listen;
-                RequestAnswer answer
-                    = onListen(node, msg->info_hash, msg->token, msg->socket_id, std::move(msg->query), msg->version);
+                authorizeWrite(*msg, *node, DhtProtocolException::LISTEN_WRONG_TOKEN);
+                RequestAnswer answer = onListen(node,
+                                                msg->info_hash,
+                                                msg->socket_id,
+                                                std::move(msg->query),
+                                                msg->version);
                 auto nnodes = bufferNodes(from.getFamily(), msg->info_hash, msg->want, answer.nodes4, answer.nodes6);
-                sendListenConfirmation(from, msg->tid, answer.ntoken);
+                sendListenConfirmation(*node, from, msg->tid, writeToken(*node));
                 break;
             }
             case MessageType::UpdateValue: {
@@ -800,7 +1044,7 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
                     logger_->error("[node {}] 'update' request without socket for {}",
                                    node->toString(),
                                    msg->info_hash.toString());
-                sendListenConfirmation(from, msg->tid);
+                sendListenConfirmation(*node, from, msg->tid);
                 break;
             }
             default:
@@ -810,7 +1054,7 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
             if (logger_)
                 logger_->e("Unable to send value: buffer not large enough.");
         } catch (const DhtProtocolException& e) {
-            sendError(from, msg->tid, e.getCode(), e.getMsg().c_str(), true);
+            sendError(*node, from, msg->tid, e.getCode(), e.getMsg().c_str(), true);
         }
     }
 }
@@ -827,10 +1071,420 @@ insertAddr(msgpack::packer<msgpack::sbuffer>& pk, const SockAddr& addr)
     pk.pack_bin_body((char*) addr_ptr, addr_len);
 }
 
-int
-NetworkEngine::send(const SockAddr& addr, const char* buf, size_t len, bool confirmed)
+void
+NetworkEngine::packOptionalFields(msgpack::packer<msgpack::sbuffer>& pk, bool key) const
 {
-    return dht_socket ? dht_socket->sendTo(addr, (const uint8_t*) buf, len, confirmed) : ENOTCONN;
+    if (config.network) {
+        pk.pack(KEY_NETID);
+        pk.pack(config.network);
+    }
+    if (config.is_client) {
+        pk.pack(KEY_ISCLIENT);
+        pk.pack(config.is_client);
+    }
+    if (key) {
+        const auto& pub = config.transport.key.pub;
+        pk.pack(KEY_TRANSPORT);
+        pk.pack_bin(pub.size());
+        pk.pack_bin_body((const char*) pub.data(), pub.size());
+    }
+}
+
+/* IP and port: what ephemeral keys and tokens are bound to */
+static Blob
+addressBytes(const SockAddr& sa)
+{
+    auto addr = SockAddr(sa).getMappedIPv4();
+    Blob b;
+    in_port_t port;
+    if (addr.getFamily() == AF_INET) {
+        const auto& sin = addr.getIPv4();
+        b.assign((const uint8_t*) &sin.sin_addr, (const uint8_t*) &sin.sin_addr + sizeof(in_addr));
+        port = sin.sin_port;
+    } else if (addr.getFamily() == AF_INET6) {
+        const auto& sin6 = addr.getIPv6();
+        b.assign((const uint8_t*) &sin6.sin6_addr, (const uint8_t*) &sin6.sin6_addr + sizeof(in6_addr));
+        port = sin6.sin6_port;
+    } else {
+        return b;
+    }
+    b.insert(b.end(), (const uint8_t*) &port, (const uint8_t*) &port + sizeof(port));
+    return b;
+}
+
+transport::KeyPair
+NetworkEngine::Epoch::ephemeral(const SockAddr& addr) const
+{
+    auto a = addressBytes(addr);
+    return transport::addressKey(secret, a.data(), a.size());
+}
+
+Blob
+NetworkEngine::Epoch::token(const SockAddr& addr) const
+{
+    auto a = addressBytes(addr);
+    if (a.empty())
+        return {};
+    auto t = transport::addressToken(secret, a.data(), a.size());
+    return {t.begin(), t.end()};
+}
+
+NetworkEngine::Session*
+NetworkEngine::Epoch::find(const SockAddr& addr)
+{
+    auto it = sessions.find(addr);
+    if (it == sessions.end())
+        return nullptr;
+    used.splice(used.begin(), used, it->second.used);
+    return &it->second.session;
+}
+
+NetworkEngine::Session*
+NetworkEngine::Epoch::find(const SockAddr& addr, const transport::Key& peer, const transport::Key& peerEphemeral)
+{
+    auto s = find(addr);
+    return s and s->peer == peer and s->peerEphemeral == peerEphemeral ? s : nullptr;
+}
+
+void
+NetworkEngine::Epoch::store(const SockAddr& addr, const Session& session)
+{
+    auto it = sessions.find(addr);
+    if (it == sessions.end()) {
+        if (sessions.size() >= MAX_SESSIONS) {
+            auto evicted = sessions.find(used.back());
+            sessions.erase(evicted);
+            used.pop_back();
+        }
+        used.push_front(addr);
+        sessions.emplace(addr, Entry {session, used.begin()});
+        return;
+    }
+    it->second.session = session;
+    used.splice(used.begin(), used, it->second.used);
+}
+
+void
+NetworkEngine::Epoch::wipe()
+{
+    sessions.clear();
+    used.clear();
+    transport::wipe(secret);
+}
+
+void
+NetworkEngine::rotateEpoch()
+{
+    previousEpoch_.wipe();
+    previousEpoch_.secret = epoch_.secret;
+    previousEpoch_.sessions = std::move(epoch_.sessions);
+    previousEpoch_.used = std::move(epoch_.used);
+    epoch_.sessions.clear();
+    epoch_.used.clear();
+    epoch_.secret = transport::randomSecret();
+    epochRotation_ = scheduler.add(scheduler.time() + EPOCH_DURATION, std::bind(&NetworkEngine::rotateEpoch, this));
+}
+
+std::optional<NetworkEngine::Session>
+NetworkEngine::session(const transport::Peer& peer, const SockAddr& addr)
+{
+    const auto& peerEphemeral = *peer.ephemeral;
+    const bool validated = peer.validatedAddress and peer.validatedAddress == addr;
+    if (validated)
+        if (auto s = epoch_.find(addr, peer.key, peerEphemeral)) {
+            s->authorizedUntil = std::max(s->authorizedUntil, peer.authorizedUntil);
+            return *s;
+        }
+    auto ephemeral = epoch_.ephemeral(addr);
+    std::optional<Session> s;
+    if (auto keys = transport::sessionKeys(config.transport.key, ephemeral, peer.key, peerEphemeral, config.network)) {
+        s = Session {ephemeral.pub, peer.key, peerEphemeral, *keys};
+        s->authorizedUntil = peer.authorizedUntil;
+        if (validated)
+            epoch_.store(addr, *s);
+    }
+    transport::wipe(ephemeral.secret);
+    return s;
+}
+
+std::optional<Blob>
+NetworkEngine::openSession(const transport::Header& header,
+                            const uint8_t* buf,
+                            size_t buflen,
+                            const SockAddr& from,
+                            std::optional<PendingSession>& pending,
+                            Session*& cached)
+{
+    // The sender uses the last ephemeral key we sent to its address
+    const std::array<Epoch*, 2> epochs {&epoch_, &previousEpoch_};
+    for (auto* epoch : epochs)
+        if (auto session = epoch->find(from, header.sender, header.ephemeral))
+            if (auto payload = transport::open(session->keys.rx, buf, buflen)) {
+                cached = session;
+                return payload;
+            }
+    bool charged = false;
+    for (auto* epoch : epochs) {
+        if (not *epoch or epoch->find(from, header.sender, header.ephemeral))
+            continue;
+        // Key agreement is the costly part of an unknown sender, charged once per packet
+        if (not std::exchange(charged, true) and not limitCrypto(header.sender, from))
+            return std::nullopt;
+        auto ephemeral = epoch->ephemeral(from);
+        auto keys = transport::sessionKeys(config.transport.key,
+                                           ephemeral,
+                                           header.sender,
+                                           header.ephemeral,
+                                           config.network);
+        transport::wipe(ephemeral.secret);
+        if (not keys)
+            return std::nullopt;
+        if (auto payload = transport::open(keys->rx, buf, buflen)) {
+            pending = PendingSession {epoch, {ephemeral.pub, header.sender, header.ephemeral, *keys}};
+            return payload;
+        }
+    }
+    return std::nullopt;
+}
+
+std::optional<Blob>
+NetworkEngine::openData(
+    transport::Header& header, const uint8_t* buf, size_t buflen, const SockAddr& from, Session*& cached)
+{
+    for (auto* epoch : {&epoch_, &previousEpoch_}) {
+        auto s = epoch->find(from);
+        if (not s)
+            continue;
+        if (auto payload = transport::open(s->keys.rx, buf, buflen)) {
+            // The peer only sends Data once it got our answer: it has the keys and accepted us
+            if (epoch == &epoch_)
+                s->confirmed = true;
+            header.sender = s->peer;
+            header.ephemeral = s->peerEphemeral;
+            cached = s;
+            return payload;
+        }
+    }
+    return std::nullopt;
+}
+
+bool
+NetworkEngine::tokenMatch(const Blob& token, const SockAddr& addr) const
+{
+    if (not addr or token.size() != TOKEN_SIZE)
+        return false;
+    return token == epoch_.token(addr) or (previousEpoch_ and token == previousEpoch_.token(addr));
+}
+
+void
+NetworkEngine::authorizeWrite(const ParsedMessage& msg, const Node& node, const std::string& error) const
+{
+    if (msg.encrypted ? msg.session : tokenMatch(msg.token, node.getAddr()))
+        return;
+    if (logger_)
+        logger_->warn("[node {}] {}", node.toString(), error);
+    throw DhtProtocolException {DhtProtocolException::UNAUTHORIZED, error};
+}
+
+Sp<transport::Peer>
+NetworkEngine::makePeer(const InfoHash& id, const transport::Key& key) const
+{
+    if (key == transport::Key {} or transport::nodeId(key) != id)
+        return {};
+    return std::make_shared<transport::Peer>(key);
+}
+
+void
+NetworkEngine::attachPeer(Node& node, const Sp<transport::Peer>& peer)
+{
+    const auto& current = node.getTransport();
+    if (not current) {
+        node.setTransport(peer);
+    } else if (current != peer) {
+        // Both keys match the node ID, so they are the same
+        current->authorizedUntil = std::max(current->authorizedUntil, peer->authorizedUntil);
+        if (peer->ephemeral) {
+            current->setEphemeral(*peer->ephemeral, peer->validatedAddress);
+        }
+    }
+}
+
+bool
+NetworkEngine::authorize(transport::Peer& peer, const uint8_t* data, size_t size) const
+{
+    if (peer.isAuthorized(std::chrono::system_clock::now()))
+        return true;
+    try {
+        auto credential = transport::Credential::unpack(data, size);
+        if (credential.key != peer.key or not credential.verify(config.transport.authorities))
+            return false;
+        peer.authorizedUntil = credential.expiration;
+        return true;
+    } catch (const std::exception&) {
+        return false;
+    }
+}
+
+std::optional<NetworkEngine::OpenedEnvelope>
+NetworkEngine::openEnvelope(const uint8_t* buf, size_t buflen, const SockAddr& from)
+{
+    using transport::EnvelopeType;
+    constexpr size_t CREDENTIAL_SIZE = transport::Credential::PACKED_SIZE;
+    auto header = transport::parseHeader(buf, buflen);
+    if (not header or header->sender == config.transport.key.pub)
+        return std::nullopt;
+    const bool isPrivate = config.transport.isPrivate();
+
+    if (header->type == EnvelopeType::Hello) {
+        // Unauthenticated: its state is only used to answer, never kept
+        constexpr size_t credentialEnd = transport::HEADER_SIZE + CREDENTIAL_SIZE;
+        auto peer = std::make_shared<transport::Peer>(header->sender);
+        if (not isPrivate or buflen <= credentialEnd or not cryptoLimiter_.limit(from, scheduler.time())
+            or not authorize(*peer, buf + transport::HEADER_SIZE, CREDENTIAL_SIZE))
+            return std::nullopt;
+        peer->setEphemeral(header->ephemeral);
+        return OpenedEnvelope {std::move(peer), Blob(buf + credentialEnd, buf + buflen), true};
+    }
+
+    std::optional<Blob> payload;
+    std::optional<PendingSession> pending;
+    Session* cached {};
+    if (header->type == EnvelopeType::Initial) {
+        if (not limitCrypto(header->sender, from))
+            return std::nullopt;
+        if (auto key = transport::initialReceiveKey(config.transport.key,
+                                                    header->sender,
+                                                    header->ephemeral,
+                                                    config.network)) {
+            try {
+                payload = transport::open(*key, buf, buflen);
+            } catch (...) {
+                transport::wipe(*key);
+                throw;
+            }
+            transport::wipe(*key);
+        }
+    } else if (header->type == EnvelopeType::Data) {
+        payload = openData(*header, buf, buflen, from, cached);
+    } else {
+        payload = openSession(*header, buf, buflen, from, pending, cached);
+    }
+    if (not payload) {
+        if (logger_)
+            logger_->debug("Unable to decrypt message from {}", from.toString());
+        return std::nullopt;
+    }
+
+    auto peer = std::make_shared<transport::Peer>(header->sender);
+    if (cached)
+        peer->authorizedUntil = cached->authorizedUntil;
+    if (auto node = cache.getNode(transport::nodeId(header->sender), from.getFamily()))
+        if (const auto& current = node->getTransport())
+            peer->authorizedUntil = std::max(peer->authorizedUntil, current->authorizedUntil);
+    if (header->credential) {
+        if (payload->size() < CREDENTIAL_SIZE)
+            return std::nullopt;
+        if (isPrivate and not peer->isAuthorized(std::chrono::system_clock::now())) {
+            if (header->type == EnvelopeType::Session and not pending and not limitCrypto(header->sender, from))
+                return std::nullopt;
+            if (not authorize(*peer, payload->data(), CREDENTIAL_SIZE))
+                return std::nullopt;
+        }
+        payload->erase(payload->begin(), payload->begin() + CREDENTIAL_SIZE);
+    } else if (isPrivate and not peer->isAuthorized(std::chrono::system_clock::now())) {
+        return std::nullopt;
+    }
+    // Session and Data envelopes were opened with our key for the source address: the sender receives there
+    const bool session = header->type != EnvelopeType::Initial;
+    peer->setEphemeral(header->ephemeral, session ? from : SockAddr {});
+    if (pending)
+        pending->session.authorizedUntil = peer->authorizedUntil;
+    return OpenedEnvelope {std::move(peer), std::move(*payload), false, session, std::move(pending), cached};
+}
+
+void
+NetworkEngine::processHello(const ParsedMessage& msg, const Sp<transport::Peer>& peer, const SockAddr& from)
+{
+    if (msg.type != MessageType::Ping or not unauthLimiter_.limit(from, scheduler.time()))
+        return;
+    ++in_stats.ping;
+    // Answer without adding the claimed node: only the owner of its key can read the answer
+    Node node(msg.id, from, rd);
+    node.setTransport(peer);
+    sendPong(node, from, msg.tid);
+}
+
+int
+NetworkEngine::sendRaw(const SockAddr& addr, const uint8_t* buf, size_t len, bool confirmed)
+{
+    return dht_socket ? dht_socket->sendTo(addr, buf, len, confirmed) : ENOTCONN;
+}
+
+int
+NetworkEngine::send(const Node& node, const SockAddr& addr, const char* buf, size_t len, bool confirmed)
+{
+    using transport::EnvelopeType;
+    const auto data = (const uint8_t*) buf;
+    if (not transport_)
+        return sendRaw(addr, data, len, confirmed);
+    const bool isPrivate = config.transport.isPrivate();
+    const auto& own = config.transport.key;
+    if (const auto& peer = node.getTransport()) {
+        // Keys travel until the peer confirms the session, and the credential with them
+        Blob packet;
+        if (not peer->ephemeral) {
+            auto e = epoch_.ephemeral(addr);
+            if (auto key = transport::initialSendKey(own, e, peer->key, config.network)) {
+                packet = transport::seal(*key,
+                                         EnvelopeType::Initial,
+                                         own.pub,
+                                         e.pub,
+                                         data,
+                                         len,
+                                         isPrivate ? credential_ : Blob {});
+                transport::wipe(*key);
+            }
+            transport::wipe(e.secret);
+        } else if (auto s = session(*peer, addr)) {
+            packet = s->confirmed ? transport::sealData(s->keys.tx, data, len)
+                                  : transport::seal(s->keys.tx,
+                                                    EnvelopeType::Session,
+                                                    own.pub,
+                                                    s->ephemeral,
+                                                    data,
+                                                    len,
+                                                    isPrivate ? credential_ : Blob {});
+        }
+        if (not packet.empty())
+            return sendRaw(addr, packet.data(), packet.size(), confirmed);
+        return EPERM;
+    } else if (isPrivate and not node.id) {
+        // ping to an address: introduce ourselves
+        auto e = epoch_.ephemeral(addr);
+        transport::wipe(e.secret);
+        auto packet = transport::hello(own.pub, e.pub, credential_, data, len);
+        return sendRaw(addr, packet.data(), packet.size(), confirmed);
+    }
+    if (isPrivate)
+        return EPERM;
+    return sendRaw(addr, data, len, confirmed);
+}
+
+size_t
+NetworkEngine::envelopeOverhead(const Node& node, const SockAddr& addr)
+{
+    if (not transport_)
+        return 0;
+    const size_t credential = config.transport.isPrivate() ? credential_.size() : 0;
+    if (const auto& peer = node.getTransport()) {
+        if (peer->ephemeral and peer->validatedAddress and peer->validatedAddress == addr)
+            if (auto s = epoch_.find(addr, peer->key, *peer->ephemeral); s and s->confirmed)
+                return transport::DATA_ENVELOPE_OVERHEAD;
+        return transport::ENVELOPE_OVERHEAD + credential;
+    }
+    if (config.transport.isPrivate() and not node.id)
+        return transport::HEADER_SIZE + credential;
+    return 0;
 }
 
 Sp<Request>
@@ -839,7 +1493,8 @@ NetworkEngine::sendPing(const Sp<Node>& node, RequestCb&& on_done, RequestExpire
     Tid tid(node->getNewTid());
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
-    pk.pack_map(5 + (config.network ? 1 : 0) + (config.is_client ? 1 : 0));
+    bool advertise = advertiseKey(*node);
+    pk.pack_map(5 + optionalFields(advertise));
 
     pk.pack(KEY_A);
     pk.pack_map(1);
@@ -854,14 +1509,7 @@ NetworkEngine::sendPing(const Sp<Node>& node, RequestCb&& on_done, RequestExpire
     pk.pack(KEY_Q);
     pk.pack(KEY_UA);
     pk.pack(OPENDHT_UA);
-    if (config.network) {
-        pk.pack(KEY_NETID);
-        pk.pack(config.network);
-    }
-    if (config.is_client) {
-        pk.pack(KEY_ISCLIENT);
-        pk.pack(config.is_client);
-    }
+    packOptionalFields(pk, advertise);
 
     auto req = std::make_shared<Request>(
         MessageType::Ping,
@@ -882,11 +1530,12 @@ NetworkEngine::sendPing(const Sp<Node>& node, RequestCb&& on_done, RequestExpire
 }
 
 void
-NetworkEngine::sendPong(const SockAddr& addr, Tid tid)
+NetworkEngine::sendPong(const Node& node, const SockAddr& addr, Tid tid)
 {
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
-    pk.pack_map(4 + (config.network ? 1 : 0) + (config.is_client ? 1 : 0));
+    bool advertise = advertiseKey(node);
+    pk.pack_map(4 + optionalFields(advertise));
 
     pk.pack(KEY_R);
     pk.pack_map(2);
@@ -900,16 +1549,9 @@ NetworkEngine::sendPong(const SockAddr& addr, Tid tid)
     pk.pack(KEY_R);
     pk.pack(KEY_UA);
     pk.pack(OPENDHT_UA);
-    if (config.network) {
-        pk.pack(KEY_NETID);
-        pk.pack(config.network);
-    }
-    if (config.is_client) {
-        pk.pack(KEY_ISCLIENT);
-        pk.pack(config.is_client);
-    }
+    packOptionalFields(pk, advertise);
 
-    send(addr, buffer.data(), buffer.size());
+    send(node, addr, buffer.data(), buffer.size());
 }
 
 Sp<Request>
@@ -919,7 +1561,8 @@ NetworkEngine::sendFindNode(
     Tid tid(n->getNewTid());
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
-    pk.pack_map(5 + (config.network ? 1 : 0) + (config.is_client ? 1 : 0));
+    bool advertise = advertiseKey(*n);
+    pk.pack_map(5 + optionalFields(advertise));
 
     pk.pack(KEY_A);
     pk.pack_map(2 + (want > 0 ? 1 : 0));
@@ -944,14 +1587,7 @@ NetworkEngine::sendFindNode(
     pk.pack(KEY_Q);
     pk.pack(KEY_UA);
     pk.pack(OPENDHT_UA);
-    if (config.network) {
-        pk.pack(KEY_NETID);
-        pk.pack(config.network);
-    }
-    if (config.is_client) {
-        pk.pack(KEY_ISCLIENT);
-        pk.pack(config.is_client);
-    }
+    packOptionalFields(pk, advertise);
 
     auto req = std::make_shared<Request>(
         MessageType::FindNode,
@@ -981,7 +1617,8 @@ NetworkEngine::sendGetValues(const Sp<Node>& n,
     Tid tid(n->getNewTid());
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
-    pk.pack_map(5 + (config.network ? 1 : 0) + (config.is_client ? 1 : 0));
+    bool advertise = advertiseKey(*n);
+    pk.pack_map(5 + optionalFields(advertise));
 
     unsigned sendQuery = (not query.where.empty() or not query.select.empty()) ? 1 : 0;
     unsigned sendWant = (want > 0) ? 1 : 0;
@@ -1015,14 +1652,7 @@ NetworkEngine::sendGetValues(const Sp<Node>& n,
     pk.pack(KEY_Q);
     pk.pack(KEY_UA);
     pk.pack(OPENDHT_UA);
-    if (config.network) {
-        pk.pack(KEY_NETID);
-        pk.pack(config.network);
-    }
-    if (config.is_client) {
-        pk.pack(KEY_ISCLIENT);
-        pk.pack(config.is_client);
-    }
+    packOptionalFields(pk, advertise);
 
     auto req = std::make_shared<Request>(
         MessageType::GetValues,
@@ -1070,6 +1700,14 @@ NetworkEngine::deserializeNodes(ParsedMessage& msg, const SockAddr& from)
     }
     // deserialize nodes
     const auto& now = scheduler.time();
+    const bool isPrivate = transport_ and config.transport.isPrivate();
+    auto listedPeer = [&](const Blob& keys, size_t count, size_t i, const InfoHash& id) -> Sp<transport::Peer> {
+        if (not transport_ or keys.size() != count * transport::KEY_SIZE)
+            return {};
+        transport::Key key;
+        std::copy_n(keys.data() + i * transport::KEY_SIZE, key.size(), key.begin());
+        return makePeer(id, key);
+    };
     for (unsigned i = 0, n = msg.nodes4_raw.size() / NODE4_INFO_BUF_LEN; i < n; i++) {
         const uint8_t* ni = msg.nodes4_raw.data() + i * NODE4_INFO_BUF_LEN;
         const auto& ni_id = *reinterpret_cast<const InfoHash*>(ni);
@@ -1083,7 +1721,12 @@ NetworkEngine::deserializeNodes(ParsedMessage& msg, const SockAddr& from)
         }
         if (isMartian(addr) || isNodeBlacklisted(addr))
             continue;
+        auto peer = listedPeer(msg.nodes4_keys, n, i, ni_id);
+        if (isPrivate and not peer)
+            continue;
         msg.nodes4.emplace_back(cache.getNode(ni_id, addr, now, false));
+        if (peer)
+            attachPeer(*msg.nodes4.back(), peer);
         onNewNode(msg.nodes4.back(), 0);
     }
     for (unsigned i = 0, n = msg.nodes6_raw.size() / NODE6_INFO_BUF_LEN; i < n; i++) {
@@ -1099,7 +1742,12 @@ NetworkEngine::deserializeNodes(ParsedMessage& msg, const SockAddr& from)
         }
         if (isMartian(addr) || isNodeBlacklisted(addr))
             continue;
+        auto peer = listedPeer(msg.nodes6_keys, n, i, ni_id);
+        if (isPrivate and not peer)
+            continue;
         msg.nodes6.emplace_back(cache.getNode(ni_id, addr, now, false));
+        if (peer)
+            attachPeer(*msg.nodes6.back(), peer);
         onNewNode(msg.nodes6.back(), 0);
     }
 }
@@ -1136,25 +1784,19 @@ NetworkEngine::packValueHeader(msgpack::sbuffer& buffer,
 }
 
 void
-NetworkEngine::sendValueParts(Tid tid, const std::vector<Blob>& svals, const SockAddr& addr)
+NetworkEngine::sendValueParts(Tid tid, const std::vector<Blob>& svals, const Node& node, const SockAddr& addr)
 {
+    const size_t fragmentSize = FRAGMENT_SIZE - envelopeOverhead(node, addr);
     msgpack::sbuffer buffer;
     unsigned i = 0;
     for (const auto& v : svals) {
         size_t start {0}, end;
         do {
-            end = std::min(start + MTU, v.size());
+            end = std::min(start + fragmentSize, v.size());
             buffer.clear();
             msgpack::packer<msgpack::sbuffer> pk(&buffer);
-            pk.pack_map(3 + (config.network ? 1 : 0) + (config.is_client ? 1 : 0));
-            if (config.network) {
-                pk.pack(KEY_NETID);
-                pk.pack(config.network);
-            }
-            if (config.is_client) {
-                pk.pack(KEY_ISCLIENT);
-                pk.pack(config.is_client);
-            }
+            pk.pack_map(3 + optionalFields(false));
+            packOptionalFields(pk, false);
             pk.pack(KEY_Y);
             pk.pack(KEY_V);
             pk.pack(KEY_TID);
@@ -1168,7 +1810,7 @@ NetworkEngine::sendValueParts(Tid tid, const std::vector<Blob>& svals, const Soc
             pk.pack("d"sv);
             pk.pack_bin(end - start);
             pk.pack_bin_body((const char*) v.data() + start, end - start);
-            send(addr, buffer.data(), buffer.size());
+            send(node, addr, buffer.data(), buffer.size());
             start = end;
         } while (start != v.size());
         i++;
@@ -1176,34 +1818,36 @@ NetworkEngine::sendValueParts(Tid tid, const std::vector<Blob>& svals, const Soc
 }
 
 void
-NetworkEngine::sendNodesValues(const SockAddr& addr,
+NetworkEngine::sendNodesValues(const Node& node,
+                               const SockAddr& addr,
                                Tid tid,
-                               const Blob& nodes,
-                               const Blob& nodes6,
+                               const BufferedNodes& nodes,
                                const std::vector<Sp<Value>>& st,
                                const Query& query,
                                const Blob& token)
 {
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
-    pk.pack_map(4 + (config.network ? 1 : 0) + (config.is_client ? 1 : 0));
+    bool advertise = advertiseKey(node);
+    pk.pack_map(4 + optionalFields(advertise));
 
+    auto packBlob = [&](std::string_view key, const Blob& b) {
+        if (b.empty())
+            return;
+        pk.pack(key);
+        pk.pack_bin(b.size());
+        pk.pack_bin_body((const char*) b.data(), b.size());
+    };
     pk.pack(KEY_R);
-    pk.pack_map(2 + (not st.empty() ? 1 : 0) + (nodes.size() > 0 ? 1 : 0) + (nodes6.size() > 0 ? 1 : 0)
-                + (not token.empty() ? 1 : 0));
+    pk.pack_map(2 + (not st.empty() ? 1 : 0) + (not nodes.nodes4.empty() ? 1 : 0) + (not nodes.nodes6.empty() ? 1 : 0)
+                + (not nodes.keys4.empty() ? 1 : 0) + (not nodes.keys6.empty() ? 1 : 0) + (not token.empty() ? 1 : 0));
     pk.pack(KEY_REQ_ID);
     pk.pack(myid);
     insertAddr(pk, addr);
-    if (nodes.size() > 0) {
-        pk.pack(KEY_REQ_NODES4);
-        pk.pack_bin(nodes.size());
-        pk.pack_bin_body((const char*) nodes.data(), nodes.size());
-    }
-    if (nodes6.size() > 0) {
-        pk.pack(KEY_REQ_NODES6);
-        pk.pack_bin(nodes6.size());
-        pk.pack_bin_body((const char*) nodes6.data(), nodes6.size());
-    }
+    packBlob(KEY_REQ_NODES4, nodes.nodes4);
+    packBlob(KEY_REQ_NODES6, nodes.nodes6);
+    packBlob(KEY_REQ_KEYS4, nodes.keys4);
+    packBlob(KEY_REQ_KEYS6, nodes.keys6);
     if (not token.empty()) {
         pk.pack(KEY_REQ_TOKEN);
         packToken(pk, token);
@@ -1233,24 +1877,17 @@ NetworkEngine::sendNodesValues(const SockAddr& addr,
     pk.pack(KEY_R);
     pk.pack(KEY_UA);
     pk.pack(OPENDHT_UA);
-    if (config.network) {
-        pk.pack(KEY_NETID);
-        pk.pack(config.network);
-    }
-    if (config.is_client) {
-        pk.pack(KEY_ISCLIENT);
-        pk.pack(config.is_client);
-    }
+    packOptionalFields(pk, advertise);
 
     // send response
-    send(addr, buffer.data(), buffer.size());
+    send(node, addr, buffer.data(), buffer.size());
 
     // send parts
     if (not svals.empty())
-        sendValueParts(tid, svals, addr);
+        sendValueParts(tid, svals, node, addr);
 }
 
-Blob
+std::pair<Blob, Blob>
 NetworkEngine::bufferNodes(sa_family_t af, const InfoHash& id, std::vector<Sp<Node>>& nodes)
 {
     std::sort(nodes.begin(), nodes.end(), [&](const Sp<Node>& a, const Sp<Node>& b) {
@@ -1278,26 +1915,39 @@ NetworkEngine::bufferNodes(sa_family_t af, const InfoHash& id, std::vector<Sp<No
             memcpy(dest + HASH_LEN, &sin6.sin6_addr, sizeof(in6_addr));
             memcpy(dest + HASH_LEN + sizeof(in6_addr), &sin6.sin6_port, sizeof(in_port_t));
         }
+    } else {
+        return {};
     }
-    return bnodes;
+
+    Blob bkeys;
+    if (transport_) {
+        bool hasKey = false;
+        bkeys.resize(transport::KEY_SIZE * nnode);
+        for (size_t i = 0; i < nnode; i++) {
+            if (const auto& peer = nodes[i]->getTransport()) {
+                std::copy(peer->key.begin(), peer->key.end(), bkeys.begin() + transport::KEY_SIZE * i);
+                hasKey = true;
+            }
+        }
+        if (not hasKey)
+            bkeys.clear();
+    }
+    return {std::move(bnodes), std::move(bkeys)};
 }
 
-std::pair<Blob, Blob>
+NetworkEngine::BufferedNodes
 NetworkEngine::bufferNodes(
     sa_family_t af, const InfoHash& id, want_t want, std::vector<Sp<Node>>& nodes4, std::vector<Sp<Node>>& nodes6)
 {
     if (want < 0)
         want = af == AF_INET ? WANT4 : WANT6;
 
-    Blob bnodes4;
+    BufferedNodes buffered;
     if (want & WANT4)
-        bnodes4 = bufferNodes(AF_INET, id, nodes4);
-
-    Blob bnodes6;
+        std::tie(buffered.nodes4, buffered.keys4) = bufferNodes(AF_INET, id, nodes4);
     if (want & WANT6)
-        bnodes6 = bufferNodes(AF_INET6, id, nodes6);
-
-    return {std::move(bnodes4), std::move(bnodes6)};
+        std::tie(buffered.nodes6, buffered.keys6) = bufferNodes(AF_INET6, id, nodes6);
+    return buffered;
 }
 
 Sp<Request>
@@ -1312,19 +1962,22 @@ NetworkEngine::sendListen(const Sp<Node>& n,
     Tid tid(n->getNewTid());
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
-    pk.pack_map(5 + (config.network ? 1 : 0) + (config.is_client ? 1 : 0));
+    bool advertise = advertiseKey(*n);
+    pk.pack_map(5 + optionalFields(advertise));
 
     auto has_query = not query.where.empty() or not query.select.empty();
     pk.pack(KEY_A);
-    pk.pack_map(5 + has_query);
+    pk.pack_map(4 + has_query + (not token.empty() ? 1 : 0));
     pk.pack(KEY_REQ_ID);
     pk.pack(myid);
     pk.pack(KEY_VERSION);
     pk.pack(1);
     pk.pack(KEY_REQ_H);
     pk.pack(hash);
-    pk.pack(KEY_REQ_TOKEN);
-    packToken(pk, token);
+    if (not token.empty()) {
+        pk.pack(KEY_REQ_TOKEN);
+        packToken(pk, token);
+    }
     pk.pack(KEY_REQ_SID);
     pk.pack(socketId);
     if (has_query) {
@@ -1340,14 +1993,7 @@ NetworkEngine::sendListen(const Sp<Node>& n,
     pk.pack(KEY_Q);
     pk.pack(KEY_UA);
     pk.pack(OPENDHT_UA);
-    if (config.network) {
-        pk.pack(KEY_NETID);
-        pk.pack(config.network);
-    }
-    if (config.is_client) {
-        pk.pack(KEY_ISCLIENT);
-        pk.pack(config.is_client);
-    }
+    packOptionalFields(pk, advertise);
 
     auto req = std::make_shared<Request>(
         MessageType::Listen,
@@ -1366,11 +2012,12 @@ NetworkEngine::sendListen(const Sp<Node>& n,
 }
 
 void
-NetworkEngine::sendListenConfirmation(const SockAddr& addr, Tid tid, const Blob& token)
+NetworkEngine::sendListenConfirmation(const Node& node, const SockAddr& addr, Tid tid, const Blob& token)
 {
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
-    pk.pack_map(4 + (config.network ? 1 : 0) + (config.is_client ? 1 : 0));
+    bool advertise = advertiseKey(node);
+    pk.pack_map(4 + optionalFields(advertise));
 
     pk.pack(KEY_R);
     pk.pack_map(2 + (not token.empty() ? 1 : 0));
@@ -1388,16 +2035,9 @@ NetworkEngine::sendListenConfirmation(const SockAddr& addr, Tid tid, const Blob&
     pk.pack(KEY_R);
     pk.pack(KEY_UA);
     pk.pack(OPENDHT_UA);
-    if (config.network) {
-        pk.pack(KEY_NETID);
-        pk.pack(config.network);
-    }
-    if (config.is_client) {
-        pk.pack(KEY_ISCLIENT);
-        pk.pack(config.is_client);
-    }
+    packOptionalFields(pk, advertise);
 
-    send(addr, buffer.data(), buffer.size());
+    send(node, addr, buffer.data(), buffer.size());
 }
 
 Sp<Request>
@@ -1412,11 +2052,12 @@ NetworkEngine::sendAnnounceValue(const Sp<Node>& n,
     Tid tid(n->getNewTid());
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
-    pk.pack_map(5 + (config.network ? 1 : 0) + (config.is_client ? 1 : 0));
+    bool advertise = advertiseKey(*n);
+    pk.pack_map(5 + optionalFields(advertise));
 
     bool add_created = created < scheduler.time();
     pk.pack(KEY_A);
-    pk.pack_map(add_created ? 5 : 4);
+    pk.pack_map(3 + (add_created ? 1 : 0) + (not token.empty() ? 1 : 0));
     pk.pack(KEY_REQ_ID);
     pk.pack(myid);
     pk.pack(KEY_REQ_H);
@@ -1426,8 +2067,10 @@ NetworkEngine::sendAnnounceValue(const Sp<Node>& n,
         pk.pack(KEY_REQ_CREATION);
         pk.pack(to_time_t(created));
     }
-    pk.pack(KEY_REQ_TOKEN);
-    pk.pack(token);
+    if (not token.empty()) {
+        pk.pack(KEY_REQ_TOKEN);
+        pk.pack(token);
+    }
 
     pk.pack(KEY_Q);
     pk.pack(QUERY_PUT);
@@ -1437,14 +2080,7 @@ NetworkEngine::sendAnnounceValue(const Sp<Node>& n,
     pk.pack(KEY_Q);
     pk.pack(KEY_UA);
     pk.pack(OPENDHT_UA);
-    if (config.network) {
-        pk.pack(KEY_NETID);
-        pk.pack(config.network);
-    }
-    if (config.is_client) {
-        pk.pack(KEY_ISCLIENT);
-        pk.pack(config.is_client);
-    }
+    packOptionalFields(pk, advertise);
 
     auto req = std::make_shared<Request>(
         MessageType::AnnounceValue,
@@ -1510,10 +2146,11 @@ NetworkEngine::sendUpdateValues(const Sp<Node>& n,
 
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
-    pk.pack_map(5 + (config.network ? 1 : 0) + (config.is_client ? 1 : 0));
+    bool advertise = advertiseKey(*n);
+    pk.pack_map(5 + optionalFields(advertise));
 
     pk.pack(KEY_A);
-    pk.pack_map((created < scheduler.time() ? 7 : 6));
+    pk.pack_map(5 + (created < scheduler.time() ? 1 : 0) + (not token.empty() ? 1 : 0));
     pk.pack(KEY_REQ_ID);
     pk.pack(myid);
     pk.pack(KEY_VERSION);
@@ -1527,8 +2164,10 @@ NetworkEngine::sendUpdateValues(const Sp<Node>& n,
         pk.pack(KEY_REQ_CREATION);
         pk.pack(to_time_t(created));
     }
-    pk.pack(KEY_REQ_TOKEN);
-    pk.pack(token);
+    if (not token.empty()) {
+        pk.pack(KEY_REQ_TOKEN);
+        pk.pack(token);
+    }
 
     pk.pack(KEY_Q);
     pk.pack(QUERY_UPDATE);
@@ -1538,14 +2177,7 @@ NetworkEngine::sendUpdateValues(const Sp<Node>& n,
     pk.pack(KEY_Q);
     pk.pack(KEY_UA);
     pk.pack(OPENDHT_UA);
-    if (config.network) {
-        pk.pack(KEY_NETID);
-        pk.pack(config.network);
-    }
-    if (config.is_client) {
-        pk.pack(KEY_ISCLIENT);
-        pk.pack(config.is_client);
-    }
+    packOptionalFields(pk, advertise);
 
     auto req = std::make_shared<Request>(
         MessageType::UpdateValue,
@@ -1572,18 +2204,21 @@ NetworkEngine::sendRefreshValue(const Sp<Node>& n,
     Tid tid(n->getNewTid());
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
-    pk.pack_map(5 + (config.network ? 1 : 0) + (config.is_client ? 1 : 0));
+    bool advertise = advertiseKey(*n);
+    pk.pack_map(5 + optionalFields(advertise));
 
     pk.pack(KEY_A);
-    pk.pack_map(4);
+    pk.pack_map(3 + (not token.empty() ? 1 : 0));
     pk.pack(KEY_REQ_ID);
     pk.pack(myid);
     pk.pack(KEY_REQ_H);
     pk.pack(infohash);
     pk.pack(KEY_REQ_VALUE_ID);
     pk.pack(vid);
-    pk.pack(KEY_REQ_TOKEN);
-    pk.pack(token);
+    if (not token.empty()) {
+        pk.pack(KEY_REQ_TOKEN);
+        pk.pack(token);
+    }
 
     pk.pack(KEY_Q);
     pk.pack(QUERY_REFRESH);
@@ -1593,14 +2228,7 @@ NetworkEngine::sendRefreshValue(const Sp<Node>& n,
     pk.pack(KEY_Q);
     pk.pack(KEY_UA);
     pk.pack(OPENDHT_UA);
-    if (config.network) {
-        pk.pack(KEY_NETID);
-        pk.pack(config.network);
-    }
-    if (config.is_client) {
-        pk.pack(KEY_ISCLIENT);
-        pk.pack(config.is_client);
-    }
+    packOptionalFields(pk, advertise);
 
     auto req = std::make_shared<Request>(
         MessageType::Refresh,
@@ -1628,11 +2256,12 @@ NetworkEngine::sendRefreshValue(const Sp<Node>& n,
 }
 
 void
-NetworkEngine::sendValueAnnounced(const SockAddr& addr, Tid tid, Value::Id vid)
+NetworkEngine::sendValueAnnounced(const Node& node, const SockAddr& addr, Tid tid, Value::Id vid)
 {
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
-    pk.pack_map(4 + (config.network ? 1 : 0) + (config.is_client ? 1 : 0));
+    bool advertise = advertiseKey(node);
+    pk.pack_map(4 + optionalFields(advertise));
 
     pk.pack(KEY_R);
     pk.pack_map(3);
@@ -1648,24 +2277,19 @@ NetworkEngine::sendValueAnnounced(const SockAddr& addr, Tid tid, Value::Id vid)
     pk.pack(KEY_R);
     pk.pack(KEY_UA);
     pk.pack(OPENDHT_UA);
-    if (config.network) {
-        pk.pack(KEY_NETID);
-        pk.pack(config.network);
-    }
-    if (config.is_client) {
-        pk.pack(KEY_ISCLIENT);
-        pk.pack(config.is_client);
-    }
+    packOptionalFields(pk, advertise);
 
-    send(addr, buffer.data(), buffer.size());
+    send(node, addr, buffer.data(), buffer.size());
 }
 
 void
-NetworkEngine::sendError(const SockAddr& addr, Tid tid, uint16_t code, const std::string& message, bool include_id)
+NetworkEngine::sendError(
+    const Node& node, const SockAddr& addr, Tid tid, uint16_t code, const std::string& message, bool include_id)
 {
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
-    pk.pack_map(4 + (include_id ? 1 : 0) + (config.network ? 1 : 0) + (config.is_client ? 1 : 0));
+    bool advertise = advertiseKey(node);
+    pk.pack_map(4 + (include_id ? 1 : 0) + optionalFields(advertise));
 
     pk.pack(KEY_E);
     pk.pack_array(2);
@@ -1685,16 +2309,9 @@ NetworkEngine::sendError(const SockAddr& addr, Tid tid, uint16_t code, const std
     pk.pack(KEY_E);
     pk.pack(KEY_UA);
     pk.pack(OPENDHT_UA);
-    if (config.network) {
-        pk.pack(KEY_NETID);
-        pk.pack(config.network);
-    }
-    if (config.is_client) {
-        pk.pack(KEY_ISCLIENT);
-        pk.pack(config.is_client);
-    }
+    packOptionalFields(pk, advertise);
 
-    send(addr, buffer.data(), buffer.size());
+    send(node, addr, buffer.data(), buffer.size());
 }
 
 void

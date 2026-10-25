@@ -115,6 +115,18 @@ cmake -DOPENDHT_PYTHON=ON \
 | `OPENDHT_PUSH_NOTIFICATIONS` | OFF | Push notification support |
 | `OPENDHT_SANITIZE` | OFF | AddressSanitizer + stack protector |
 
+## Docker
+
+Build from the repository root, using that directory as the build context:
+
+```sh
+docker build -f docker/Dockerfile -t opendht .
+```
+
+Do not use `docker build ./docker`: that context contains only the Dockerfiles,
+not the project sources required by CMake. Local build directories are excluded
+by `.dockerignore` to avoid copying host-generated artifacts into the image.
+
 ## Windows/MSVC
 
 Building on Windows with MSVC is supported with VCPKG and CMake.

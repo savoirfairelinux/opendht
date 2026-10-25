@@ -12,6 +12,7 @@ project(
 
 gnutls = dependency('gnutls')
 nettle = dependency('nettle')
+hogweed = dependency('hogweed', version: '>=3.1')
 msgpack = dependency('msgpack-cxx', required: false)
 argon2 = dependency('libargon2')
 fmt = dependency('fmt')
@@ -38,6 +39,7 @@ deps = [
     fmt,
     gnutls,
     nettle,
+    hogweed,
     msgpack,
     argon2,
     openssl,
@@ -84,6 +86,7 @@ opendht_src = [
     'src/routing_table.cpp',
     'src/node_cache.cpp',
     'src/network_engine.cpp',
+    'src/transport.cpp',
     'src/securedht.cpp',
     'src/dhtrunner.cpp',
     'src/log.cpp',
@@ -205,6 +208,48 @@ if get_option('c').enabled()
     endif
 endif
 
+rust_option = get_option('rust').require(
+    get_option('c').enabled(),
+    error_message: 'rust requires c',
+).require(
+    get_option('default_library') != 'static',
+    error_message: 'rust requires shared libraries',
+)
+if rust_option.allowed()
+    cargo = find_program('cargo', required: rust_option)
+    if cargo.found()
+        rust_env = environment()
+        rust_env.prepend('LIBRARY_PATH', meson.current_build_dir())
+        rust_env.prepend('LD_LIBRARY_PATH', meson.current_build_dir())
+        rust_env.prepend('DYLD_LIBRARY_PATH', meson.current_build_dir())
+        rust_env.prepend('PATH', meson.current_build_dir())
+        cargo_args = [
+            '--manifest-path', meson.current_source_dir() / 'rust/Cargo.toml',
+            '--target-dir', meson.current_build_dir() / 'rust',
+        ]
+        rust_build = custom_target(
+            'rust-bindings',
+            output: 'rust-build.json',
+            command: [cargo, 'build', '--lib', '--examples', '--message-format=json-render-diagnostics'] + cargo_args,
+            env: rust_env,
+            depends: opendht_c,
+            capture: true,
+            build_by_default: true,
+            build_always_stale: true,
+        )
+        if get_option('tests').enabled()
+            test(
+                'Rust',
+                cargo,
+                args: ['test'] + cargo_args,
+                env: rust_env,
+                depends: rust_build,
+                timeout: 120,
+            )
+        endif
+    endif
+endif
+
 if get_option('python').require(
     get_option('indexation').enabled(),
     error_message: 'python requires indexation',
@@ -317,6 +362,14 @@ if get_option('tests').enabled()
         dependencies: [opendht_dep, cppunit, jsoncpp, fmt, openssl, msgpack, gnutls],
     )
     test('Crypto', test_crypto, timeout: 60)
+
+    test_transport = executable(
+        'test_transport',
+        'tests/test_transport.cpp',
+        'tests/tests_runner.cpp',
+        dependencies: [opendht_dep, cppunit, jsoncpp, fmt, openssl, msgpack],
+    )
+    test('Transport', test_transport)
 
     test_dhtrunner = executable(
         'test_dhtrunner',
