@@ -1753,14 +1753,15 @@ DhtRunnerTransportTester::testNodeIdFromTransportKey()
 void
 DhtRunnerTransportTester::testPersistedTransportKey()
 {
-    const auto path = (std::filesystem::temp_directory_path()
-                       / ("opendht_test_transport_state_" + dht::InfoHash::getRandom().toString())).string();
-    const auto previous = path + ".previous";
-    std::remove(path.c_str());
-    std::remove(previous.c_str());
+    const auto path = std::filesystem::temp_directory_path()
+                      / ("opendht_test_transport_state_" + dht::InfoHash::getRandom().toString());
+    auto previous = path;
+    previous += ".previous";
+    std::filesystem::remove(path);
+    std::filesystem::remove(previous);
     auto runNode = [&](const dht::TransportConfig& transport) {
         auto config = transportTestConfig(transport);
-        config.dht_config.node_config.persist_path = path;
+        config.dht_config.node_config.persist_path = path.string();
         dht::DhtRunner node;
         node.run(0, config);
         auto id = node.getNodeId();
@@ -1801,8 +1802,8 @@ DhtRunnerTransportTester::testPersistedTransportKey()
     CPPUNIT_ASSERT(not std::filesystem::is_symlink(path));
     CPPUNIT_ASSERT_EQUAL(previousSize, std::filesystem::file_size(previous));
 #endif
-    std::remove(path.c_str());
-    std::remove(previous.c_str());
+    std::filesystem::remove(path);
+    std::filesystem::remove(previous);
 }
 
 void
