@@ -7,8 +7,13 @@
 #include <iostream>
 #include <string>
 
+#include <atomic>
 #include <chrono>
 #include <condition_variable>
+#include <functional>
+#include <map>
+#include <sstream>
+#include <thread>
 #include <asio.hpp>
 
 using namespace std::chrono_literals;
@@ -28,6 +33,133 @@ sendPush(dht::DhtRunner& node, const std::map<std::string, std::string>& data, s
     lk.lock();
     return ret;
 }
+
+// Data of a gorush notification, as a client receives it from the push service.
+std::map<std::string, std::string>
+toPushData(const Json::Value& data)
+{
+    std::map<std::string, std::string> notif;
+    for (const auto& name : data.getMemberNames()) {
+        const auto& value = data[name];
+        if (value.isString())
+            notif[name] = value.asString();
+        else if (value.isBool())
+            notif[name] = value.asBool() ? "true" : "false";
+        else if (value.isUInt64())
+            notif[name] = std::to_string(value.asUInt64());
+        else if (value.isInt64())
+            notif[name] = std::to_string(value.asInt64());
+    }
+    return notif;
+}
+
+// Stand-in for the push gateway (gorush) the proxy server posts to:
+// hands every notification it receives to the test.
+class PushGateway
+{
+public:
+    using OnNotification = std::function<void(const Json::Value& notification)>;
+
+    PushGateway(uint16_t port, OnNotification onNotification)
+        : acceptor_(io_, asio::ip::tcp::endpoint(asio::ip::address_v4::loopback(), port))
+        , onNotification_(std::move(onNotification))
+        , thread_([this] { run(); })
+    {}
+
+    ~PushGateway()
+    {
+        stop_ = true;
+        if (thread_.joinable())
+            thread_.join();
+    }
+
+private:
+    void run()
+    {
+        try {
+            acceptor_.non_blocking(true);
+            while (not stop_.load()) {
+                asio::ip::tcp::socket socket(io_);
+                std::error_code ec;
+                acceptor_.accept(socket, ec);
+                if (ec == asio::error::would_block || ec == asio::error::try_again) {
+                    std::this_thread::sleep_for(5ms);
+                    continue;
+                }
+                if (ec)
+                    continue;
+                socket.non_blocking(true);
+
+                std::string raw;
+                raw.reserve(4096);
+                auto deadline = std::chrono::steady_clock::now() + 2s;
+                while (raw.find("\r\n\r\n") == std::string::npos && std::chrono::steady_clock::now() < deadline
+                       && not stop_.load()) {
+                    std::array<char, 2048> chunk {};
+                    size_t n = socket.read_some(asio::buffer(chunk), ec);
+                    if (!ec) {
+                        raw.append(chunk.data(), n);
+                    } else if (ec == asio::error::would_block || ec == asio::error::try_again) {
+                        std::this_thread::sleep_for(2ms);
+                    } else {
+                        break;
+                    }
+                }
+                auto sep = raw.find("\r\n\r\n");
+                if (sep == std::string::npos)
+                    continue;
+
+                std::string head = raw.substr(0, sep + 4);
+                auto clPos = head.find("Content-Length:");
+                size_t contentLength = 0;
+                if (clPos != std::string::npos) {
+                    clPos += std::string("Content-Length:").size();
+                    while (clPos < head.size() && (head[clPos] == ' ' || head[clPos] == '\t'))
+                        ++clPos;
+                    size_t clEnd = head.find("\r\n", clPos);
+                    contentLength = std::stoul(head.substr(clPos, clEnd - clPos));
+                }
+
+                std::string body = raw.substr(sep + 4);
+                while (body.size() < contentLength && std::chrono::steady_clock::now() < deadline && not stop_.load()) {
+                    std::array<char, 2048> chunk {};
+                    size_t n = socket.read_some(asio::buffer(chunk), ec);
+                    if (!ec) {
+                        body.append(chunk.data(), n);
+                    } else if (ec == asio::error::would_block || ec == asio::error::try_again) {
+                        std::this_thread::sleep_for(2ms);
+                    } else {
+                        break;
+                    }
+                }
+                if (body.size() > contentLength)
+                    body.resize(contentLength);
+
+                Json::Value payload;
+                std::string err;
+                auto reader = std::unique_ptr<Json::CharReader>(Json::CharReaderBuilder().newCharReader());
+                if (reader->parse(body.data(), body.data() + body.size(), &payload, &err)
+                    && payload.isMember("notifications") && payload["notifications"].isArray()
+                    && !payload["notifications"].empty())
+                    onNotification_(payload["notifications"][0]);
+
+                static const std::string okResp = "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nOK";
+                asio::write(socket, asio::buffer(okResp), ec);
+            }
+        } catch (...) {
+        }
+    }
+
+    asio::io_context io_;
+    asio::ip::tcp::acceptor acceptor_;
+    OnNotification onNotification_;
+    std::atomic_bool stop_ {false};
+    std::thread thread_;
+};
+
+// gorush "platform" values used by the proxy server.
+constexpr int GORUSH_PLATFORM_IOS = 1;
+constexpr int GORUSH_PLATFORM_ANDROID = 2;
 } // namespace
 #endif
 
@@ -633,113 +765,13 @@ DhtProxyTester::testProxyServerClientFullChain()
     uint16_t pushPort = 1024 + (std::rand() % (65535 - 1024));
     uint16_t proxyPort = 1024 + (std::rand() % (65535 - 1024));
 
-    std::atomic_bool relayStop {false};
     std::atomic_size_t relayedPushCount {0};
-    std::thread pushRelay([&] {
-        try {
-            asio::io_context io;
-            asio::ip::tcp::acceptor acceptor(io, asio::ip::tcp::endpoint(asio::ip::address_v4::loopback(), pushPort));
-            acceptor.non_blocking(true);
-
-            while (not relayStop.load()) {
-                asio::ip::tcp::socket socket(io);
-                std::error_code ec;
-                acceptor.accept(socket, ec);
-                if (ec == asio::error::would_block || ec == asio::error::try_again) {
-                    std::this_thread::sleep_for(5ms);
-                    continue;
-                }
-                if (ec)
-                    continue;
-
-                socket.non_blocking(true);
-
-                std::string raw;
-                raw.reserve(4096);
-                auto deadline = std::chrono::steady_clock::now() + 2s;
-                while (raw.find("\r\n\r\n") == std::string::npos && std::chrono::steady_clock::now() < deadline
-                       && not relayStop.load()) {
-                    std::array<char, 2048> chunk {};
-                    size_t n = socket.read_some(asio::buffer(chunk), ec);
-                    if (!ec) {
-                        raw.append(chunk.data(), n);
-                    } else if (ec == asio::error::would_block || ec == asio::error::try_again) {
-                        std::this_thread::sleep_for(2ms);
-                    } else {
-                        break;
-                    }
-                }
-                if (raw.find("\r\n\r\n") == std::string::npos)
-                    continue;
-
-                auto sep = raw.find("\r\n\r\n");
-                std::string head = raw.substr(0, sep + 4);
-                auto clPos = head.find("Content-Length:");
-                size_t contentLength = 0;
-                if (clPos != std::string::npos) {
-                    clPos += std::string("Content-Length:").size();
-                    while (clPos < head.size() && (head[clPos] == ' ' || head[clPos] == '\t'))
-                        ++clPos;
-                    size_t clEnd = head.find("\r\n", clPos);
-                    contentLength = std::stoul(head.substr(clPos, clEnd - clPos));
-                }
-
-                std::string body = raw.substr(sep + 4);
-                while (body.size() < contentLength && std::chrono::steady_clock::now() < deadline
-                       && not relayStop.load()) {
-                    std::array<char, 2048> chunk {};
-                    size_t n = socket.read_some(asio::buffer(chunk), ec);
-                    if (!ec) {
-                        body.append(chunk.data(), n);
-                    } else if (ec == asio::error::would_block || ec == asio::error::try_again) {
-                        std::this_thread::sleep_for(2ms);
-                    } else {
-                        break;
-                    }
-                }
-                if (body.size() > contentLength)
-                    body.resize(contentLength);
-
-                Json::Value payload;
-                std::string err;
-                auto reader = std::unique_ptr<Json::CharReader>(Json::CharReaderBuilder().newCharReader());
-                if (reader->parse(body.data(), body.data() + body.size(), &payload, &err)
-                    && payload.isMember("notifications") && payload["notifications"].isArray()
-                    && !payload["notifications"].empty() && payload["notifications"][0].isMember("data")) {
-                    const auto& data = payload["notifications"][0]["data"];
-                    std::map<std::string, std::string> notif;
-                    for (const auto& name : data.getMemberNames()) {
-                        const auto& value = data[name];
-                        if (value.isString())
-                            notif[name] = value.asString();
-                        else if (value.isBool())
-                            notif[name] = value.asBool() ? "true" : "false";
-                        else if (value.isUInt64())
-                            notif[name] = std::to_string(value.asUInt64());
-                        else if (value.isInt64())
-                            notif[name] = std::to_string(value.asInt64());
-                    }
-                    nodeClient.pushNotificationReceived(notif);
-                    relayedPushCount++;
-                }
-
-                static const std::string okResp = "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nOK";
-                asio::write(socket, asio::buffer(okResp), ec);
-            }
-        } catch (...) {
-        }
+    PushGateway pushGateway(pushPort, [&](const Json::Value& notification) {
+        if (!notification.isMember("data"))
+            return;
+        nodeClient.pushNotificationReceived(toPushData(notification["data"]));
+        relayedPushCount++;
     });
-    struct RelayGuard
-    {
-        std::atomic_bool& stop;
-        std::thread& th;
-        ~RelayGuard()
-        {
-            stop = true;
-            if (th.joinable())
-                th.join();
-        }
-    } relayGuard {relayStop, pushRelay};
 
     serverProxy.reset();
     dht::ProxyServerConfig serverConfig;
@@ -1820,6 +1852,143 @@ DhtProxyTester::testPushRefreshAfterEditKeepsLatest()
     }
 
     nodeClient.cancelListen(key, ftoken.get());
+#endif
+}
+
+void
+DhtProxyTester::testPushPlatformFollowsResubscribe()
+{
+#ifndef OPENDHT_PUSH_NOTIFICATIONS
+    fmt::print(stderr, "Push notifications are not supported in this build, skipping test\n");
+    return;
+#else
+    uint16_t pushPort = 1024 + (std::rand() % (65535 - 1024));
+    uint16_t proxyPort = 1024 + (std::rand() % (65535 - 1024));
+
+    std::mutex cv_m;
+    std::condition_variable cv;
+    std::map<std::string, int> pushedPlatform; // value id -> gorush platform of its push
+    PushGateway pushGateway(pushPort, [&](const Json::Value& notification) {
+        std::lock_guard lk(cv_m);
+        std::istringstream ids(notification["data"]["ids"].asString());
+        for (std::string id; std::getline(ids, id, ',');)
+            pushedPlatform.emplace(id, notification["platform"].asInt());
+        cv.notify_all();
+    });
+
+    serverProxy.reset();
+    dht::ProxyServerConfig serverConfig;
+    serverConfig.port = proxyPort;
+    serverConfig.pushServer = "127.0.0.1:" + std::to_string(pushPort);
+    serverProxy = std::make_unique<dht::DhtProxyServer>(nodeProxy, serverConfig);
+
+    auto key = dht::InfoHash::get("push-platform-resubscribe");
+    auto putValue = [&](dht::Value::Id id) {
+        dht::Value value {"push-platform"};
+        value.id = id;
+        bool stored = false;
+        nodePeer.put(key, std::move(value), [&](bool ok) {
+            std::lock_guard lk(cv_m);
+            stored = ok;
+            cv.notify_all();
+        });
+        std::unique_lock lk(cv_m);
+        CPPUNIT_ASSERT(cv.wait_for(lk, 10s, [&] { return stored; }));
+    };
+    auto waitPushPlatform = [&](dht::Value::Id id) {
+        auto sid = std::to_string(id);
+        std::unique_lock lk(cv_m);
+        CPPUNIT_ASSERT(cv.wait_for(lk, 10s, [&] { return pushedPlatform.count(sid) != 0; }));
+        return pushedPlatform[sid];
+    };
+    constexpr dht::Value::Id FIRST_ID = 1111111;
+    constexpr dht::Value::Id SECOND_ID = 2222222;
+    putValue(FIRST_ID);
+
+    clientConfig.proxy_server = "http://127.0.0.1:" + std::to_string(proxyPort);
+    clientConfig.push_token = "platform-token";
+    clientConfig.push_node_id = "platform-device";
+
+    // The device first subscribes with a wrong push platform...
+    clientConfig.push_platform = "ios";
+    nodeClient.run(0, clientConfig);
+    nodeClient.listen(key, [](const std::vector<std::shared_ptr<dht::Value>>&, bool) { return true; });
+    CPPUNIT_ASSERT_EQUAL(GORUSH_PLATFORM_IOS, waitPushPlatform(FIRST_ID));
+
+    // ...then refreshes the same subscription (same token and client id) as an Android device.
+    clientConfig.push_platform = "android";
+    dht::DhtRunner androidClient;
+    androidClient.run(0, clientConfig);
+    bool refreshed = false;
+    androidClient.listen(key, [&](const std::vector<std::shared_ptr<dht::Value>>& values, bool expired) {
+        std::lock_guard lk(cv_m);
+        if (!expired && !values.empty()) {
+            refreshed = true;
+            cv.notify_all();
+        }
+        return true;
+    });
+    {
+        std::unique_lock lk(cv_m);
+        CPPUNIT_ASSERT(cv.wait_for(lk, 10s, [&] { return refreshed; }));
+    }
+
+    // New values must now be pushed to the device as an Android device.
+    putValue(SECOND_ID);
+    CPPUNIT_ASSERT_EQUAL(GORUSH_PLATFORM_ANDROID, waitPushPlatform(SECOND_ID));
+    androidClient.join();
+#endif
+}
+
+void
+DhtProxyTester::testPushPlatformSetAfterStart()
+{
+#ifndef OPENDHT_PUSH_NOTIFICATIONS
+    fmt::print(stderr, "Push notifications are not supported in this build, skipping test\n");
+    return;
+#else
+    uint16_t pushPort = 1024 + (std::rand() % (65535 - 1024));
+    uint16_t proxyPort = 1024 + (std::rand() % (65535 - 1024));
+
+    std::mutex cv_m;
+    std::condition_variable cv;
+    std::vector<int> platforms;
+    PushGateway pushGateway(pushPort, [&](const Json::Value& notification) {
+        std::lock_guard lk(cv_m);
+        platforms.emplace_back(notification["platform"].asInt());
+        cv.notify_all();
+    });
+
+    serverProxy.reset();
+    dht::ProxyServerConfig serverConfig;
+    serverConfig.port = proxyPort;
+    serverConfig.pushServer = "127.0.0.1:" + std::to_string(pushPort);
+    serverProxy = std::make_unique<dht::DhtProxyServer>(nodeProxy, serverConfig);
+
+    auto key = dht::InfoHash::get("push-platform-set-after-start");
+    bool stored = false;
+    nodePeer.put(key, dht::Value {"value"}, [&](bool ok) {
+        std::lock_guard lk(cv_m);
+        stored = ok;
+        cv.notify_all();
+    });
+    {
+        std::unique_lock lk(cv_m);
+        CPPUNIT_ASSERT(cv.wait_for(lk, 10s, [&] { return stored; }));
+    }
+
+    // The node starts before the push platform of the device is known.
+    clientConfig.proxy_server = "http://127.0.0.1:" + std::to_string(proxyPort);
+    clientConfig.push_token = "late-platform-token";
+    clientConfig.push_node_id = "late-platform-device";
+    clientConfig.push_platform = "";
+    nodeClient.run(0, clientConfig);
+    nodeClient.setPushNotificationPlatform("android");
+
+    nodeClient.listen(key, [](const std::vector<std::shared_ptr<dht::Value>>&, bool) { return true; });
+    std::unique_lock lk(cv_m);
+    CPPUNIT_ASSERT(cv.wait_for(lk, 10s, [&] { return not platforms.empty(); }));
+    CPPUNIT_ASSERT_EQUAL(GORUSH_PLATFORM_ANDROID, platforms.front());
 #endif
 }
 

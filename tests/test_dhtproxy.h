@@ -31,6 +31,8 @@ class DhtProxyTester : public CppUnit::TestFixture
     CPPUNIT_TEST(testProxyListenEditChain);
     CPPUNIT_TEST(testPushRapidEditsNoPhantom);
     CPPUNIT_TEST(testPushRefreshAfterEditKeepsLatest);
+    CPPUNIT_TEST(testPushPlatformFollowsResubscribe);
+    CPPUNIT_TEST(testPushPlatformSetAfterStart);
     CPPUNIT_TEST_SUITE_END();
 
 public:
@@ -88,6 +90,16 @@ public:
     void testProxyListenEditChain();
     void testPushRapidEditsNoPhantom();
     void testPushRefreshAfterEditKeepsLatest();
+    /**
+     * A device refreshing its subscription with another push platform
+     * must then be notified on that platform.
+     */
+    void testPushPlatformFollowsResubscribe();
+    /**
+     * A push platform set after the node started must be used
+     * by its next subscriptions.
+     */
+    void testPushPlatformSetAfterStart();
 
 private:
     dht::DhtRunner::Config clientConfig {};
