@@ -13,6 +13,7 @@ class PhtTester : public CppUnit::TestFixture
     CPPUNIT_TEST_SUITE(PhtTester);
     CPPUNIT_TEST(testCommonBits);
     CPPUNIT_TEST(testSibling);
+    CPPUNIT_TEST(testPadding);
     CPPUNIT_TEST_SUITE_END();
 
 public:
@@ -24,6 +25,7 @@ public:
      * Test the prefix of the sibling node in the trie
      */
     void testSibling();
+    void testPadding();
 };
 
 } // namespace test
