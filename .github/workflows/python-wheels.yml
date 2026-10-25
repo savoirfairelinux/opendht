@@ -45,6 +45,9 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      - name: Set up vcpkg
+        uses: ./.github/actions/setup-vcpkg
+
       - name: Cache vcpkg installed packages
         id: cache-vcpkg
         uses: actions/cache@v6

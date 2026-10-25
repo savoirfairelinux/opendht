@@ -28,6 +28,9 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v7
 
+      - name: Set up vcpkg
+        uses: ./.github/actions/setup-vcpkg
+
       - name: Set up MSVC
         uses: microsoft/setup-msbuild@v3
 
@@ -75,6 +78,9 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
+
+      - name: Set up vcpkg
+        uses: ./.github/actions/setup-vcpkg
 
       - name: Set up MSVC
         uses: microsoft/setup-msbuild@v3
@@ -125,6 +131,9 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
+
+      - name: Set up vcpkg
+        uses: ./.github/actions/setup-vcpkg
 
       - name: Set up MSVC
         uses: microsoft/setup-msbuild@v3
@@ -202,6 +211,9 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
+
+      - name: Set up vcpkg
+        uses: ./.github/actions/setup-vcpkg
 
       - name: Set up MSVC
         uses: microsoft/setup-msbuild@v3
