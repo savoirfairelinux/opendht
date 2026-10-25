@@ -288,7 +288,7 @@ jobs:
         shell: msys2 {0}
         env:
           LLHTTP_VERSION: "v9.2.1"
-          RESTINIO_VERSION: "0.7.6"
+          RESTINIO_VERSION: "0.7.10"
           EXPECTED_LITE_URL: "https://raw.githubusercontent.com/martinmoene/expected-lite/master/include/nonstd/expected.hpp"
         run: |
           MSYS2_SYSROOT=$(cygpath -u "$MSYSTEM_PREFIX")
