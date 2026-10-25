@@ -9,17 +9,16 @@ on:
     branches: [ main, master ]
 
 env:
-  VCPKG_INSTALLATION_ROOT: "C:\\vcpkg"
   VCPKG_DISABLE_METRICS: "1"
   VCPKG_INSTALLED_DIR: ${{ github.workspace }}\vcpkg_installed
-  VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}\vcpkg_binary_cache
+  VCPKG_BINARY_SOURCES: clear;files,${{ github.workspace }}/vcpkg-binary-cache,readwrite
 
 jobs:
   prepare-dependencies:
     name: Prepare Windows Dependencies
     runs-on: windows-latest
-    outputs:
-      vcpkg_cache_key: ${{ steps.generate_cache_key.outputs.key }}
+    env:
+      VCPKG_DEFAULT_TRIPLET: ${{ matrix.arch }}-windows
     strategy:
       matrix:
         arch: [x64]
@@ -28,49 +27,34 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v7
 
-      - name: Set up vcpkg
-        uses: ./.github/actions/setup-vcpkg
-
       - name: Set up MSVC
         uses: microsoft/setup-msbuild@v3
 
-      - name: Generate Cache Key
-        id: generate_cache_key
-        shell: pwsh
-        run: |
-          $key_value = "${{ runner.os }}-vcpkg-${{ matrix.arch }}-shared-${{ hashFiles('**/vcpkg.json', '**/vcpkg-configuration.json') }}-${{ hashFiles('.github/workflows/windows-build.yml') }}"
-          echo "key=$key_value" >> $env:GITHUB_OUTPUT
-
-      - name: Cache vcpkg installed packages
-        id: cache-vcpkg
+      - name: Cache vcpkg binary packages
         uses: actions/cache@v6
         with:
-          path: |
-            ${{ env.VCPKG_INSTALLED_DIR }}
-            ${{ env.VCPKG_DEFAULT_BINARY_CACHE }}
-          key: ${{ steps.generate_cache_key.outputs.key }}
+          path: ${{ github.workspace }}/vcpkg-binary-cache
+          key: ${{ runner.os }}-vcpkg-binary-${{ env.VCPKG_DEFAULT_TRIPLET }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json', 'ports/**') }}-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
-            ${{ runner.os }}-vcpkg-${{ matrix.arch }}-shared-${{ hashFiles('**/vcpkg.json', '**/vcpkg-configuration.json') }}
-            ${{ runner.os }}-vcpkg-${{ matrix.arch }}-shared-
+            ${{ runner.os }}-vcpkg-binary-${{ env.VCPKG_DEFAULT_TRIPLET }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json', 'ports/**') }}-
+            ${{ runner.os }}-vcpkg-binary-${{ env.VCPKG_DEFAULT_TRIPLET }}-
 
-      - name: Setup vcpkg and install dependencies
-        if: steps.cache-vcpkg.outputs.cache-hit != 'true'
-        run: |
-          New-Item -Path "${{ env.VCPKG_INSTALLED_DIR }}" -ItemType Directory -Force
-          New-Item -Path "${{ env.VCPKG_DEFAULT_BINARY_CACHE }}" -ItemType Directory -Force
-          vcpkg install `
-            --recurse `
-            --clean-after-build `
-            --triplet=${{ matrix.arch }}-windows `
-            --x-install-root=${{ env.VCPKG_INSTALLED_DIR }} `
-            --x-feature=test
-        shell: pwsh
+      - name: Set up vcpkg and install dependencies
+        uses: lukka/run-vcpkg@v11
+        with:
+          vcpkgJsonGlob: vcpkg.json
+          vcpkgConfigurationJsonGlob: vcpkg-configuration.json
+          runVcpkgInstall: true
+          runVcpkgFormatString: >-
+            [`install`, `--clean-after-build`, `--x-feature=test`,
+             `--triplet`, `$[env.VCPKG_DEFAULT_TRIPLET]`,
+             `--x-install-root`, `$[env.VCPKG_INSTALLED_DIR]`]
 
   prepare-static-dependencies:
     name: Prepare Windows Static Dependencies
     runs-on: windows-latest
-    outputs:
-      vcpkg_static_cache_key: ${{ steps.generate_static_cache_key.outputs.key }}
+    env:
+      VCPKG_DEFAULT_TRIPLET: ${{ matrix.arch }}-windows-static-release
     strategy:
       matrix:
         arch: [x64]
@@ -79,48 +63,35 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v7
 
-      - name: Set up vcpkg
-        uses: ./.github/actions/setup-vcpkg
-
       - name: Set up MSVC
         uses: microsoft/setup-msbuild@v3
 
-      - name: Generate Cache Key for Static Libs
-        id: generate_static_cache_key
-        shell: pwsh
-        run: |
-          $key_value = "${{ runner.os }}-vcpkg-${{ matrix.arch }}-static-${{ hashFiles('**/vcpkg.json', '**/vcpkg-configuration.json') }}-${{ hashFiles('.github/workflows/windows-build.yml') }}"
-          echo "key=$key_value" >> $env:GITHUB_OUTPUT
-
-      - name: Cache vcpkg static installed packages
-        id: cache-vcpkg-static
+      - name: Cache vcpkg binary packages
         uses: actions/cache@v6
         with:
-          path: |
-            ${{ env.VCPKG_INSTALLED_DIR }}
-            ${{ env.VCPKG_DEFAULT_BINARY_CACHE }}
-          key: ${{ steps.generate_static_cache_key.outputs.key }}
+          path: ${{ github.workspace }}/vcpkg-binary-cache
+          key: ${{ runner.os }}-vcpkg-binary-${{ env.VCPKG_DEFAULT_TRIPLET }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json', 'ports/**') }}-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
-            ${{ runner.os }}-vcpkg-${{ matrix.arch }}-static-${{ hashFiles('**/vcpkg.json', '**/vcpkg-configuration.json') }}
-            ${{ runner.os }}-vcpkg-${{ matrix.arch }}-static-
+            ${{ runner.os }}-vcpkg-binary-${{ env.VCPKG_DEFAULT_TRIPLET }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json', 'ports/**') }}-
+            ${{ runner.os }}-vcpkg-binary-${{ env.VCPKG_DEFAULT_TRIPLET }}-
 
-      - name: Setup vcpkg and install static dependencies
-        if: steps.cache-vcpkg-static.outputs.cache-hit != 'true'
-        shell: pwsh
-        run: |
-          New-Item -Path "${{ env.VCPKG_INSTALLED_DIR }}" -ItemType Directory -Force
-          New-Item -Path "${{ env.VCPKG_DEFAULT_BINARY_CACHE }}" -ItemType Directory -Force
-          vcpkg install `
-            --recurse `
-            --clean-after-build `
-            --triplet=${{ matrix.arch }}-windows-static-release `
-            --x-install-root=${{ env.VCPKG_INSTALLED_DIR }} `
-            --x-feature=test
+      - name: Set up vcpkg and install dependencies
+        uses: lukka/run-vcpkg@v11
+        with:
+          vcpkgJsonGlob: vcpkg.json
+          vcpkgConfigurationJsonGlob: vcpkg-configuration.json
+          runVcpkgInstall: true
+          runVcpkgFormatString: >-
+            [`install`, `--clean-after-build`, `--x-feature=test`,
+             `--triplet`, `$[env.VCPKG_DEFAULT_TRIPLET]`,
+             `--x-install-root`, `$[env.VCPKG_INSTALLED_DIR]`]
 
   build-windows:
     name: Windows MSVC Build
     runs-on: windows-latest
     needs: prepare-dependencies
+    env:
+      VCPKG_DEFAULT_TRIPLET: ${{ matrix.arch }}-windows
     
     strategy:
       matrix:
@@ -133,22 +104,22 @@ jobs:
         uses: actions/checkout@v7
 
       - name: Set up vcpkg
-        uses: ./.github/actions/setup-vcpkg
+        uses: lukka/run-vcpkg@v11
+        with:
+          vcpkgJsonGlob: vcpkg.json
+          vcpkgConfigurationJsonGlob: vcpkg-configuration.json
 
       - name: Set up MSVC
         uses: microsoft/setup-msbuild@v3
 
-      - name: Restore vcpkg installed packages
-        id: cache-vcpkg-restore
+      - name: Restore vcpkg binary packages
         uses: actions/cache/restore@v6
         with:
-          path: |
-            ${{ env.VCPKG_INSTALLED_DIR }}
-            ${{ env.VCPKG_DEFAULT_BINARY_CACHE }}
-          key: ${{ needs.prepare-dependencies.outputs.vcpkg_cache_key }}
+          path: ${{ github.workspace }}/vcpkg-binary-cache
+          key: ${{ runner.os }}-vcpkg-binary-${{ env.VCPKG_DEFAULT_TRIPLET }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json', 'ports/**') }}-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
-            ${{ runner.os }}-vcpkg-${{ matrix.arch }}-shared-${{ hashFiles('**/vcpkg.json', '**/vcpkg-configuration.json') }}
-            ${{ runner.os }}-vcpkg-${{ matrix.arch }}-shared-
+            ${{ runner.os }}-vcpkg-binary-${{ env.VCPKG_DEFAULT_TRIPLET }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json', 'ports/**') }}-
+            ${{ runner.os }}-vcpkg-binary-${{ env.VCPKG_DEFAULT_TRIPLET }}-
 
       - name: Configure CMake
         shell: pwsh
@@ -156,7 +127,7 @@ jobs:
           mkdir build -ErrorAction SilentlyContinue
           cmake -B build `
             -S . `
-            -DCMAKE_TOOLCHAIN_FILE=${{ env.VCPKG_INSTALLATION_ROOT }}/scripts/buildsystems/vcpkg.cmake `
+            "-DCMAKE_TOOLCHAIN_FILE=$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" `
             -DVCPKG_TARGET_TRIPLET=${{ matrix.arch }}-windows `
             -DVCPKG_INSTALLED_DIR=${{ env.VCPKG_INSTALLED_DIR }} `
             -DVCPKG_MANIFEST_FEATURES=test `
@@ -202,6 +173,8 @@ jobs:
     name: Windows Static MSVC Build
     runs-on: windows-latest
     needs: prepare-static-dependencies
+    env:
+      VCPKG_DEFAULT_TRIPLET: ${{ matrix.arch }}-windows-static-release
     strategy:
       matrix:
         build_type: [Release]
@@ -213,22 +186,22 @@ jobs:
         uses: actions/checkout@v7
 
       - name: Set up vcpkg
-        uses: ./.github/actions/setup-vcpkg
+        uses: lukka/run-vcpkg@v11
+        with:
+          vcpkgJsonGlob: vcpkg.json
+          vcpkgConfigurationJsonGlob: vcpkg-configuration.json
 
       - name: Set up MSVC
         uses: microsoft/setup-msbuild@v3
 
-      - name: Restore vcpkg static installed packages
-        id: cache-vcpkg-static-restore
+      - name: Restore vcpkg binary packages
         uses: actions/cache/restore@v6
         with:
-          path: |
-            ${{ env.VCPKG_INSTALLED_DIR }}
-            ${{ env.VCPKG_DEFAULT_BINARY_CACHE }}
-          key: ${{ needs.prepare-static-dependencies.outputs.vcpkg_static_cache_key }}
+          path: ${{ github.workspace }}/vcpkg-binary-cache
+          key: ${{ runner.os }}-vcpkg-binary-${{ env.VCPKG_DEFAULT_TRIPLET }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json', 'ports/**') }}-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
-            ${{ runner.os }}-vcpkg-${{ matrix.arch }}-static-${{ hashFiles('**/vcpkg.json', '**/vcpkg-configuration.json') }}
-            ${{ runner.os }}-vcpkg-${{ matrix.arch }}-static-
+            ${{ runner.os }}-vcpkg-binary-${{ env.VCPKG_DEFAULT_TRIPLET }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json', 'ports/**') }}-
+            ${{ runner.os }}-vcpkg-binary-${{ env.VCPKG_DEFAULT_TRIPLET }}-
       
       - name: Configure CMake for Static Build
         shell: pwsh
@@ -236,7 +209,7 @@ jobs:
           mkdir build -ErrorAction SilentlyContinue
           cmake -B build `
             -S . `
-            -DCMAKE_TOOLCHAIN_FILE=${{ env.VCPKG_INSTALLATION_ROOT }}/scripts/buildsystems/vcpkg.cmake `
+            "-DCMAKE_TOOLCHAIN_FILE=$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" `
             -DVCPKG_TARGET_TRIPLET=${{ matrix.arch }}-windows-static-release `
             -DVCPKG_INSTALLED_DIR=${{ env.VCPKG_INSTALLED_DIR }} `
             -DVCPKG_MANIFEST_FEATURES=test `

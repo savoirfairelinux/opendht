@@ -309,11 +309,10 @@ jobs:
     name: Build Windows MSI Installer
     runs-on: windows-latest
     env:
-      VCPKG_INSTALLATION_ROOT: "C:\\vcpkg"
       VCPKG_DISABLE_METRICS: "1"
       VCPKG_DEFAULT_TRIPLET: x64-windows
       VCPKG_INSTALLED_DIR: ${{ github.workspace }}\vcpkg_installed
-      VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}\vcpkg_binary_cache
+      VCPKG_BINARY_SOURCES: clear;files,${{ github.workspace }}/vcpkg-binary-cache,readwrite
     permissions:
       contents: read
     steps:
@@ -323,7 +322,10 @@ jobs:
           submodules: recursive
 
       - name: Set up vcpkg
-        uses: ./.github/actions/setup-vcpkg
+        uses: lukka/run-vcpkg@v11
+        with:
+          vcpkgJsonGlob: vcpkg.json
+          vcpkgConfigurationJsonGlob: vcpkg-configuration.json
 
       - name: Set up MSVC developer environment
         uses: microsoft/setup-msbuild@v3
@@ -334,30 +336,14 @@ jobs:
           wix extension add --global WixToolset.UI.wixext/6.0.1
         shell: pwsh
 
-      - name: Cache vcpkg installed packages
-        id: cache-vcpkg
+      - name: Cache vcpkg binary packages
         uses: actions/cache@v6
         with:
-          path: |
-            ${{ env.VCPKG_INSTALLED_DIR }}
-            ${{ env.VCPKG_DEFAULT_BINARY_CACHE }}
-          key: ${{ runner.os }}-vcpkg-x64-shared-${{ hashFiles('**/vcpkg.json', '**/vcpkg-configuration.json') }}-${{ hashFiles('.github/workflows/release-package.yml') }}
+          path: ${{ github.workspace }}/vcpkg-binary-cache
+          key: ${{ runner.os }}-vcpkg-binary-${{ env.VCPKG_DEFAULT_TRIPLET }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json', 'ports/**') }}-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
-            ${{ runner.os }}-vcpkg-x64-shared-${{ hashFiles('**/vcpkg.json', '**/vcpkg-configuration.json') }}
-            ${{ runner.os }}-vcpkg-x64-shared-
-
-      - name: Setup vcpkg and install dependencies
-        if: steps.cache-vcpkg.outputs.cache-hit != 'true'
-        run: |
-          New-Item -Path "${{ env.VCPKG_INSTALLED_DIR }}" -ItemType Directory -Force
-          New-Item -Path "${{ env.VCPKG_DEFAULT_BINARY_CACHE }}" -ItemType Directory -Force
-          vcpkg install `
-            --recurse `
-            --clean-after-build `
-            --triplet=x64-windows `
-            --x-install-root=${{ env.VCPKG_INSTALLED_DIR }} `
-            --x-feature=test
-        shell: pwsh
+            ${{ runner.os }}-vcpkg-binary-${{ env.VCPKG_DEFAULT_TRIPLET }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json', 'ports/**') }}-
+            ${{ runner.os }}-vcpkg-binary-${{ env.VCPKG_DEFAULT_TRIPLET }}-
 
       - name: Configure CMake for MSI
         shell: pwsh
@@ -365,7 +351,7 @@ jobs:
           mkdir build -ErrorAction SilentlyContinue
           cmake -B build `
             -S . `
-            -DCMAKE_TOOLCHAIN_FILE=${{ env.VCPKG_INSTALLATION_ROOT }}/scripts/buildsystems/vcpkg.cmake `
+            "-DCMAKE_TOOLCHAIN_FILE=$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" `
             -DVCPKG_TARGET_TRIPLET=x64-windows `
             -DVCPKG_INSTALLED_DIR=${{ env.VCPKG_INSTALLED_DIR }} `
             -DVCPKG_MANIFEST_FEATURES=test `
@@ -418,11 +404,10 @@ jobs:
     name: Build Windows dhtnode
     runs-on: windows-latest
     env:
-      VCPKG_INSTALLATION_ROOT: "C:\\vcpkg"
       VCPKG_DISABLE_METRICS: "1"
       VCPKG_DEFAULT_TRIPLET: x64-windows-static-release
       VCPKG_INSTALLED_DIR: ${{ github.workspace }}\vcpkg_installed
-      VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}\vcpkg_binary_cache
+      VCPKG_BINARY_SOURCES: clear;files,${{ github.workspace }}/vcpkg-binary-cache,readwrite
     permissions:
       contents: read
     steps:
@@ -432,35 +417,22 @@ jobs:
           submodules: recursive
 
       - name: Set up vcpkg
-        uses: ./.github/actions/setup-vcpkg
+        uses: lukka/run-vcpkg@v11
+        with:
+          vcpkgJsonGlob: vcpkg.json
+          vcpkgConfigurationJsonGlob: vcpkg-configuration.json
 
       - name: Set up MSVC developer environment
         uses: microsoft/setup-msbuild@v3
 
-      - name: Cache vcpkg static installed packages
-        id: cache-vcpkg-static
+      - name: Cache vcpkg binary packages
         uses: actions/cache@v6
         with:
-          path: |
-            ${{ env.VCPKG_INSTALLED_DIR }}
-            ${{ env.VCPKG_DEFAULT_BINARY_CACHE }}
-          key: ${{ runner.os }}-vcpkg-x64-static-${{ hashFiles('**/vcpkg.json', '**/vcpkg-configuration.json') }}-${{ hashFiles('.github/workflows/release-package.yml') }}
+          path: ${{ github.workspace }}/vcpkg-binary-cache
+          key: ${{ runner.os }}-vcpkg-binary-${{ env.VCPKG_DEFAULT_TRIPLET }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json', 'ports/**') }}-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
-            ${{ runner.os }}-vcpkg-x64-static-${{ hashFiles('**/vcpkg.json', '**/vcpkg-configuration.json') }}
-            ${{ runner.os }}-vcpkg-x64-static-
-
-      - name: Setup vcpkg and install static dependencies
-        if: steps.cache-vcpkg-static.outputs.cache-hit != 'true'
-        shell: pwsh
-        run: |
-          New-Item -Path "${{ env.VCPKG_INSTALLED_DIR }}" -ItemType Directory -Force
-          New-Item -Path "${{ env.VCPKG_DEFAULT_BINARY_CACHE }}" -ItemType Directory -Force
-          vcpkg install `
-            --recurse `
-            --clean-after-build `
-            --triplet=x64-windows-static-release `
-            --x-install-root=${{ env.VCPKG_INSTALLED_DIR }} `
-            --x-feature=test
+            ${{ runner.os }}-vcpkg-binary-${{ env.VCPKG_DEFAULT_TRIPLET }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json', 'ports/**') }}-
+            ${{ runner.os }}-vcpkg-binary-${{ env.VCPKG_DEFAULT_TRIPLET }}-
 
       - name: Configure CMake for Static Build
         shell: pwsh
@@ -468,7 +440,7 @@ jobs:
           mkdir build_static -ErrorAction SilentlyContinue
           cmake -B build_static `
             -S . `
-            -DCMAKE_TOOLCHAIN_FILE=${{ env.VCPKG_INSTALLATION_ROOT }}/scripts/buildsystems/vcpkg.cmake `
+            "-DCMAKE_TOOLCHAIN_FILE=$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" `
             -DVCPKG_TARGET_TRIPLET=x64-windows-static-release `
             -DVCPKG_INSTALLED_DIR=${{ env.VCPKG_INSTALLED_DIR }} `
             -DVCPKG_MANIFEST_FEATURES=test `
