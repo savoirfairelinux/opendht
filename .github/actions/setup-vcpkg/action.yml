@@ -1,0 +1,17 @@
+name: Set up vcpkg
+description: Check out and bootstrap the vcpkg revision pinned by the build.
+
+runs:
+  using: composite
+  steps:
+    - name: Set up pinned vcpkg
+      shell: pwsh
+      run: |
+        $baseline = (Get-Content -Raw "$env:GITHUB_WORKSPACE/vcpkg-configuration.json" | ConvertFrom-Json).'default-registry'.baseline
+        git -C "$env:VCPKG_INSTALLATION_ROOT" fetch --depth=1 origin $baseline
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+        git -C "$env:VCPKG_INSTALLATION_ROOT" checkout --detach $baseline
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+        & "$env:VCPKG_INSTALLATION_ROOT/bootstrap-vcpkg.bat" -disableMetrics
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+        "$env:VCPKG_INSTALLATION_ROOT" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append

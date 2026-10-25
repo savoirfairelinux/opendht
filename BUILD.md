@@ -121,10 +121,12 @@ Building on Windows with MSVC is supported with VCPKG and CMake.
 
 ### Build with VCPKG in manifest mode
 
-1. Install [VCPKG](https://github.com/microsoft/vcpkg) and required dependencies:
+1. Install [VCPKG](https://github.com/microsoft/vcpkg) 2026.10.16 and required dependencies:
 ```ps1
 git clone https://github.com/microsoft/vcpkg.git
-cd vcpkg; .\bootstrap-vcpkg.bat
+cd vcpkg
+git checkout 9eec002df1cd109f8f104cd966a763daf9751489
+.\bootstrap-vcpkg.bat
 ```
 
 2. Use CMake preset for vcpkg:
