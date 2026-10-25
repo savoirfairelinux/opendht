@@ -32,6 +32,7 @@ class NetworkEngineTester : public CppUnit::TestFixture
     CPPUNIT_TEST(testTransportIgnoresForgedNodeListKey);
     CPPUNIT_TEST(testTransportPlaintextDoesNotMoveKeyedNode);
     CPPUNIT_TEST(testTransportPrivateNetwork);
+    CPPUNIT_TEST(testTransportPrivateClientKeepsAuthorization);
     CPPUNIT_TEST(testTransportPrivateNetworkRejectsOutsiders);
     CPPUNIT_TEST(testTransportEpochRotation);
     CPPUNIT_TEST(testTransportPeerRestart);
@@ -73,6 +74,7 @@ class NetworkEngineTester : public CppUnit::TestFixture
     CPPUNIT_TEST(testTransportEncryptionFailureDoesNotSendPlaintext);
     CPPUNIT_TEST(testRateLimitSeparatesSessionRequests);
     CPPUNIT_TEST(testRateLimitCryptoAdmission);
+    CPPUNIT_TEST(testRateLimitCachedSessionCredentials);
     CPPUNIT_TEST(testRateLimitCryptoPerPrefix);
     CPPUNIT_TEST(testRateLimitReservesExpectedReplies);
 #endif
@@ -104,6 +106,7 @@ public:
     void testTransportIgnoresForgedNodeListKey();
     void testTransportPlaintextDoesNotMoveKeyedNode();
     void testTransportPrivateNetwork();
+    void testTransportPrivateClientKeepsAuthorization();
     void testTransportPrivateNetworkRejectsOutsiders();
     void testTransportEpochRotation();
     void testTransportPeerRestart();
@@ -145,6 +148,7 @@ public:
     void testTransportEncryptionFailureDoesNotSendPlaintext();
     void testRateLimitSeparatesSessionRequests();
     void testRateLimitCryptoAdmission();
+    void testRateLimitCachedSessionCredentials();
     void testRateLimitCryptoPerPrefix();
     void testRateLimitReservesExpectedReplies();
 #endif

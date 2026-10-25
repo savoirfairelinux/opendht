@@ -1666,6 +1666,31 @@ establishSession(TransportTestNode& a, TransportTestNode& b)
     CPPUNIT_ASSERT(done);
 }
 
+void
+NetworkEngineTester::testTransportPrivateClientKeepsAuthorization()
+{
+    auto authority = transport::Authority::generate();
+    TransportTestNode client("127.0.0.2", privateTransport(authority), 1, 0, [](net::NetworkConfig& config) {
+        config.is_client = true;
+    });
+    TransportTestNode server("127.0.0.3", privateTransport(authority), 2);
+    establishSession(client, server);
+    CPPUNIT_ASSERT(server.known.empty());
+    CPPUNIT_ASSERT(not server.engine->cache.getNode(client.id, AF_INET));
+
+    advanceTime(server, std::chrono::minutes(30));
+    for (int attempt = 0; attempt < 3; ++attempt) {
+        bool done = false;
+        client.ping(client.node(server), done);
+        CPPUNIT_ASSERT(isEnvelope(client.socket->sends.at(0), transport::EnvelopeType::Data));
+        client.deliverTo(server);
+        server.deliverTo(client);
+        CPPUNIT_ASSERT(done);
+        CPPUNIT_ASSERT(server.known.empty());
+        CPPUNIT_ASSERT(not server.engine->cache.getNode(client.id, AF_INET));
+    }
+}
+
 /* Initial envelope from a fresh identity, as anyone can send from any address */
 static Blob
 makeInitialPing(const transport::KeyPair& receiver, Tid tid)
@@ -2829,6 +2854,52 @@ NetworkEngineTester::testRateLimitCryptoAdmission()
     a.deliverTo(b);
     b.deliverTo(a);
     CPPUNIT_ASSERT(done);
+}
+
+void
+NetworkEngineTester::testRateLimitCachedSessionCredentials()
+{
+    auto authority = transport::Authority::generate();
+    for (bool cached : {false, true}) {
+        auto sender = privateTransport(authority);
+        auto ephemeral = transport::KeyPair::generate();
+        auto from = makeIPv4("127.0.0.2", 4222);
+        TransportTestNode receiver("127.0.0.3", privateTransport(authority), 2, 0, rateLimits(-1, -1, 1));
+        auto local = receiver.engine->epoch_.ephemeral(from);
+        auto keys = *transport::sessionKeys(receiver.key, local, sender.key.pub, ephemeral.pub, 0);
+        if (cached)
+            receiver.engine->epoch_.store(from, {local.pub, sender.key.pub, ephemeral.pub, keys});
+        auto ping = makePingPacketBlob(transport::nodeId(sender.key.pub), 200);
+        auto send = [&](const Blob& credential) {
+            auto packet = transport::seal(keys.rx,
+                                          transport::EnvelopeType::Session,
+                                          sender.key.pub,
+                                          ephemeral.pub,
+                                          ping.data(),
+                                          ping.size(),
+                                          credential);
+            receiver.engine->processMessage(packet.data(), packet.size(), from);
+        };
+        auto data = transport::sealData(keys.rx, ping.data(), ping.size());
+        receiver.engine->processMessage(data.data(), data.size(), from);
+        CPPUNIT_ASSERT(receiver.takeSent().empty());
+
+        auto invalid = sender.credential;
+        invalid.signature[0] ^= 1;
+        for (int attempt = 0; attempt < 3; ++attempt)
+            send(invalid.pack());
+        CPPUNIT_ASSERT(receiver.takeSent().empty());
+        send(sender.credential.pack());
+        CPPUNIT_ASSERT(receiver.takeSent().empty());
+
+        advanceTime(receiver, std::chrono::seconds(2));
+        send(sender.credential.pack());
+        CPPUNIT_ASSERT_EQUAL(size_t {1}, receiver.takeSent().size());
+        CPPUNIT_ASSERT(not receiver.engine->cryptoLimiter_.limit(from, receiver.scheduler.time()));
+
+        send(sender.credential.pack());
+        CPPUNIT_ASSERT_EQUAL(size_t {1}, receiver.takeSent().size());
+    }
 }
 
 void
