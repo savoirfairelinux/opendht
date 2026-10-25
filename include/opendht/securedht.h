@@ -284,6 +284,11 @@ public:
     void forwardAllMessages(bool forward) { forward_all_ = forward; }
 
     void setPushNotificationToken(const std::string& token = "") override { dht_->setPushNotificationToken(token); }
+    void setPushNotificationTopic(const std::string& topic) override { dht_->setPushNotificationTopic(topic); }
+    void setPushNotificationPlatform(const std::string& platform) override
+    {
+        dht_->setPushNotificationPlatform(platform);
+    }
 
     /**
      * Call linked callback with push_notification
