@@ -229,7 +229,7 @@ TransportTester::testDataEnvelope()
     CPPUNIT_ASSERT_EQUAL(msg.size() + DATA_ENVELOPE_OVERHEAD, envelope.size());
     CPPUNIT_ASSERT_EQUAL((size_t) 30, DATA_ENVELOPE_OVERHEAD);
     CPPUNIT_ASSERT(isEnvelope(envelope.data(), envelope.size()));
-    CPPUNIT_ASSERT_THROW(msgpack::unpack((const char*) envelope.data(), envelope.size()), std::exception);
+    CPPUNIT_ASSERT_THROW(msgpack::unpack((const char*) envelope.data(), envelope.size()), msgpack::parse_error);
     auto header = parseHeader(envelope.data(), envelope.size());
     CPPUNIT_ASSERT(header and header->type == EnvelopeType::Data and not header->credential);
 
@@ -279,9 +279,9 @@ TransportTester::testEnvelopeIsNotMsgpack()
     auto a = KeyPair::generate(), ea = KeyPair::generate();
     auto msg = message();
     auto envelope = seal(Key {}, EnvelopeType::Session, a.pub, ea.pub, msg.data(), msg.size());
-    CPPUNIT_ASSERT_THROW(msgpack::unpack((const char*) envelope.data(), envelope.size()), std::exception);
+    CPPUNIT_ASSERT_THROW(msgpack::unpack((const char*) envelope.data(), envelope.size()), msgpack::parse_error);
     auto h = hello(a.pub, ea.pub, Blob(Credential::PACKED_SIZE), msg.data(), msg.size());
-    CPPUNIT_ASSERT_THROW(msgpack::unpack((const char*) h.data(), h.size()), std::exception);
+    CPPUNIT_ASSERT_THROW(msgpack::unpack((const char*) h.data(), h.size()), msgpack::parse_error);
 }
 
 void
@@ -316,7 +316,7 @@ TransportTester::testCredential()
     CPPUNIT_ASSERT(credential.verify({Authority::generate().pub, authority.pub}));
 
     auto packed = credential.pack();
-    CPPUNIT_ASSERT_EQUAL(Credential::PACKED_SIZE, packed.size());
+    CPPUNIT_ASSERT_EQUAL(size_t {Credential::PACKED_SIZE}, packed.size());
     auto unpacked = Credential::unpack(packed);
     CPPUNIT_ASSERT(unpacked.key == credential.key);
     CPPUNIT_ASSERT(unpacked.expiration == credential.expiration);

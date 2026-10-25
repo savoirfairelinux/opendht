@@ -1223,7 +1223,7 @@ NetworkEngineTester::testTransportPrivateNetworkRejectsOutsiders()
 }
 
 static void
-advance(TransportTestNode& n, std::chrono::steady_clock::duration d)
+advanceTime(TransportTestNode& n, std::chrono::steady_clock::duration d)
 {
     n.scheduler.syncTime(n.scheduler.time() + d);
     n.scheduler.run();
@@ -1251,7 +1251,7 @@ NetworkEngineTester::testTransportEpochRotation()
     b.deliverTo(a);
 
     // b rotates: a's Data envelopes still open with b's previous epoch
-    advance(b, std::chrono::minutes(30));
+    advanceTime(b, std::chrono::minutes(30));
     b.takeSent();
     done = false;
     a.ping(a.node(b), done);
@@ -1271,7 +1271,7 @@ NetworkEngineTester::testTransportEpochRotation()
     CPPUNIT_ASSERT(done);
 
     // a rotates: new ephemeral key
-    advance(a, std::chrono::minutes(30));
+    advanceTime(a, std::chrono::minutes(30));
     a.takeSent();
     done = false;
     a.ping(a.node(b), done);
@@ -1284,7 +1284,7 @@ NetworkEngineTester::testTransportEpochRotation()
     // Keys of the previous epoch are accepted for one period, then erased
     b.engine->processMessage(captured.data.data(), captured.data.size(), a.addr);
     CPPUNIT_ASSERT_EQUAL((size_t) 1, b.takeSent().size());
-    advance(b, std::chrono::minutes(30));
+    advanceTime(b, std::chrono::minutes(30));
     b.takeSent();
     b.engine->processMessage(captured.data.data(), captured.data.size(), a.addr);
     b.engine->processMessage(capturedData.data.data(), capturedData.data.size(), a.addr);
@@ -1319,7 +1319,7 @@ NetworkEngineTester::testTransportPeerRestart()
     CPPUNIT_ASSERT(b->socket->sends.empty());
 
     // The retry starts over
-    advance(a, std::chrono::seconds(2));
+    advanceTime(a, std::chrono::seconds(2));
     CPPUNIT_ASSERT_EQUAL((size_t) 1, a.socket->sends.size());
     CPPUNIT_ASSERT(isEnvelope(a.socket->sends.at(0), transport::EnvelopeType::Initial, true));
     a.deliverTo(*b);
@@ -2089,7 +2089,7 @@ NetworkEngineTester::testTransportRetryRecoversSessionBeforePayload()
     CPPUNIT_ASSERT(b->socket->sends.empty());
 
     // The retry recovers the session with a ping in an Initial envelope, without the listen
-    advance(a, std::chrono::milliseconds(1500));
+    advanceTime(a, std::chrono::milliseconds(1500));
     CPPUNIT_ASSERT_EQUAL((size_t) 1, a.socket->sends.size());
     CPPUNIT_ASSERT(initialMessageType(a.socket->sends[0], b->key) == MessageType::Ping);
     a.deliverTo(*b);
@@ -2118,7 +2118,7 @@ NetworkEngineTester::testTransportRetryNeverResendsPayloadInInitial()
     a.takeSent();
     size_t initials = 0;
     for (int i = 0; i < 60; i++) {
-        advance(a, std::chrono::milliseconds(250));
+        advanceTime(a, std::chrono::milliseconds(250));
         for (const auto& p : a.takeSent()) {
             CPPUNIT_ASSERT(initialMessageType(p, b.key) == MessageType::Ping);
             ++initials;
@@ -2144,7 +2144,7 @@ NetworkEngineTester::testTransportRecoveryWithholdsAllRequests()
     sendTestListen(a, a.node(*b), token1);
     sendTestListen(a, a.node(*b), token2);
     a.deliverTo(*b);
-    advance(a, std::chrono::milliseconds(1500));
+    advanceTime(a, std::chrono::milliseconds(1500));
     CPPUNIT_ASSERT_EQUAL((size_t) 1, a.socket->sends.size());
     CPPUNIT_ASSERT(initialMessageType(a.socket->sends[0], b->key) == MessageType::Ping);
 
@@ -2205,7 +2205,7 @@ NetworkEngineTester::testTransportDelayedReplyDoesNotResend()
     auto req = a.get(a.node(b), got);
     a.deliverTo(b);
     auto reply = b.takeSent();
-    advance(a, std::chrono::milliseconds(1500));
+    advanceTime(a, std::chrono::milliseconds(1500));
     a.takeSent();
     for (const auto& packet : reply)
         a.engine->processMessage(packet.data.data(), packet.data.size(), b.addr);
@@ -2247,17 +2247,17 @@ NetworkEngineTester::testTransportRecoveryRefreshesDeadline()
     std::optional<std::vector<Sp<Value>>> got;
     auto req = a.get(a.node(b), got);
     a.takeSent();
-    advance(a, std::chrono::milliseconds(1500));
+    advanceTime(a, std::chrono::milliseconds(1500));
     a.deliverTo(b);
-    advance(a, std::chrono::milliseconds(3000));
+    advanceTime(a, std::chrono::milliseconds(3000));
     a.takeSent();
     b.deliverTo(a);
     CPPUNIT_ASSERT_EQUAL(size_t(1), a.takeSent().size());
-    advance(a, std::chrono::milliseconds(250));
+    advanceTime(a, std::chrono::milliseconds(250));
     CPPUNIT_ASSERT(a.socket->sends.empty());
     CPPUNIT_ASSERT(req->pending());
     a.engine->clear();
-    advance(a, std::chrono::seconds(30));
+    advanceTime(a, std::chrono::seconds(30));
     CPPUNIT_ASSERT(a.socket->sends.empty());
 }
 
@@ -2455,7 +2455,7 @@ NetworkEngineTester::testTransportProbeFailureNotifiesWaiters()
     for (int step = 0; step < 60; ++step) {
         for (const auto& packet : a.takeSent())
             CPPUNIT_ASSERT(initialMessageType(packet, b.key) == MessageType::Ping);
-        advance(a, std::chrono::milliseconds(250));
+        advanceTime(a, std::chrono::milliseconds(250));
     }
     CPPUNIT_ASSERT_EQUAL(size_t(1), stalled);
     CPPUNIT_ASSERT_EQUAL(size_t(1), expired);
@@ -2477,7 +2477,7 @@ NetworkEngineTester::testTransportProbeErrorExpiresWaiters()
     b.deliverTo(a);
     CPPUNIT_ASSERT(req->expired());
     CPPUNIT_ASSERT(not got);
-    advance(a, std::chrono::seconds(15));
+    advanceTime(a, std::chrono::seconds(15));
     CPPUNIT_ASSERT(a.socket->sends.empty());
 }
 
@@ -2504,7 +2504,7 @@ NetworkEngineTester::testTransportFindReleasesWaiters()
         b.deliverTo(a);
         CPPUNIT_ASSERT(req->completed());
         CPPUNIT_ASSERT(got);
-        advance(a, std::chrono::seconds(15));
+        advanceTime(a, std::chrono::seconds(15));
         CPPUNIT_ASSERT(a.socket->sends.empty());
         CPPUNIT_ASSERT(not node->isExpired());
     }
@@ -2778,7 +2778,7 @@ NetworkEngineTester::testRateLimitSeparatesSessionRequests()
     TransportTestNode a("127.0.0.2", {}, 1);
     TransportTestNode b("127.0.0.3", {}, 2, 0, rateLimits(4, 4, -1));
     establishSession(a, b);
-    advance(b, std::chrono::seconds(2));
+    advanceTime(b, std::chrono::seconds(2));
 
     // A plaintext flood uses up the budget of senders without a session
     std::mt19937_64 rd(3);
@@ -2804,7 +2804,7 @@ NetworkEngineTester::testRateLimitCryptoAdmission()
     TransportTestNode a("127.0.0.2", {}, 1);
     TransportTestNode b("127.0.0.3", {}, 2, 0, rateLimits(-1, 6, 4));
     establishSession(a, b);
-    advance(b, std::chrono::seconds(2));
+    advanceTime(b, std::chrono::seconds(2));
 
     // Each Initial request is charged once to each budget
     CPPUNIT_ASSERT_EQUAL((size_t) 4, floodInitialPings(b, spoofedAddresses(10)));
