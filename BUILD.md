@@ -135,3 +135,19 @@ cd opendht
 cmake --preset=vcpkg_manifest .
 cmake --build .
 ```
+
+### CI
+
+Windows CI uses [lukka/run-vcpkg](https://github.com/lukka/run-vcpkg) to acquire
+and bootstrap the revision pinned by `default-registry.baseline` in
+`vcpkg-configuration.json`. CMake uses the action's `VCPKG_ROOT` and installs
+manifest dependencies on every run. Dependency-preparation jobs warm the binary
+cache before the Windows build matrix starts.
+
+Only ABI-keyed binary package archives are cached, not installed trees. The
+supported [files provider](https://learn.microsoft.com/en-us/vcpkg/reference/binarycaching#files-provider)
+is persisted with `actions/cache`; it does not use the removed `x-gha` provider
+or require package-feed credentials. Cache keys include the target triplet,
+manifests, overlay ports, run ID, and attempt, with restore prefixes for reuse.
+Each run can save newly built archives without overwriting an immutable cache;
+vcpkg validates package ABIs before reuse.

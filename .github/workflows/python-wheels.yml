@@ -36,41 +36,28 @@ jobs:
     name: Build wheels on Windows
     runs-on: windows-latest
     env:
-      VCPKG_INSTALLATION_ROOT: "C:\\vcpkg"
       VCPKG_DISABLE_METRICS: "1"
       VCPKG_DEFAULT_TRIPLET: x64-windows-release
       VCPKG_INSTALLED_DIR: ${{ github.workspace }}\vcpkg_installed
-      VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}\vcpkg_binary_cache
+      VCPKG_BINARY_SOURCES: clear;files,${{ github.workspace }}/vcpkg-binary-cache,readwrite
 
     steps:
       - uses: actions/checkout@v7
 
       - name: Set up vcpkg
-        uses: ./.github/actions/setup-vcpkg
+        uses: lukka/run-vcpkg@v11
+        with:
+          vcpkgJsonGlob: vcpkg.json
+          vcpkgConfigurationJsonGlob: vcpkg-configuration.json
 
-      - name: Cache vcpkg installed packages
-        id: cache-vcpkg
+      - name: Cache vcpkg binary packages
         uses: actions/cache@v6
         with:
-          path: |
-            ${{ env.VCPKG_INSTALLED_DIR }}
-            ${{ env.VCPKG_DEFAULT_BINARY_CACHE }}
-          key: ${{ runner.os }}-vcpkg-${{ env.VCPKG_DEFAULT_TRIPLET }}-${{ hashFiles('**/vcpkg.json', '**/vcpkg-configuration.json') }}-${{ hashFiles('.github/workflows/python-wheels.yml') }}
+          path: ${{ github.workspace }}/vcpkg-binary-cache
+          key: ${{ runner.os }}-vcpkg-binary-${{ env.VCPKG_DEFAULT_TRIPLET }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json', 'ports/**') }}-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
-            ${{ runner.os }}-vcpkg-${{ env.VCPKG_DEFAULT_TRIPLET }}-${{ hashFiles('**/vcpkg.json', '**/vcpkg-configuration.json') }}
-            ${{ runner.os }}-vcpkg-${{ env.VCPKG_DEFAULT_TRIPLET }}-
-
-      - name: Setup vcpkg and install dependencies
-        if: steps.cache-vcpkg.outputs.cache-hit != 'true'
-        run: |
-          New-Item -Path "${{ env.VCPKG_INSTALLED_DIR }}" -ItemType Directory -Force
-          New-Item -Path "${{ env.VCPKG_DEFAULT_BINARY_CACHE }}" -ItemType Directory -Force
-          vcpkg install `
-            --recurse `
-            --clean-after-build `
-            --triplet=${{ env.VCPKG_DEFAULT_TRIPLET }} `
-            --x-install-root=${{ env.VCPKG_INSTALLED_DIR }}
-        shell: pwsh
+            ${{ runner.os }}-vcpkg-binary-${{ env.VCPKG_DEFAULT_TRIPLET }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json', 'ports/**') }}-
+            ${{ runner.os }}-vcpkg-binary-${{ env.VCPKG_DEFAULT_TRIPLET }}-
 
       - name: Build wheels
         run: |
@@ -78,7 +65,7 @@ jobs:
           cmake -S . -B build `
             -DCMAKE_BUILD_TYPE=Release `
             -DVCPKG_TARGET_TRIPLET=${{ env.VCPKG_DEFAULT_TRIPLET }} `
-            -DCMAKE_TOOLCHAIN_FILE=${{ env.VCPKG_INSTALLATION_ROOT }}\scripts\buildsystems\vcpkg.cmake `
+            "-DCMAKE_TOOLCHAIN_FILE=$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" `
             -DVCPKG_INSTALLED_DIR=${{ env.VCPKG_INSTALLED_DIR }} `
             -DBUILD_TESTING=OFF `
             -DOPENDHT_C=OFF `
