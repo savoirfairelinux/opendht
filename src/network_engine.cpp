@@ -677,6 +677,8 @@ NetworkEngine::processMessage(const uint8_t* buf, size_t buflen, SockAddr f)
                and not isExpectedReply(*msg, from)) {
         return;
     }
+    if (envelope and envelope->cached)
+        envelope->cached->authorizedUntil = msg->peer->authorizedUntil;
     if (envelope and envelope->pending)
         envelope->pending->epoch->store(from, envelope->pending->session);
 
@@ -1189,12 +1191,15 @@ NetworkEngine::session(const transport::Peer& peer, const SockAddr& addr)
     const auto& peerEphemeral = *peer.ephemeral;
     const bool validated = peer.validatedAddress and peer.validatedAddress == addr;
     if (validated)
-        if (auto s = epoch_.find(addr, peer.key, peerEphemeral))
+        if (auto s = epoch_.find(addr, peer.key, peerEphemeral)) {
+            s->authorizedUntil = std::max(s->authorizedUntil, peer.authorizedUntil);
             return *s;
+        }
     auto ephemeral = epoch_.ephemeral(addr);
     std::optional<Session> s;
     if (auto keys = transport::sessionKeys(config.transport.key, ephemeral, peer.key, peerEphemeral, config.network)) {
         s = Session {ephemeral.pub, peer.key, peerEphemeral, *keys};
+        s->authorizedUntil = peer.authorizedUntil;
         if (validated)
             epoch_.store(addr, *s);
     }
@@ -1207,14 +1212,17 @@ NetworkEngine::openSession(const transport::Header& header,
                             const uint8_t* buf,
                             size_t buflen,
                             const SockAddr& from,
-                            std::optional<PendingSession>& pending)
+                            std::optional<PendingSession>& pending,
+                            Session*& cached)
 {
     // The sender uses the last ephemeral key we sent to its address
     const std::array<Epoch*, 2> epochs {&epoch_, &previousEpoch_};
     for (auto* epoch : epochs)
-        if (auto cached = epoch->find(from, header.sender, header.ephemeral))
-            if (auto payload = transport::open(cached->keys.rx, buf, buflen))
+        if (auto session = epoch->find(from, header.sender, header.ephemeral))
+            if (auto payload = transport::open(session->keys.rx, buf, buflen)) {
+                cached = session;
                 return payload;
+            }
     bool charged = false;
     for (auto* epoch : epochs) {
         if (not *epoch or epoch->find(from, header.sender, header.ephemeral))
@@ -1240,7 +1248,8 @@ NetworkEngine::openSession(const transport::Header& header,
 }
 
 std::optional<Blob>
-NetworkEngine::openData(transport::Header& header, const uint8_t* buf, size_t buflen, const SockAddr& from)
+NetworkEngine::openData(
+    transport::Header& header, const uint8_t* buf, size_t buflen, const SockAddr& from, Session*& cached)
 {
     for (auto* epoch : {&epoch_, &previousEpoch_}) {
         auto s = epoch->find(from);
@@ -1252,6 +1261,7 @@ NetworkEngine::openData(transport::Header& header, const uint8_t* buf, size_t bu
                 s->confirmed = true;
             header.sender = s->peer;
             header.ephemeral = s->peerEphemeral;
+            cached = s;
             return payload;
         }
     }
@@ -1338,6 +1348,7 @@ NetworkEngine::openEnvelope(const uint8_t* buf, size_t buflen, const SockAddr& f
 
     std::optional<Blob> payload;
     std::optional<PendingSession> pending;
+    Session* cached {};
     if (header->type == EnvelopeType::Initial) {
         if (not limitCrypto(header->sender, from))
             return std::nullopt;
@@ -1354,9 +1365,9 @@ NetworkEngine::openEnvelope(const uint8_t* buf, size_t buflen, const SockAddr& f
             transport::wipe(*key);
         }
     } else if (header->type == EnvelopeType::Data) {
-        payload = openData(*header, buf, buflen, from);
+        payload = openData(*header, buf, buflen, from, cached);
     } else {
-        payload = openSession(*header, buf, buflen, from, pending);
+        payload = openSession(*header, buf, buflen, from, pending, cached);
     }
     if (not payload) {
         if (logger_)
@@ -1365,12 +1376,20 @@ NetworkEngine::openEnvelope(const uint8_t* buf, size_t buflen, const SockAddr& f
     }
 
     auto peer = std::make_shared<transport::Peer>(header->sender);
+    if (cached)
+        peer->authorizedUntil = cached->authorizedUntil;
     if (auto node = cache.getNode(transport::nodeId(header->sender), from.getFamily()))
         if (const auto& current = node->getTransport())
-            peer->authorizedUntil = current->authorizedUntil;
+            peer->authorizedUntil = std::max(peer->authorizedUntil, current->authorizedUntil);
     if (header->credential) {
-        if (payload->size() < CREDENTIAL_SIZE or (isPrivate and not authorize(*peer, payload->data(), CREDENTIAL_SIZE)))
+        if (payload->size() < CREDENTIAL_SIZE)
             return std::nullopt;
+        if (isPrivate and not peer->isAuthorized(std::chrono::system_clock::now())) {
+            if (header->type == EnvelopeType::Session and not pending and not limitCrypto(header->sender, from))
+                return std::nullopt;
+            if (not authorize(*peer, payload->data(), CREDENTIAL_SIZE))
+                return std::nullopt;
+        }
         payload->erase(payload->begin(), payload->begin() + CREDENTIAL_SIZE);
     } else if (isPrivate and not peer->isAuthorized(std::chrono::system_clock::now())) {
         return std::nullopt;
@@ -1378,7 +1397,9 @@ NetworkEngine::openEnvelope(const uint8_t* buf, size_t buflen, const SockAddr& f
     // Session and Data envelopes were opened with our key for the source address: the sender receives there
     const bool session = header->type != EnvelopeType::Initial;
     peer->setEphemeral(header->ephemeral, session ? from : SockAddr {});
-    return OpenedEnvelope {std::move(peer), std::move(*payload), false, session, std::move(pending)};
+    if (pending)
+        pending->session.authorizedUntil = peer->authorizedUntil;
+    return OpenedEnvelope {std::move(peer), std::move(*payload), false, session, std::move(pending), cached};
 }
 
 void

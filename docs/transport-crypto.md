@@ -287,7 +287,7 @@ For each received packet, a node applies the following checks in order:
       **No credential:** in a private network, drop the packet unless the peer is currently authorized.
   9. Record `epk_sender` on a temporary peer record. It is **validated for the source address** if the envelope was a Session or Data envelope: opening it required our ephemeral key for that address, which was only ever sent there. Existing peer state is updated only after parsing, ID binding and the processing checks below.
 
-  **Session cache.** The epoch caches one session per source address. Newly derived Session keys enter the cache only after credential authorization, parsing, network and node ID checks, and basic fragment validation. Replies must match a pending request or listener. Admission is per packet, so subsequent Data fragments can decrypt before the whole message is assembled. Sending to the exact address for which the peer's ephemeral key is validated can also cache a session. Answers to Initial and Hello envelopes never use or change cached sessions: their source address may be spoofed.
+  **Session cache.** The epoch caches one session per source address, including the verified credential expiry in private networks. Authorization therefore survives the release of a client-mode peer's node record, but never its credential expiry. Newly derived Session keys enter the cache only after credential authorization, parsing, network and node ID checks, and basic fragment validation. Replies must match a pending request or listener. Admission is per packet, so subsequent Data fragments can decrypt before the whole message is assembled. Sending to the exact address for which the peer's ephemeral key is validated can also cache a session. Answers to Initial and Hello envelopes never use or change cached sessions: their source address may be spoofed.
 
 3. **Plaintext in a private network.** Drop any packet that is not an envelope.
 
@@ -314,12 +314,13 @@ For each received packet, a node applies the following checks in order:
 - **Public-key work:** one unit per packet needing a key agreement or a signature verification, charged before that work. `Config::max_crypto_per_sec`, by default 512 per second, and 64 per address. A unit covers the packet and its answer, including credential verification:
   - each Initial envelope (two X25519 operations, and five more to answer a request);
   - each Session envelope from an uncached (address, `pk_sender`, `epk_sender`) triple (five X25519 operations per epoch tried);
+  - each cached Session envelope requiring credential verification after authorization expires (one charge, not an additional charge for packets already admitted for key agreement);
   - each Hello (one Ed25519 verification, and the key derivation of its answer);
   - each plaintext request from a sender whose key is known or advertised, answered in an Initial envelope (three X25519 operations).
 
   Initial and uncached Session envelopes from an address where we await an answer, from the sender's node record or from a request sent by address, use a separate budget of the same size. Our own key exchanges thus complete during a flood.
 
-Packets from peers with cached session keys cost one AEAD operation. Each epoch caches at most 16384 sessions, evicting the least recently used one to store a new one. An evicted peer recovers after one retransmission. Only a peer that received a packet from us at its address can take a cache slot, so a slot costs the attacker a reachable address and a round trip.
+Packets from peers with cached session keys cost one AEAD operation, except when a private-network credential needs verification. Each epoch caches at most 16384 sessions, evicting the least recently used one to store a new one. An evicted peer recovers after one retransmission. Only a peer that received a packet from us at its address can take a cache slot, so a slot costs the attacker a reachable address and a round trip.
 
 ### 6.6 Write authorization
 
