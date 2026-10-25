@@ -55,4 +55,22 @@ PhtTester::testSibling()
     }
 }
 
+void
+PhtTester::testPadding()
+{
+    for (size_t keySize : {0, 1, 2, 20}) {
+        for (size_t paddingSize : {1, 4}) {
+            dht::Blob expected(keySize, 0xAB);
+            Prefix prefix {expected};
+            expected.resize(keySize + paddingSize, 0);
+            expected[keySize] = 0x80;
+
+            prefix.addPaddingContent(expected.size());
+
+            CPPUNIT_ASSERT(prefix.content_ == expected);
+            CPPUNIT_ASSERT_EQUAL(keySize * 8, prefix.size_);
+        }
+    }
+}
+
 } // namespace test
