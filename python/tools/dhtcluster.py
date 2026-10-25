@@ -9,6 +9,7 @@ import argparse
 import logging
 import logging.handlers
 
+import netifaces
 import opendht as dht
 
 logger = logging.getLogger('dhtcluster')
