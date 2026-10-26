@@ -48,7 +48,7 @@ fn binary_crypto_and_password_slices() {
     let restored = PrivateKey::from_bytes(&packed, password).unwrap();
     assert!(PrivateKey::from_bytes(&packed, "wrong").is_err());
     assert!(PrivateKey::from_bytes(&packed, "bad\0password").is_err());
-    let mut public = PublicKey::new(&restored.public_key().pack().unwrap()).unwrap();
+    let mut public = PublicKey::new(restored.public_key().pack().unwrap()).unwrap();
     public.unpack(private.public_key().pack().unwrap()).unwrap();
     let data = b"binary\0message\xff";
     let signature = restored.sign(data).unwrap();
@@ -75,6 +75,7 @@ fn identity_persistence() {
     let certificate = identity.certificate.serialize().unwrap();
     let restored = DhtCertificate::from_bytes(&certificate).unwrap();
     assert!(identity.certificate.id() == restored.id());
+    assert!(DhtRunner::new().register_certificate(&restored).is_err());
     assert!(DhtIdentity::generate("child", &identity).is_ok());
     assert!(DhtIdentity::new_ec("elliptic curve").is_ok());
 }
