@@ -1,7 +1,7 @@
 [package]
 name = "opendht"
-version = "0.1.0"
-authors = ["Sébastien Blin <sebastien.blin@savoirfairelinux.com>"]
+version = "0.2.0"
+authors = ["Sébastien Blin <sebastien.blin@savoirfairelinux.com>", "Adrien Beraud <adrien.beraud@savoirfairelinux.com>"]
 edition = "2021"
 
 [dependencies]
