@@ -168,6 +168,8 @@ cdef extern from "opendht/value.h" namespace "dht":
         Value(const uint16_t t, const uint8_t* dat_ptr, size_t dat_len) except +
         string toString() const
         size_t size() const
+        bool isSigned() const
+        bool isEncrypted() const
         uint64_t id
         shared_ptr[PublicKey] owner
         InfoHash recipient
@@ -179,6 +181,7 @@ cdef extern from "opendht/value.h" namespace "dht":
         string pushType
 
     cdef cppclass ValueType:
+        ValueType() except +
         ValueType(uint16_t id, string name, seconds expiration) except +
         uint16_t id
         string name
@@ -200,7 +203,7 @@ cdef extern from "opendht/value.h" namespace "dht":
 
     cdef cppclass Where:
         Where() except +
-        Where(const string& q_str)
+        Where(const string& q_str) except +
         bool isSatisfiedBy(const Where& where) const
         Where& id(uint64_t id)
         Where& valueType(uint16_t type)
@@ -291,7 +294,9 @@ cdef extern from *:
 
     static std::shared_ptr<PyObject> opendht_python_owner(PyObject* data)
     {
+        auto state = PyGILState_Ensure();
         Py_INCREF(data);
+        PyGILState_Release(state);
         return std::shared_ptr<PyObject>(data, [](PyObject* object) {
             auto state = PyGILState_Ensure();
             Py_DECREF(object);
@@ -383,13 +388,14 @@ cdef extern from "opendht/dhtrunner.h" namespace "dht":
         InfoHash getNodeId() except + nogil
         NodeInfo getNodeInfo() except + nogil
         vector[SockAddr] getPublicAddress(sa_family_t af) except + nogil
+        void connectivityChanged() except + nogil
         void bootstrap(const_char*, const_char*)
         void bootstrap(const SockAddr&, DoneCallbackSimple done_cb)
         void run(in_port_t, Config config) except +
         void run(const_char*, const_char*, const_char*, Config config) except +
         void join() except + nogil
         void shutdown(ShutdownCallback)
-        void registerType(ValueType& value);
+        void registerType(const ValueType& value) except + nogil
         bool isRunning()
         SockAddr getBound(sa_family_t af) except + nogil
         string getStorageLog() except + nogil
@@ -410,14 +416,14 @@ ctypedef DhtRunner.Config DhtRunnerConfig
 cdef extern from *:
     ctypedef void (*StatusCallbackRaw)(int ipv4, int ipv6, void* data)
     ctypedef bool (*QueryCallbackRaw)(shared_ptr[FieldValueIndex] row, void* data)
-    void runPythonRunner "opendht_python_run"(DhtRunner& runner, in_port_t port, DhtRunnerConfig& config, StatusCallbackRaw callback, object data) except +
-    void runPythonRunnerAddress "opendht_python_run"(DhtRunner& runner, const_char* ipv4, const_char* ipv6, const_char* port, DhtRunnerConfig& config, StatusCallbackRaw callback, object data) except +
+    void runPythonRunner "opendht_python_run"(DhtRunner& runner, in_port_t port, DhtRunnerConfig& config, StatusCallbackRaw callback, object data) except + nogil
+    void runPythonRunnerAddress "opendht_python_run"(DhtRunner& runner, const_char* ipv4, const_char* ipv6, const_char* port, DhtRunnerConfig& config, StatusCallbackRaw callback, object data) except + nogil
     void queryPython "opendht_python_query"(DhtRunner& runner, InfoHash key, QueryCallbackRaw callback, DoneCallbackRaw done, object data, Query query) except +
 
 cdef extern from "opendht/log.h" namespace "dht::log":
-    void enableLogging(DhtRunner& dht)
-    void disableLogging(DhtRunner& dht)
-    void enableFileLogging(DhtRunner& dht, const string& path)
+    void enableLogging(DhtRunner& dht) except + nogil
+    void disableLogging(DhtRunner& dht) except + nogil
+    void enableFileLogging(DhtRunner& dht, const string& path) except + nogil
 
 cdef extern from "opendht/indexation/pht.h" namespace "dht::indexation":
     size_t PHT_MAX_NODE_ENTRY_COUNT "dht::indexation::Pht::MAX_NODE_ENTRY_COUNT"

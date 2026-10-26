@@ -441,6 +441,10 @@ cdef class Value(object):
         self._value.reset(new cpp.Value(id, val, len(val)))
     def __str__(self):
         return self._value.get().toString().decode()
+    def isSigned(self) -> bool:
+        return self._value.get().isSigned()
+    def isEncrypted(self) -> bool:
+        return self._value.get().isEncrypted()
     @property
     def owner(self) -> PublicKey:
         h = PublicKey()
@@ -963,8 +967,13 @@ cdef class DhtRunner(_WithID):
         host_bytes = host.encode()
         port_bytes = port.encode() if port else b'4222'
         self.thisptr.get().bootstrap(<cpp.const_char*>host_bytes, <cpp.const_char*>port_bytes)
+    def connectivityChanged(self):
+        with nogil:
+            self.thisptr.get().connectivityChanged()
     def run(self, Identity id=None, is_bootstrap=False, cpp.in_port_t port=0, str ipv4="", str ipv6="", DhtConfig config=None):
         cdef cpp.DhtRunnerConfig run_config = config._config if config is not None else cpp.DhtRunnerConfig()
+        cdef cpp.string bind4, bind6, service
+        cdef object status_ref = _weakref.ref(self._status_callback)
         if id is not None:
             run_config.dht_config.id = id._id
         if is_bootstrap:
@@ -972,12 +981,15 @@ cdef class DhtRunner(_WithID):
         if ipv4 or ipv6:
             bind4 = ipv4.encode() if ipv4 else b''
             bind6 = ipv6.encode() if ipv6 else b''
-            cpp.runPythonRunnerAddress(deref(self.thisptr.get()), bind4, bind6,
-                                       str(port).encode(), run_config,
-                                       status_callback, _weakref.ref(self._status_callback))
+            service = str(port).encode()
+            with nogil:
+                cpp.runPythonRunnerAddress(deref(self.thisptr.get()), bind4.c_str(),
+                                           bind6.c_str(), service.c_str(), run_config,
+                                           status_callback, status_ref)
         else:
-            cpp.runPythonRunner(deref(self.thisptr.get()), port, run_config,
-                                status_callback, _weakref.ref(self._status_callback))
+            with nogil:
+                cpp.runPythonRunner(deref(self.thisptr.get()), port, run_config,
+                                    status_callback, status_ref)
     def join(self):
         with nogil:
             self.thisptr.get().join()
@@ -986,14 +998,22 @@ cdef class DhtRunner(_WithID):
         cb_obj = {'shutdown':shutdown_cb}
         ref.Py_INCREF(cb_obj)
         self.thisptr.get().shutdown(cpp.bindShutdownCb(shutdown_callback, <void*>cb_obj))
-    def registerType(self, ValueType type):
-        self.thisptr.get().registerType(deref(type._value.get()))
+    def registerType(self, ValueType type not None):
+        if not type._value:
+            raise ValueError("ValueType is not initialized")
+        cdef cpp.ValueType run_type = deref(type._value.get())
+        with nogil:
+            self.thisptr.get().registerType(run_type)
     def enableLogging(self):
-        cpp.enableLogging(self.thisptr.get()[0])
+        with nogil:
+            cpp.enableLogging(self.thisptr.get()[0])
     def disableLogging(self):
-        cpp.disableLogging(self.thisptr.get()[0])
+        with nogil:
+            cpp.disableLogging(self.thisptr.get()[0])
     def enableFileLogging(self, str path):
-        cpp.enableFileLogging(self.thisptr.get()[0], path.encode())
+        cdef cpp.string log_path = path.encode()
+        with nogil:
+            cpp.enableFileLogging(self.thisptr.get()[0], log_path)
     def isRunning(self):
         return self.thisptr.get().isRunning()
     def getBound(self, cpp.sa_family_t af = 0):
@@ -1135,6 +1155,8 @@ cdef class DhtRunner(_WithID):
     def putEncrypted(self, InfoHash key, Value val, to, done_cb=None, bool permanent=False):
         if to is None:
             raise ValueError("'to' must be provided")
+        if isinstance(to, PublicKey) and not (<PublicKey>to)._key:
+            raise ValueError("PublicKey is not initialized")
         if done_cb:
             cb_obj = {'done':done_cb}
             ref.Py_INCREF(cb_obj)

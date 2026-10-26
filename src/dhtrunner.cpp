@@ -542,6 +542,8 @@ void
 DhtRunner::registerType(const ValueType& type)
 {
     std::lock_guard lck(dht_mtx);
+    if (not dht_)
+        throw std::runtime_error("DHT runner is not running");
     dht_->registerType(type);
 }
 

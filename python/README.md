@@ -161,6 +161,18 @@ value.pushType = "audioCall"
 Set metadata before publishing the value. Numeric values outside the native
 integer range raise `OverflowError`.
 
+`value.isSigned()` reports whether a public key and signature are present;
+it does not verify the signature. `value.isEncrypted()` reports whether the
+value currently contains ciphertext. Values delivered by `get()` and `listen()`
+are transparently decrypted when possible, so decrypted values return `False`
+from `isEncrypted()`, even if they were published using `putEncrypted()`.
+An uninitialized `PublicKey()` cannot be used as an encryption recipient and
+raises `ValueError`.
+
+Register custom `ValueType` instances after `run()` and before `join()`.
+`registerType()` raises `RuntimeError` when the runner is stopped, `TypeError`
+for `None`, and `ValueError` for an uninitialized type.
+
 ## Observability
 
 `getNodeInfo()` returns a read-only `NodeInfo` snapshot with node identifiers,
@@ -184,9 +196,15 @@ node.setOnStatusChanged(None)
 The status callback receives two `NodeStatus` values: `Disconnected`,
 `Connecting`, or `Connected`. Registration replaces the previous callback and
 persists across restarts; `None` disables it. Core callbacks run on the DHT
-thread while native locks are held: do not call snapshot getters, blocking
-operations, or `join()` from them. The asyncio wrapper schedules status
-callbacks on its event-loop thread, where snapshot getters are safe to use.
+thread while native locks are held: do not call snapshot getters, type
+registration, logging controls, `run()`, blocking operations, or `join()` from
+them. The asyncio wrapper schedules status callbacks on its event-loop thread,
+where snapshot getters are safe to use.
+
+Call `node.connectivityChanged()` after a network-interface or IP-address
+change. It queues native connectivity recovery, including recontacting peers
+and renewing subscriptions. It is also available on the asyncio runner as a
+synchronous, nonblocking method.
 
 ## Queries And Filtered Listeners
 
