@@ -26,10 +26,10 @@ Native CMake options can be passed through, for example:
 npm run build -- --CDOPENDHT_PEER_DISCOVERY=ON
 ```
 
-The default loader uses `build/Release/opendht.node`. Set `OPENDHT_NODE_BINDING`
-to an absolute addon path when using a different build directory or configuration.
-The current build uses local native libraries and their build-tree runtime paths;
-it is not yet a relocatable npm binary distribution. No prebuilt binaries are provided.
+The loader checks local builds, then compatible Node-API binaries under `prebuilds/`.
+Set `OPENDHT_NODE_BINDING` to an absolute addon path to select an explicit build.
+Packaged binaries include OpenDHT and non-system native dependencies, so archive
+installation does not require a compiler or a system OpenDHT installation.
 
 ## Usage
 
@@ -63,7 +63,7 @@ main().catch(console.error);
 - `hash(string | Uint8Array)` returns a SHA-1 hash as a 40-character hex string.
   All get/put/listen keys must be hex hashes, not unhashed application keys.
 - `version` is the underlying OpenDHT version.
-- `run({port, ipv4, ipv6, network, persistPath})` starts a threaded node. Port 0
+- `run({port, ipv4, ipv6, network, persistPath, identity})` starts a threaded node. Port 0
   selects a free port. The defaults bind both IP families on all interfaces.
   `persistPath` is optional; use an empty string to disable persistence.
 - `getBoundPort(4 | 6)` defaults to IPv4; `getNodeId()` returns the node's hex ID.
@@ -72,7 +72,8 @@ main().catch(console.error);
 - `put(key, Uint8Array, {id, type, userType, permanent})` copies the input and
   resolves to the native success boolean. IDs are unsigned 64-bit `bigint` values.
 - `get(key)` resolves to value snapshots, or rejects with `ERR_DHT_GET_FAILED`.
-  Values contain `id`, `type`, `seq`, `userType`, and copied `Buffer` data.
+  Values contain `id`, `type`, `seq`, `userType`, copied `Buffer` data, `isSigned`,
+  `isEncrypted`, and an `owner` long fingerprint (or null for unsigned values).
 - `listen(key, (value, expired) => {})` returns a listener with idempotent
   `cancel()`. Queued deliveries are suppressed after cancellation. Callback
   return values are ignored; callbacks may cancel or close the runner.
@@ -97,10 +98,89 @@ operations and `close()`. Install an `error` handler on long-lived runners. As
 with other Node EventEmitters, an unhandled `error` event is fatal. There is no
 silent dropping of events while continuing an apparently healthy listener.
 
-## Current Scope
+## Crypto
 
-This first implementation covers lifecycle, persistence configuration, bootstrap,
-plain values, get/put, and listeners. Identity/crypto wrappers, signed/encrypted
-operations, query filters, async iterators, AbortSignal support, proxy controls,
-and prebuilt package distribution remain future work. Node ABI stability does
-not make OpenDHT or its native dependencies ABI-independent.
+`PrivateKey.generate(options)` and `Identity.generate(name, options)` return
+promises and generate keys off the JS thread. Options accept `algorithm: 'ec'`
+(the default, using OpenDHT's default EC curve) or `'rsa'`. RSA `bits` must be an
+integer between 2048 and 8192; the default is 2048.
+
+- `new PrivateKey(bytes, password?)` imports PEM/DER; `serialize(password?)`
+  exports PKCS#8 PEM. A nonempty password encrypts the exported key.
+- `privateKey.getPublicKey()` returns an owned public key. `sign(bytes)` and
+  `decrypt(bytes)` return copied Buffers.
+- `new PublicKey(bytes)` imports a public key; `serialize()` exports DER.
+  `checkSignature(data, signature)` returns a boolean. `encrypt(bytes)` requires
+  an RSA key; EC keys support signatures, not this encryption scheme.
+- `new Certificate(bytes)` imports PEM/DER or a PEM certificate chain;
+  `serialize()` exports a PEM chain. Import does not establish trust or validate
+  the chain against a trust store. `getPublicKey()` returns its public key.
+- Public keys and certificates expose `getId()` (40 hex characters) and
+  `getLongId()` (64 hex characters).
+- `new Identity(privateKey, certificate)` requires matching fingerprints.
+  Its read-only `privateKey` and `certificate` properties return owned wrappers.
+- Pass `identity` to `run()` to enable `putSigned(key, data, options?)` and
+  `putEncrypted(key, data, recipientPublicKey, options?)`. Both return the same
+  success boolean as `put()`. Encrypted values are signed by the sender and
+  transparently decrypted for the recipient by OpenDHT's get/listen layer.
+
+```js
+const { Identity, DhtRunner } = require('./nodejs');
+
+async function createAuthenticatedNode() {
+    const identity = await Identity.generate('example', { algorithm: 'rsa', bits: 2048 });
+    const runner = new DhtRunner();
+    runner.run({ port: 0, identity });
+    return { runner, identity };
+}
+```
+
+Crypto methods take Uint8Array/Buffer inputs, not implicit text encodings. Imports
+must be nonempty and crypto inputs are limited to 16 MiB. Malformed handles/data,
+mismatched identities, and unsupported encryption keys raise JS exceptions.
+Only generation is asynchronous; import/export/sign/encrypt/decrypt are
+synchronous and should be used from worker threads for large workloads.
+
+## Packaging And CI
+
+From a successful Release build:
+
+```sh
+npm run package
+npm run test:package
+```
+
+`bundle` copies the addon into `prebuilds/<platform>-<arch>/`, gathers its runtime
+dependencies, rewrites native loader paths, and copies dependency license
+notices. macOS needs `dylibbundler` and Apple developer tools; Linux needs
+`patchelf` and Debian/Ubuntu dependency copyright files. Windows uses the vcpkg
+installed tree (`VCPKG_INSTALLED_DIR`, `VCPKG_DEFAULT_TRIPLET`) and MSVC tools.
+`OPENDHT_LIBRARY_PATH` adds native library search directories when bundling.
+An explicit addon path may be passed to `npm run bundle -- /absolute/addon.node`.
+Bundling replaces only the current platform's generated prebuild directory.
+
+`test:package` creates an npm archive, installs it in a temporary consumer with
+install scripts disabled and no dev dependencies, forces prebuild-only loading,
+and runs the full runtime suite. Pass an archive file or a directory containing
+one archive to test it directly, for example `npm run test:package -- dist`.
+Only JS, declarations, documentation, and prebuilds are included in the archive.
+
+The [Node.js package workflow](../.github/workflows/nodejs-package.yml) builds:
+
+| Target | Build Baseline |
+| --- | --- |
+| Linux x64 | Ubuntu 24.04 / glibc 2.39 |
+| macOS ARM64 and x64 | macOS 15 |
+| Windows x64 | Windows Server 2022 / MSVC |
+
+CI combines platform prebuilds into one npm archive and verifies that archive on
+Node 22, 24, and 26 on each platform. Published GitHub releases receive the
+verified archive only after all install tests pass. The package remains private;
+the workflow does not publish to the npm registry or require an npm token.
+musl/Alpine and other architectures are not currently built. Node-API stability
+does not remove OS/libc or native dependency compatibility requirements. Review
+the included dependency licenses and source-distribution obligations before
+redistributing binaries beyond these development/release artifacts.
+
+Query filters, async iterators, AbortSignal support, certificate trust-store
+validation, CA issuance controls, and proxy controls remain future work.

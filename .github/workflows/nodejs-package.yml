@@ -1,0 +1,193 @@
+name: Node.js Package
+
+on:
+  push:
+    paths:
+      - 'nodejs/**'
+      - '.github/workflows/nodejs-package.yml'
+      - 'src/**'
+      - 'include/**'
+      - 'cmake/**'
+      - 'CMakeLists.txt'
+      - 'vcpkg*.json'
+      - 'ports/**'
+      - 'LICENSE'
+  pull_request:
+    paths:
+      - 'nodejs/**'
+      - '.github/workflows/nodejs-package.yml'
+      - 'src/**'
+      - 'include/**'
+      - 'cmake/**'
+      - 'CMakeLists.txt'
+      - 'vcpkg*.json'
+      - 'ports/**'
+      - 'LICENSE'
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: nodejs
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            target: linux-x64
+          - os: macos-15
+            target: darwin-arm64
+          - os: macos-15-intel
+            target: darwin-x64
+          - os: windows-2022
+            target: win32-x64
+    env:
+      VCPKG_DISABLE_METRICS: '1'
+      VCPKG_DEFAULT_TRIPLET: x64-windows-release
+      VCPKG_INSTALLED_DIR: ${{ github.workspace }}/vcpkg_installed
+      VCPKG_BINARY_SOURCES: clear;files,${{ github.workspace }}/vcpkg-binary-cache,readwrite
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: nodejs/package-lock.json
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo -n apt-get update
+          sudo -n apt-get install -y cmake ninja-build pkg-config patchelf \
+            libgnutls28-dev nettle-dev libargon2-dev libmsgpack-cxx-dev \
+            libfmt-dev libjsoncpp-dev libsimdutf-dev
+      - name: Install macOS dependencies
+        if: runner.os == 'macOS'
+        run: brew install cmake ninja pkg-config dylibbundler gnutls nettle argon2 msgpack-cxx fmt jsoncpp simdutf
+      - name: Set up MSVC
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+      - name: Set up vcpkg
+        if: runner.os == 'Windows'
+        uses: lukka/run-vcpkg@v11
+        with:
+          vcpkgJsonGlob: vcpkg.json
+          vcpkgConfigurationJsonGlob: vcpkg-configuration.json
+      - name: Cache Windows native dependencies
+        if: runner.os == 'Windows'
+        uses: actions/cache@v6
+        with:
+          path: ${{ github.workspace }}/vcpkg-binary-cache
+          key: node-vcpkg-${{ env.VCPKG_DEFAULT_TRIPLET }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json', 'ports/**') }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            node-vcpkg-${{ env.VCPKG_DEFAULT_TRIPLET }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json', 'ports/**') }}-
+      - run: npm ci --no-audit --no-fund
+      - name: Build Unix addon
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          if [[ "$RUNNER_OS" == 'macOS' ]]; then
+            export MACOSX_DEPLOYMENT_TARGET=15.0
+          fi
+          npm run build -- --CDOPENDHT_DOWNLOAD_DEPS=OFF
+      - name: Build Windows addon
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          npm run build -- `
+            "--CDCMAKE_TOOLCHAIN_FILE=$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" `
+            "--CDVCPKG_MANIFEST_DIR=$env:GITHUB_WORKSPACE" `
+            "--CDVCPKG_INSTALLED_DIR=$env:VCPKG_INSTALLED_DIR" `
+            "--CDVCPKG_TARGET_TRIPLET=$env:VCPKG_DEFAULT_TRIPLET" `
+            --CDVCPKG_MANIFEST_NO_DEFAULT_FEATURES=ON `
+            --CDCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreadedDLL `
+            --CDOPENDHT_DOWNLOAD_DEPS=OFF
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          "$env:VCPKG_INSTALLED_DIR/$env:VCPKG_DEFAULT_TRIPLET/bin" >> $env:GITHUB_PATH
+          "OPENDHT_LIBRARY_PATH=$env:VCPKG_INSTALLED_DIR/$env:VCPKG_DEFAULT_TRIPLET/bin" >> $env:GITHUB_ENV
+      - run: npm test
+      - run: npm run typecheck
+      - run: npm run bundle
+      - run: npm run test:package
+      - uses: actions/upload-artifact@v7
+        with:
+          name: opendht-node-prebuild-${{ matrix.target }}
+          path: nodejs/prebuilds/
+          if-no-files-found: error
+
+  package:
+    name: Assemble npm archive
+    needs: build
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: opendht-node-prebuild-*
+          path: nodejs/prebuilds
+          merge-multiple: true
+      - name: Pack all platforms
+        working-directory: nodejs
+        run: |
+          mkdir -p dist
+          npm pack --pack-destination dist
+      - uses: actions/upload-artifact@v7
+        with:
+          name: opendht-node-npm
+          path: nodejs/dist/*.tgz
+          if-no-files-found: error
+
+  smoke:
+    name: Install on ${{ matrix.os }} / Node ${{ matrix.node }}
+    needs: package
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15, macos-15-intel, windows-2022]
+        node: ['22', '24', '26']
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ matrix.node }}
+      - uses: actions/download-artifact@v8
+        with:
+          name: opendht-node-npm
+          path: nodejs/dist
+      - name: Test installed archive without a native build toolchain
+        working-directory: nodejs
+        run: npm run test:package -- dist
+
+  release:
+    name: Attach npm archive to release
+    if: github.event_name == 'release'
+    needs: smoke
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: opendht-node-npm
+          path: dist
+      - name: Upload verified archive
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: gh release upload "$RELEASE_TAG" dist/*.tgz --clobber

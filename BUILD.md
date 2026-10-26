@@ -117,11 +117,16 @@ cmake -DOPENDHT_PYTHON=ON \
 
 ## Node.js Bindings
 
-Initial Node-API bindings wrap the C++ API directly with `node-addon-api`.
+Node-API bindings wrap the C++ API directly with `node-addon-api`, including
+RSA/EC keys, certificates, identities, and signed/encrypted DHT operations.
 With the native dependencies above, Node.js 22.9+, and CMake installed, run
 `npm ci`, `npm run build`, `npm test`, and `npm run typecheck` from `nodejs/`.
 This creates a separate native build without changing the existing build tree.
 See [the Node.js binding guide](nodejs/README.md) for the API and current limits.
+`npm run package` creates a platform prebuild with bundled native dependencies;
+`npm run test:package` verifies installation outside the source tree. The Node.js
+package CI builds Linux x64, macOS ARM64/x64, and Windows x64 prebuilds and checks
+the assembled npm archive on Node 22, 24, and 26 before release attachment.
 
 ## C and Rust Bindings
 
