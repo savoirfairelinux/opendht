@@ -122,6 +122,10 @@ Enable `OPENDHT_C=ON` to build the C ABI. With `BUILD_TESTING=ON`, CTest runs
 enabled. Rust regression and callback-lifetime tests run with Cargo; see
 [the Rust binding guide](rust/README.md) for build and library-path settings.
 
+`dht_infohash` and `dht_pkid` have `uint32_t` alignment, matching the native hash
+types, while retaining their 20-byte and 32-byte sizes. Rebuild consumers against
+the updated header; foreign-language declarations must match this alignment.
+
 C handles returned by constructors, imports, and reference functions are owned
 and require their matching delete/unref function. Data views, string getters,
 query fields, and callback arguments are borrowed: copy them or take a reference

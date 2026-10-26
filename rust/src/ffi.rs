@@ -26,13 +26,13 @@ pub struct Blob {
     _thread_bound: std::marker::PhantomData<*mut ()>,
 }
 
-#[repr(C)]
+#[repr(C, align(4))]
 #[derive(PartialEq)]
 pub struct InfoHash {
     pub d: [u8; HASH_LEN],
 }
 
-#[repr(C)]
+#[repr(C, align(4))]
 pub struct PkId {
     pub d: [u8; PKID_LEN],
 }

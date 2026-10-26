@@ -39,9 +39,17 @@ OPENDHT_C_PUBLIC dht_data_view dht_blob_get_data(const dht_blob* data);
 OPENDHT_C_PUBLIC void dht_blob_delete(dht_blob* data);
 
 // dht::InfoHash
+#ifdef __cplusplus
+#define OPENDHT_C_ALIGN_UINT32 alignas(uint32_t)
+#elif defined(_MSC_VER)
+#define OPENDHT_C_ALIGN_UINT32 __declspec(align(4))
+#else
+#define OPENDHT_C_ALIGN_UINT32 _Alignas(uint32_t)
+#endif
+
 struct OPENDHT_C_PUBLIC dht_infohash
 {
-    uint8_t d[HASH_LEN];
+    OPENDHT_C_ALIGN_UINT32 uint8_t d[HASH_LEN];
 };
 typedef struct dht_infohash dht_infohash;
 OPENDHT_C_PUBLIC void dht_infohash_zero(dht_infohash* h);
@@ -56,9 +64,10 @@ OPENDHT_C_PUBLIC bool dht_infohash_is_zero(const dht_infohash* h);
 // dht::PkId
 struct OPENDHT_C_PUBLIC dht_pkid
 {
-    uint8_t d[32];
+    OPENDHT_C_ALIGN_UINT32 uint8_t d[32];
 };
 typedef struct dht_pkid dht_pkid;
+#undef OPENDHT_C_ALIGN_UINT32
 OPENDHT_C_PUBLIC const char* dht_pkid_print(const dht_pkid* h);
 
 // dht::crypto::PublicKey

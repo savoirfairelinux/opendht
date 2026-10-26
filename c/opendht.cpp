@@ -12,6 +12,11 @@ using PrivkeySp = std::shared_ptr<dht::crypto::PrivateKey>;
 using PubkeySp = std::shared_ptr<const dht::crypto::PublicKey>;
 using CertSp = std::shared_ptr<dht::crypto::Certificate>;
 
+static_assert(sizeof(dht_infohash) == sizeof(dht::InfoHash));
+static_assert(alignof(dht_infohash) == alignof(dht::InfoHash));
+static_assert(sizeof(dht_pkid) == sizeof(dht::PkId));
+static_assert(alignof(dht_pkid) == alignof(dht::PkId));
+
 struct CompletionGuard
 {
     CompletionGuard(dht_done_cb callback, void* data)
