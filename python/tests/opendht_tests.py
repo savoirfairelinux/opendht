@@ -19,6 +19,158 @@ class _ListenerCallback:
 
 class OpenDhtTester(unittest.TestCase):
 
+    def test_value_security_state(self):
+        key = dht.PrivateKey.generateEC()
+        identity = dht.Identity(key, dht.Certificate.generate(key, "sender"))
+        recipient = dht.Identity.generate("recipient", bits=2048)
+        node = self._run_node(id=identity, ipv4="127.0.0.1", ipv6="::1")
+        peer = self._run_node(id=recipient, ipv4="127.0.0.1", ipv6="::1")
+        self.assertTrue(node.ping(peer.getBound(socket.AF_INET)))
+        for method in ("put", "putSigned", "putEncrypted"):
+            with self.subTest(method=method):
+                value = dht.Value(method.encode())
+                self.assertIs(value.isSigned(), False)
+                self.assertIs(value.isEncrypted(), False)
+                value.recipient = recipient.publickey.getId()
+                self.assertIs(value.isEncrypted(), False)
+                location = dht.InfoHash.getRandom()
+                if method == "putEncrypted":
+                    self.assertTrue(node.putEncrypted(location, value, recipient.publickey))
+                else:
+                    self.assertTrue(getattr(node, method)(location, value))
+                received = peer.get(location)
+                self.assertEqual(len(received), 1)
+                self.assertEqual(received[0].data, value.data)
+                self.assertIs(received[0].isSigned(), method != "put")
+                self.assertIs(received[0].isEncrypted(), False)
+
+    def test_connectivity_changed(self):
+        node = dht.DhtRunner()
+        self.addCleanup(node.join)
+        self.assertIsNone(node.connectivityChanged())
+        node.run(ipv4="127.0.0.1", ipv6="::1")
+        peer = self._run_node(ipv4="127.0.0.1", ipv6="::1")
+        self.assertTrue(node.ping(peer.getBound(socket.AF_INET)))
+        node_id = node.getNodeId()
+        self.assertIsNone(node.connectivityChanged())
+        self.assertTrue(node.ping(peer.getBound(socket.AF_INET)))
+        self.assertEqual(node.getNodeId(), node_id)
+        node.join()
+        self.assertIsNone(node.connectivityChanged())
+
+    def test_runner_mutations_release_gil(self):
+        self._run_binding_script("""
+            from datetime import timedelta
+            from pathlib import Path
+            import socket
+            from tempfile import TemporaryDirectory
+            import threading
+            from unittest import TestCase
+            check = TestCase()
+            with TemporaryDirectory() as directory:
+                operations = (
+                    lambda node: node.registerType(dht.ValueType(42, "custom", timedelta(seconds=1))),
+                    lambda node: node.enableLogging(),
+                    lambda node: node.disableLogging(),
+                    lambda node: node.enableFileLogging(str(Path(directory) / "node.log")),
+                    lambda node: node.run(),
+                    lambda node: node.run(ipv4="127.0.0.1", ipv6="::1"),
+                    lambda node: node.connectivityChanged(),
+                )
+                for operation in operations:
+                    node, peer = dht.DhtRunner(), dht.DhtRunner()
+                    entered, release = threading.Event(), threading.Event()
+                    def on_status(ipv4, ipv6):
+                        entered.set()
+                        release.wait(5)
+                    try:
+                        node.setOnStatusChanged(on_status)
+                        node.run(ipv4="127.0.0.1", ipv6="::1")
+                        peer.run(ipv4="127.0.0.1", ipv6="::1")
+                        node.ping(peer.getBound(socket.AF_INET), done_cb=lambda ok: None)
+                        check.assertTrue(entered.wait(5))
+                        timer = threading.Timer(0.01, release.set)
+                        timer.start()
+                        operation(node)
+                        timer.join()
+                    finally:
+                        release.set()
+                        node.join()
+                        peer.join()
+        """, timeout=15)
+
+    def test_invalid_where_is_an_exception(self):
+        self._run_binding_script("""
+            from unittest import TestCase
+            check = TestCase()
+            for expression in ("WHERE unknown=1", "WHERE id=42,unknown=test"):
+                with check.assertRaises(ValueError):
+                    dht.Where(expression)
+            check.assertEqual(str(dht.Where("WHERE id=42")), "WHERE id=42")
+        """)
+
+    def test_type_registration_validates_state(self):
+        self._run_binding_script("""
+            from datetime import timedelta
+            from unittest import TestCase
+            check = TestCase()
+            node = dht.DhtRunner()
+            value_type = dht.ValueType(42, "custom", timedelta(seconds=1))
+            try:
+                for attempt in range(2):
+                    with check.assertRaises(RuntimeError):
+                        node.registerType(value_type)
+                    node.run(ipv4="127.0.0.1", ipv6="::1")
+                    node.registerType(value_type)
+                    node.join()
+            finally:
+                node.join()
+        """)
+
+    def test_type_registration_validates_arguments(self):
+        self._run_binding_script("""
+            from unittest import TestCase
+            check = TestCase()
+            node = dht.DhtRunner()
+            try:
+                node.run(ipv4="127.0.0.1", ipv6="::1")
+                with check.assertRaises(TypeError):
+                    node.registerType(None)
+                with check.assertRaises(ValueError):
+                    node.registerType(dht.ValueType.__new__(dht.ValueType))
+            finally:
+                node.join()
+        """)
+
+    def test_empty_encryption_recipient_is_an_exception(self):
+        self._run_binding_script("""
+            import gc
+            from unittest import TestCase
+            from unittest.mock import Mock
+            import weakref
+            check = TestCase()
+            key = dht.PrivateKey.generateEC()
+            identity = dht.Identity(key, dht.Certificate.generate(key, "sender"))
+            node = dht.DhtRunner()
+            try:
+                node.run(id=identity, ipv4="127.0.0.1", ipv6="::1")
+                location, value = dht.InfoHash.getRandom(), dht.Value(b"encrypted")
+                for recipient in (None, dht.PublicKey(), dht.InfoHash.getRandom()):
+                    exception = TypeError if isinstance(recipient, dht.InfoHash) else ValueError
+                    with check.assertRaises(exception):
+                        node.putEncrypted(location, value, recipient)
+                    callback = Mock()
+                    reference = weakref.ref(callback)
+                    with check.assertRaises(exception):
+                        node.putEncrypted(location, value, recipient, callback)
+                    callback.assert_not_called()
+                    del callback
+                    gc.collect()
+                    check.assertIsNone(reference())
+            finally:
+                node.join()
+        """)
+
     def test_observability_snapshots(self):
         node = dht.DhtRunner()
         self.addCleanup(node.join)
@@ -782,6 +934,7 @@ class AsyncOpenDhtTester(unittest.IsolatedAsyncioTestCase):
         try:
             node.run(ipv4="127.0.0.1", ipv6="::1")
             peer.run(ipv4="127.0.0.1", ipv6="::1")
+            self.assertIsNone(node.connectivityChanged())
             self.assertTrue(await asyncio.wait_for(node.ping(peer.getBound(socket.AF_INET)), 5))
             await asyncio.wait_for(changed.wait(), 5)
             self.assertTrue(all(isinstance(info, dht.NodeInfo) for info in snapshots))
