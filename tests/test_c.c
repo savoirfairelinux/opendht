@@ -8,20 +8,23 @@
 #include <stdio.h>
 #include <string.h>
 
-static void done_cb(bool ok, void* user_data)
+static void
+done_cb(bool ok, void* user_data)
 {
     int* completed = user_data;
     *completed += ok ? 1 : 10;
 }
 
-static bool get_cb(const dht_value* value, void* user_data)
+static bool
+get_cb(const dht_value* value, void* user_data)
 {
     (void) value;
     (void) user_data;
     return true;
 }
 
-static bool listen_cb(const dht_value* value, bool expired, void* user_data)
+static bool
+listen_cb(const dht_value* value, bool expired, void* user_data)
 {
     (void) expired;
     (void) user_data;
@@ -29,12 +32,14 @@ static bool listen_cb(const dht_value* value, bool expired, void* user_data)
     return true;
 }
 
-static void released_cb(void* user_data)
+static void
+released_cb(void* user_data)
 {
     ++*(int*) user_data;
 }
 
-int main(void)
+int
+main(void)
 {
     const uint8_t invalid[] = {1, 2, 3};
     assert(dht_publickey_import(invalid, sizeof(invalid)) == NULL);
@@ -75,8 +80,11 @@ int main(void)
     dht_blob* signature = dht_privatekey_sign(private_key, invalid, sizeof(invalid));
     assert(signature != NULL);
     dht_data_view signature_data = dht_blob_get_data(signature);
-    assert(dht_publickey_check_signature(public_key, (const char*) invalid, sizeof(invalid),
-                                        (const char*) signature_data.data, signature_data.size));
+    assert(dht_publickey_check_signature(public_key,
+                                         (const char*) invalid,
+                                         sizeof(invalid),
+                                         (const char*) signature_data.data,
+                                         signature_data.size));
     dht_blob_delete(signature);
     dht_blob* packed = dht_privatekey_export_blob(private_key, "binding-password");
     assert(packed != NULL);

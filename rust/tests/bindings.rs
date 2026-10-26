@@ -1,6 +1,9 @@
 use opendht::crypto::{DhtCertificate, DhtIdentity, PrivateKey, PublicKey};
 use opendht::{DhtRunner, DhtRunnerConfig, InfoHash, Value};
-use std::sync::{atomic::{AtomicUsize, Ordering}, Arc, mpsc};
+use std::sync::{
+    atomic::{AtomicUsize, Ordering},
+    mpsc, Arc,
+};
 use std::time::Duration;
 
 #[test]
@@ -19,6 +22,10 @@ fn value_metadata_and_borrowed_strings() {
     assert_eq!(value.seq(), 23);
     assert_eq!(value.priority(), 1);
     assert_eq!(value.push_type().unwrap(), "audioCall");
+    let mut copy = value.boxed();
+    copy.set_priority(2);
+    assert_eq!(value.priority(), 1);
+    assert_eq!(copy.priority(), 2);
     assert!(value.owner().is_none());
     assert!(value.recipient().is_zero());
     assert!(Value::new("").as_bytes().is_empty());
@@ -48,12 +55,17 @@ fn binary_crypto_and_password_slices() {
     assert!(public.check_signature(data, &signature));
     assert!(!public.check_signature(b"changed", &signature));
     let encrypted = public.encrypt(data).unwrap();
-    assert_eq!(restored.decrypt(&encrypted.as_bytes()).unwrap().as_bytes(), data);
+    assert_eq!(
+        restored.decrypt(&encrypted.as_bytes()).unwrap().as_bytes(),
+        data
+    );
     assert!(restored.decrypt(b"invalid").is_err());
     let plain = private.serialize("").unwrap();
     assert!(PrivateKey::from_bytes(&plain, "").is_ok());
     let ec = PrivateKey::new_ec().unwrap();
-    assert!(ec.public_key().check_signature(data, ec.sign(data).unwrap()));
+    assert!(ec
+        .public_key()
+        .check_signature(data, ec.sign(data).unwrap()));
     assert!(ec.public_key().encrypt(data).is_err());
 }
 
@@ -70,7 +82,9 @@ fn identity_persistence() {
 struct DropCounter(Arc<AtomicUsize>);
 
 impl Drop for DropCounter {
-    fn drop(&mut self) { self.0.fetch_add(1, Ordering::SeqCst); }
+    fn drop(&mut self) {
+        self.0.fetch_add(1, Ordering::SeqCst);
+    }
 }
 
 #[test]
@@ -80,7 +94,9 @@ fn join_releases_pending_callbacks_and_allows_restart() {
     config.threaded = false;
     let status_released = Arc::new(AtomicUsize::new(0));
     let status_counter = DropCounter(status_released.clone());
-    config.set_status_callback(move |_, _| { let _ = &status_counter; });
+    config.set_status_callback(move |_, _| {
+        let _ = &status_counter;
+    });
     config.set_proxy_user_agent("regression").unwrap();
     config.set_proxy_user_agent("replacement").unwrap();
     runner.run_config(0, config).unwrap();
@@ -89,9 +105,20 @@ fn join_releases_pending_callbacks_and_allows_restart() {
     let hash = InfoHash::get("callback ownership");
     let released = Arc::new(AtomicUsize::new(0));
     let counter = DropCounter(released.clone());
-    let token = runner.listen(&hash, move |_, _| { let _ = &counter; true }).unwrap();
+    let token = runner
+        .listen(&hash, move |_, _| {
+            let _ = &counter;
+            true
+        })
+        .unwrap();
     let (sent, received) = mpsc::channel();
-    runner.get(&hash, |_| true, move |ok| { sent.send(ok).unwrap(); });
+    runner.get(
+        &hash,
+        |_| true,
+        move |ok| {
+            sent.send(ok).unwrap();
+        },
+    );
     runner.join().unwrap();
     assert_eq!(status_released.load(Ordering::SeqCst), 1);
     assert_eq!(released.load(Ordering::SeqCst), 1);
@@ -111,13 +138,15 @@ fn nonthreaded_loop_executes_owned_callbacks() {
     let hash = InfoHash::get("loop progress");
     let seen = Arc::new(AtomicUsize::new(0));
     let callback_seen = seen.clone();
-    let token = runner.listen(&hash, move |value, expired| {
-        if !expired {
-            assert_eq!(value.as_bytes(), b"test");
-            callback_seen.fetch_add(1, Ordering::SeqCst);
-        }
-        true
-    }).unwrap();
+    let token = runner
+        .listen(&hash, move |value, expired| {
+            if !expired {
+                assert_eq!(value.as_bytes(), b"test");
+                callback_seen.fetch_add(1, Ordering::SeqCst);
+            }
+            true
+        })
+        .unwrap();
     runner.put(&hash, Value::new("test"), |_| {}, false);
     runner.loop_once().unwrap();
     assert_eq!(seen.load(Ordering::SeqCst), 1);
@@ -129,9 +158,15 @@ fn nonthreaded_loop_executes_owned_callbacks() {
 fn shutdown_owns_its_callback_and_contains_panics() {
     let mut runner = DhtRunner::new();
     let (sent, received) = mpsc::channel();
-    runner.shutdown(move || { sent.send(42).unwrap(); });
+    runner.shutdown(move || {
+        sent.send(42).unwrap();
+    });
     assert_eq!(received.recv_timeout(Duration::from_secs(5)).unwrap(), 42);
-    runner.get(&InfoHash::new(), |_| true, |_| panic!("callback panic must not unwind into C"));
+    runner.get(
+        &InfoHash::new(),
+        |_| true,
+        |_| panic!("callback panic must not unwind into C"),
+    );
 }
 
 #[test]
@@ -159,13 +194,15 @@ fn bound_filtered_queries_and_extension_hooks() {
     let hash = InfoHash::get("filtered query");
     let seen = Arc::new(AtomicUsize::new(0));
     let callback_seen = seen.clone();
-    let token = runner.listen_filtered(&hash, "WHERE value_type=17", move |value, expired| {
-        if !expired {
-            assert_eq!(value.id(), 42);
-            callback_seen.fetch_add(1, Ordering::SeqCst);
-        }
-        true
-    }).unwrap();
+    let token = runner
+        .listen_filtered(&hash, "WHERE value_type=17", move |value, expired| {
+            if !expired {
+                assert_eq!(value.id(), 42);
+                callback_seen.fetch_add(1, Ordering::SeqCst);
+            }
+            true
+        })
+        .unwrap();
     let mut value = Value::with_id(b"query result", 42);
     value.set_value_type(17);
     value.set_user_type("regression").unwrap();
@@ -173,15 +210,25 @@ fn bound_filtered_queries_and_extension_hooks() {
     runner.loop_once().unwrap();
     assert_eq!(seen.load(Ordering::SeqCst), 1);
     let (sent, received) = mpsc::channel();
-    runner.query(&hash, "SELECT id,user_type WHERE value_type=17", move |fields| {
-        sent.send((fields.id, fields.user_type)).unwrap();
-        true
-    }, |_| {}).unwrap();
+    runner
+        .query(
+            &hash,
+            "SELECT id,user_type WHERE value_type=17",
+            move |fields| {
+                sent.send((fields.id, fields.user_type)).unwrap();
+                true
+            },
+            |_| {},
+        )
+        .unwrap();
     runner.loop_once().unwrap();
     let (id, user_type) = received.recv_timeout(Duration::from_secs(5)).unwrap();
     assert_eq!(id, Some(42));
     assert_eq!(user_type, Some(b"regression".to_vec()));
-    let mut push = runner.push_notification_received(&[("session", "regression")]).unwrap();
+    let mut push = runner
+        .push_notification_received(&[("session", "regression")])
+        .unwrap();
+    runner.loop_once().unwrap();
     assert!(push.poll().unwrap().is_some());
     runner.cancel_listen(&hash, token);
     runner.join().unwrap();
@@ -198,26 +245,55 @@ fn threaded_signed_and_encrypted_roundtrips() {
     }
     let recipient = destination.public_key().unwrap().long_id();
     let (sent, received) = mpsc::channel();
-    source.ping(([127, 0, 0, 1], destination.bound_port(libc::AF_INET as _)).into(), move |ok| { sent.send(ok).unwrap(); });
+    source.ping(
+        ([127, 0, 0, 1], destination.bound_port(libc::AF_INET as _)).into(),
+        move |ok| {
+            sent.send(ok).unwrap();
+        },
+    );
     assert!(received.recv_timeout(Duration::from_secs(10)).unwrap());
     for encrypted in [false, true] {
-        let hash = InfoHash::get(if encrypted { "threaded encrypted" } else { "threaded signed" });
+        let hash = InfoHash::get(if encrypted {
+            "threaded encrypted"
+        } else {
+            "threaded signed"
+        });
         let (sent, received) = mpsc::channel();
-        let token = destination.listen(&hash, move |value, expired| {
-            if !expired { let _ = sent.send(value.as_bytes()); }
-            true
-        }).unwrap();
+        let token = destination
+            .listen(&hash, move |value, expired| {
+                if !expired {
+                    let _ = sent.send(value.as_bytes());
+                }
+                true
+            })
+            .unwrap();
         let (sent, done) = mpsc::channel();
-        let callback = move |ok| { let _ = sent.send(ok); };
-        if encrypted { source.put_encrypted(&hash, &recipient, Value::new("network value"), callback, false); }
-        else { source.put_signed(&hash, Value::new("network value"), callback, false); }
+        let callback = move |ok| {
+            let _ = sent.send(ok);
+        };
+        if encrypted {
+            source.put_encrypted(
+                &hash,
+                &recipient,
+                Value::new("network value"),
+                callback,
+                false,
+            );
+        } else {
+            source.put_signed(&hash, Value::new("network value"), callback, false);
+        }
         assert!(done.recv_timeout(Duration::from_secs(15)).unwrap());
-        assert_eq!(received.recv_timeout(Duration::from_secs(15)).unwrap(), b"network value");
+        assert_eq!(
+            received.recv_timeout(Duration::from_secs(15)).unwrap(),
+            b"network value"
+        );
         destination.cancel_listen(&hash, token);
     }
     for runner in [&mut source, &mut destination] {
         let (sent, received) = mpsc::channel();
-        runner.shutdown(move || { sent.send(()).unwrap(); });
+        runner.shutdown(move || {
+            sent.send(()).unwrap();
+        });
         received.recv_timeout(Duration::from_secs(15)).unwrap();
         runner.join().unwrap();
     }
