@@ -324,6 +324,30 @@ cdef class Value(object):
     def id(self, cpp.uint64_t value):
         self._value.get().id = value
     @property
+    def type(self) -> int:
+        return self._value.get().type
+    @type.setter
+    def type(self, cpp.uint16_t value):
+        self._value.get().type = value
+    @property
+    def seq(self) -> int:
+        return self._value.get().seq
+    @seq.setter
+    def seq(self, cpp.uint16_t value):
+        self._value.get().seq = value
+    @property
+    def priority(self) -> int:
+        return self._value.get().priority
+    @priority.setter
+    def priority(self, unsigned value):
+        self._value.get().priority = value
+    @property
+    def pushType(self) -> str:
+        return self._value.get().pushType.decode()
+    @pushType.setter
+    def pushType(self, str value):
+        self._value.get().pushType = value.encode()
+    @property
     def size(self) -> int:
         return self._value.get().size()
 
@@ -383,6 +407,30 @@ cdef class NodeSet(object):
 cdef class PrivateKey(_WithPk):
     cdef shared_ptr[cpp.PrivateKey] _key
 
+    def __init__(self, bytes data=None, str password=""):
+        cdef cpp.Blob encoded
+        if '\0' in password:
+            raise ValueError("Password must not contain NUL characters")
+        if data is not None:
+            if not data:
+                raise ValueError("Private key data must not be empty")
+            encoded = data
+            self._key = cpp.make_shared[cpp.PrivateKey](encoded, <cpp.string>password.encode())
+
+    def serialize(self, str password="") -> bytes:
+        """Export PKCS#8 PEM, encrypted when a nonempty password is supplied."""
+        if not self._key:
+            raise ValueError("PrivateKey is not initialized")
+        if '\0' in password:
+            raise ValueError("Password must not contain NUL characters")
+        cdef cpp.Blob encoded = self._key.get().serialize(password.encode())
+        if encoded.empty():
+            raise RuntimeError("Could not export private key")
+        return (<char*>encoded.data())[:encoded.size()]
+
+    def __bytes__(self):
+        return self.serialize()
+
     def getId(self) -> InfoHash:
         if not self._key:
             raise ValueError("PrivateKey is not initialized")
@@ -441,6 +489,25 @@ cdef class PrivateKey(_WithPk):
 
 cdef class PublicKey(_WithPk):
     cdef cpp.shared_ptr[cpp.PublicKey] _key
+    def __init__(self, bytes data=None):
+        cdef cpp.Blob encoded
+        if data is not None:
+            if not data:
+                raise ValueError("Public key data must not be empty")
+            encoded = data
+            self._key = cpp.make_shared[cpp.PublicKey](encoded)
+
+    def serialize(self) -> bytes:
+        """Export the public key as DER bytes."""
+        if not self._key:
+            raise ValueError("PublicKey is not initialized")
+        cdef cpp.Blob encoded
+        self._key.get().pack(encoded)
+        return (<char*>encoded.data())[:encoded.size()]
+
+    def __bytes__(self):
+        return self.serialize()
+
     def getId(self) -> InfoHash:
         if not self._key:
             raise ValueError("PublicKey is not initialized")
@@ -512,7 +579,7 @@ cdef class Certificate(_WithPk):
             raise ValueError("PrivateKey is not initialized")
         self._cert.get().revoke(deref(k._key.get()), deref(c._cert.get()));
     def __bytes__(self):
-        return self._cert.get().toString().encode() if self._cert else b''
+        return self._cert.get().toString() if self._cert else b''
     @property
     def issuer(self) -> Certificate|None:
         if self._cert and self._cert.get().issuer:

@@ -78,6 +78,59 @@ async def dht_async_demo(key_str: str):
 asyncio.run(dht_async_demo("unique_key"))
 ```
 
+## Identity Persistence
+
+Keys can be imported from PEM or DER bytes. Private keys export PKCS#8 PEM;
+public keys export DER. Certificates export their complete PEM chain.
+
+```python
+import opendht as dht
+
+identity = dht.Identity.generate("my-node")
+
+private_key_pem = identity.key.serialize(password)
+certificate_pem = bytes(identity.certificate)
+public_key_der = bytes(identity.publickey)
+
+restored = dht.Identity(
+    dht.PrivateKey(private_key_pem, password),
+    dht.Certificate(certificate_pem),
+)
+public_key = dht.PublicKey(public_key_der)
+node = dht.DhtRunner()
+node.run(id=restored)
+```
+
+Here `password` is an application-supplied string. Save the exported bytes using
+your application's storage, protect private key files, and keep the password
+separate from the key. `bytes(private_key)` and `private_key.serialize()` without
+a password export **unencrypted** private keys. Empty or malformed key data,
+incorrect passwords, and passwords containing NUL characters raise exceptions.
+Exporting an uninitialized key raises `ValueError`.
+
+## Value Metadata
+
+The following properties are readable and writable on `Value`, including values
+returned by `get()` and `listen()`:
+
+| Property | Type | Meaning |
+|----------|------|---------|
+| `type` | unsigned 16-bit integer | Native value type identifier |
+| `seq` | unsigned 16-bit integer | Sequence number for signed value updates |
+| `priority` | unsigned integer | Push priority: `0` high, `1` normal |
+| `pushType` | string | Push notification type, such as `audioCall` |
+
+```python
+value = dht.Value(b"some binary data")
+value.type = 42
+value.seq = 1
+value.priority = 1
+value.pushType = "audioCall"
+```
+
+Set metadata before publishing the value. Numeric values outside the native
+integer range raise `OverflowError`.
+
 ## Documentation
 
 For more information, examples and documentation, or to repport issues, visit: https://opendht.net

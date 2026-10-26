@@ -104,7 +104,9 @@ cdef extern from "opendht/crypto.h" namespace "dht::crypto":
 
     cdef cppclass PrivateKey:
         PrivateKey() except +
+        PrivateKey(Blob data, string password) except +
         shared_ptr[PublicKey] getSharedPublicKey() except +
+        Blob serialize(string password) except +
         Blob decrypt(Blob data) except +
         Blob sign(Blob data) except +
         @staticmethod
@@ -114,8 +116,10 @@ cdef extern from "opendht/crypto.h" namespace "dht::crypto":
 
     cdef cppclass PublicKey:
         PublicKey() except +
+        PublicKey(Blob data) except +
         InfoHash getId() except +
         PkId getLongId() except +
+        void pack(Blob& data) except +
         Blob encrypt(Blob data) except +
         bool checkSignature(Blob data, Blob signature) except +
         bool operator==(PublicKey) const
@@ -168,6 +172,10 @@ cdef extern from "opendht/value.h" namespace "dht":
         InfoHash recipient
         vector[uint8_t] data
         string user_type
+        uint16_t type
+        uint16_t seq
+        unsigned priority
+        string pushType
 
     cdef cppclass ValueType:
         ValueType(uint16_t id, string name, seconds expiration) except +
