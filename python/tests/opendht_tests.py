@@ -1,8 +1,10 @@
 import asyncio
 import gc
 from pathlib import Path
+import socket
 import subprocess
 import sys
+from tempfile import TemporaryDirectory
 import textwrap
 import threading
 import unittest
@@ -16,6 +18,44 @@ class _ListenerCallback:
         return True
 
 class OpenDhtTester(unittest.TestCase):
+
+    def test_persistence_configuration(self):
+        with TemporaryDirectory() as directory:
+            state_path = Path(directory) / "state-\u00e9"
+            config = dht.DhtConfig()
+            config.setPersistPath(str(state_path))
+            first = self._run_node(config=config)
+            node_id = first.getNodeId()
+            port = first.getBound(socket.AF_INET).getPort()
+            self.assertNotEqual(port, 0)
+            first.join()
+            self.assertTrue(state_path.is_file())
+            self.assertTrue(Path(str(state_path) + "_port.txt").is_file())
+
+            restored_config = dht.DhtConfig()
+            restored_config.setPersistPath(str(state_path))
+            second = self._run_node(config=restored_config)
+            self.assertEqual(second.getNodeId(), node_id)
+            self.assertEqual(second.getBound(socket.AF_INET).getPort(), port)
+            second.join()
+
+    def test_disable_persistence(self):
+        with TemporaryDirectory() as directory:
+            config = dht.DhtConfig()
+            config.setPersistPath(str(Path(directory) / "state"))
+            config.setPersistPath("")
+            node = self._run_node(config=config)
+            node.join()
+            self.assertEqual(list(Path(directory).iterdir()), [])
+
+    def test_persistence_path_validation(self):
+        config = dht.DhtConfig()
+        for path in (None, 123):
+            with self.subTest(path=path):
+                with self.assertRaises(TypeError):
+                    config.setPersistPath(path)
+        with self.assertRaises(ValueError):
+            config.setPersistPath("state\0suffix")
 
     def test_key_serialization(self):
         message = b"persisted identity"
