@@ -164,6 +164,139 @@ class OpenDhtTester(unittest.TestCase):
         )
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
+    def test_pht_releases_runner(self):
+        self._run_binding_script("""
+            import gc
+            import threading
+            import weakref
+            from unittest import TestCase
+            check = TestCase()
+            class Callback:
+                def __call__(self, value, expired):
+                    return True
+            for use_index in (False, True):
+                node = dht.DhtRunner()
+                node.run()
+                index = dht.Pht(b"cleanup-test", {"field": 1}, node)
+                if use_index:
+                    finished = threading.Event()
+                    index.lookup({"field": b"x"}, done_cb=lambda ok: finished.set())
+                    check.assertTrue(finished.wait(5))
+                callback = Callback()
+                released = threading.Event()
+                weakref.finalize(callback, released.set)
+                node.listen(dht.InfoHash.getRandom(), callback)
+                del callback, node
+                gc.collect()
+                check.assertFalse(released.is_set())
+                del index
+                gc.collect()
+                check.assertTrue(released.wait(2))
+        """)
+
+    def test_pht_pending_operation_outlives_wrapper(self):
+        self._run_binding_script("""
+            import gc
+            import socket
+            import threading
+            from unittest import TestCase
+            check = TestCase()
+            node, peer = dht.DhtRunner(), dht.DhtRunner()
+            entered, release, finished = (threading.Event() for _ in range(3))
+            def pause(ok, nodes):
+                entered.set()
+                release.wait(5)
+            try:
+                node.run(ipv4="127.0.0.1", ipv6="::1")
+                peer.run(ipv4="127.0.0.1", ipv6="::1")
+                check.assertTrue(node.ping(peer.getBound(socket.AF_INET)))
+                node.put(dht.InfoHash.getRandom(), dht.Value(b"pause"), done_cb=pause)
+                check.assertTrue(entered.wait(5))
+                index = dht.Pht(b"pending-test", {"field": 1}, node)
+                index.lookup({"field": b"x"}, done_cb=lambda ok: finished.set())
+                del index
+                gc.collect()
+                release.set()
+                check.assertTrue(finished.wait(5))
+            finally:
+                release.set()
+                node.join()
+                peer.join()
+        """, timeout=15)
+
+    def test_value_type_lifetime(self):
+        self._run_binding_script("""
+            import gc
+            from datetime import timedelta
+            from unittest import TestCase
+            check = TestCase()
+            node = dht.DhtRunner()
+            try:
+                node.run()
+                value_type = dht.ValueType(42, "test", timedelta(seconds=1))
+                for name in ("second", "third"):
+                    value_type.__init__(42, name, timedelta(seconds=2))
+                    node.registerType(value_type)
+                with check.assertRaises(TypeError):
+                    value_type.__init__(42, "invalid", 1)
+                node.registerType(value_type)
+                del value_type
+                gc.collect()
+                node.put(dht.InfoHash.getRandom(), dht.Value(b"typed", 42))
+            finally:
+                node.join()
+        """)
+
+    def test_uninitialized_nodes_are_exceptions(self):
+        self._run_binding_script("""
+            from unittest import TestCase
+            check = TestCase()
+            for node in (dht.Node(), dht.NodeEntry().getNode()):
+                for method in (node.getId, node.getAddr, node.isExpired,
+                               lambda: str(node), lambda: repr(node)):
+                    with check.assertRaises(ValueError):
+                        method()
+            nodes = dht.NodeSet()
+            nodes.insert(dht.NodeEntry())
+            with check.assertRaises(ValueError):
+                str(nodes)
+        """)
+
+    def test_raising_completion_callbacks_release_references(self):
+        for method in ("get", "put", "ping", "shutdown"):
+            with self.subTest(method=method):
+                self._run_binding_script(f"""
+                    import gc
+                    import sys
+                    import weakref
+                    from unittest import TestCase
+                    check = TestCase()
+                    errors = []
+                    sys.unraisablehook = lambda error: errors.append(
+                        (type(error.exc_value), str(error.exc_value))
+                    )
+                    class Callback:
+                        def __call__(self, *args):
+                            raise RuntimeError("callback failed")
+                    node = dht.DhtRunner()
+                    callback = Callback()
+                    callback_ref = weakref.ref(callback)
+                    if {method!r} == "get":
+                        node.get(dht.InfoHash.getRandom(),
+                                 get_cb=lambda value: True, done_cb=callback)
+                    elif {method!r} == "put":
+                        node.put(dht.InfoHash.getRandom(), dht.Value(b"test"),
+                                 done_cb=callback)
+                    elif {method!r} == "ping":
+                        node.ping(dht.SockAddr(), done_cb=callback)
+                    else:
+                        node.shutdown(callback)
+                    del callback
+                    gc.collect()
+                    check.assertEqual(errors, [(RuntimeError, "callback failed")])
+                    check.assertIsNone(callback_ref())
+                """)
+
     def test_run_bind_errors_are_exceptions(self):
         self._run_binding_script("""
             from unittest import TestCase
