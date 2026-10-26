@@ -209,14 +209,21 @@ if get_option('python').require(
     get_option('indexation').enabled(),
     error_message: 'python requires indexation',
 ).allowed()
-    py = import('python').find_installation()
+    py = import('python').find_installation(pure: false)
     dep_py = py.dependency()
     py.extension_module(
-        'opendht',
+        '_core',
         'python/opendht.pyx',
+        subdir: 'opendht',
+        cython_args: ['--module-name', 'opendht._core'],
         override_options: ['cython_language=cpp'],
         dependencies: [opendht_dep, msgpack, jsoncpp, fmt, dep_py],
         install: true,
+    )
+    py.install_sources(
+        'python/opendht/__init__.py',
+        'python/opendht/aio.py',
+        subdir: 'opendht',
     )
 endif
 
