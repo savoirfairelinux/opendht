@@ -407,6 +407,7 @@ DhtRunner::join()
     {
         std::lock_guard lck(dht_mtx);
         resetDht();
+        statusCbs.clear();
         status4 = NodeStatus::Disconnected;
         status6 = NodeStatus::Disconnected;
     }
