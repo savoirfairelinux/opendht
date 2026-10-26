@@ -460,7 +460,13 @@ private:
     void reportedAddr(const SockAddr&);
 
     // Storage
-    void storageAddListener(const InfoHash& id, const Sp<Node>& node, size_t tid, Query&& = {}, int version = 0);
+    /**
+     * Registers or refreshes a remote listening socket.
+     *
+     * @return false when the listener quota of the node or of the key is
+     *         reached, in which case nothing is stored.
+     */
+    bool storageAddListener(const InfoHash& id, const Sp<Node>& node, size_t tid, Query&& = {}, int version = 0);
     bool storageStore(const InfoHash& id,
                       const Sp<Value>& value,
                       time_point created,

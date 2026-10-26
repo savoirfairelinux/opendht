@@ -1487,35 +1487,47 @@ Dht::storageStore(const InfoHash& id,
     return std::get<0>(store);
 }
 
-void
+bool
 Dht::storageAddListener(const InfoHash& id, const Sp<Node>& node, size_t socket_id, Query&& query, int version)
 {
     const auto& now = scheduler.time();
     auto st = store.find(id);
     if (st == store.end()) {
         if (store.size() >= max_store_keys)
-            return;
+            return false;
         st = store.emplace(id, now).first;
     }
-    auto& node_listeners = st->second.listeners[node];
-    auto l = node_listeners.find(socket_id);
-    if (l == node_listeners.end()) {
-        auto vals = st->second.get(query.where.getFilter());
-        if (not vals.empty()) {
-            network_engine.tellListener(node,
-                                        socket_id,
-                                        id,
-                                        WANT4 | WANT6,
-                                        makeToken(node->getAddr(), false),
-                                        dht4.buckets.findClosestNodes(id, now, TARGET_NODES),
-                                        dht6.buckets.findClosestNodes(id, now, TARGET_NODES),
-                                        std::move(vals),
-                                        query,
-                                        version);
+    auto& storage = st->second;
+    auto nl = storage.listeners.find(node);
+    if (nl != storage.listeners.end()) {
+        auto l = nl->second.find(socket_id);
+        if (l != nl->second.end()) {
+            l->second.refresh(now, std::forward<Query>(query));
+            return true;
         }
-        node_listeners.emplace(socket_id, Listener {now, std::forward<Query>(query), version});
-    } else
-        l->second.refresh(now, std::forward<Query>(query));
+    }
+    /* Look the quota up before touching the listener maps, so that a refused
+       subscription never creates an entry of its own. */
+    if (not storage.canAddListener(node)) {
+        if (logger_)
+            logger_->warn("[node {}] Listener quota reached for {}", node->toString(), id.to_view());
+        return false;
+    }
+    auto vals = storage.get(query.where.getFilter());
+    if (not vals.empty()) {
+        network_engine.tellListener(node,
+                                    socket_id,
+                                    id,
+                                    WANT4 | WANT6,
+                                    makeToken(node->getAddr(), false),
+                                    dht4.buckets.findClosestNodes(id, now, TARGET_NODES),
+                                    dht6.buckets.findClosestNodes(id, now, TARGET_NODES),
+                                    std::move(vals),
+                                    query,
+                                    version);
+    }
+    storage.listeners[node].emplace(socket_id, Listener {now, std::forward<Query>(query), version});
+    return true;
 }
 
 void
@@ -2729,7 +2741,10 @@ Dht::onListen(Sp<Node> node, const InfoHash& hash, const Blob& token, size_t soc
                                          net::DhtProtocolException::LISTEN_WRONG_TOKEN};
     }
     Query q = query;
-    storageAddListener(hash, node, socket_id, std::move(q), version);
+    if (not storageAddListener(hash, node, socket_id, std::move(q), version)) {
+        throw net::DhtProtocolException {net::DhtProtocolException::TOO_MANY_REQUESTS,
+                                         net::DhtProtocolException::LISTEN_TOO_MANY};
+    }
     net::RequestAnswer answer {};
     answer.ntoken = makeToken(node->getAddr(), false);
     return answer;

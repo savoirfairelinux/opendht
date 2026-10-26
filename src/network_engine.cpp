@@ -18,6 +18,7 @@ using namespace std::chrono_literals;
 const std::string DhtProtocolException::GET_NO_INFOHASH {"Get_values with no info_hash"};
 const std::string DhtProtocolException::LISTEN_NO_INFOHASH {"Listen with no info_hash"};
 const std::string DhtProtocolException::LISTEN_WRONG_TOKEN {"Listen with incorrect token"};
+const std::string DhtProtocolException::LISTEN_TOO_MANY {"Too many listeners for this node"};
 const std::string DhtProtocolException::PUT_NO_INFOHASH {"Put with no info_hash"};
 const std::string DhtProtocolException::PUT_WRONG_TOKEN {"Put with incorrect token"};
 const std::string DhtProtocolException::PUT_INVALID_ID {"Put with invalid ID"};

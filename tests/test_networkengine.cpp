@@ -667,6 +667,42 @@ NetworkEngineTester::testUnauthorizedListenFlushClearsListenState()
     CPPUNIT_ASSERT(!listenStatusIt->second.refresh);
 }
 
+void
+NetworkEngineTester::testRemoteListenerQuota()
+{
+    std::mt19937_64 rd(11);
+    Storage storage {clock::now()};
+    auto node = std::make_shared<Node>(InfoHash::getRandom(rd), makeIPv4("127.0.0.3", 5100), rd);
+
+    // A remote node picks its own socket identifiers, so its subscriptions must
+    // be capped instead of growing with every request.
+    for (unsigned i = 0; i < Storage::MAX_LISTENERS_PER_NODE; ++i) {
+        CPPUNIT_ASSERT(storage.canAddListener(node));
+        storage.listeners[node].emplace(i, Listener {clock::now(), Query {}, 0});
+    }
+    CPPUNIT_ASSERT(not storage.canAddListener(node));
+    CPPUNIT_ASSERT_EQUAL((size_t) Storage::MAX_LISTENERS_PER_NODE, storage.listeners[node].size());
+
+    // A different node keeps its own quota.
+    auto other = std::make_shared<Node>(InfoHash::getRandom(rd), makeIPv4("127.0.0.4", 5101), rd);
+    CPPUNIT_ASSERT(storage.canAddListener(other));
+
+    // A node claims its own identifier, so the number of listening nodes is
+    // capped as well.
+    Storage crowded {clock::now()};
+    for (unsigned i = 0; i < Storage::MAX_LISTENING_NODES; ++i) {
+        auto n = std::make_shared<Node>(InfoHash::getRandom(rd), makeIPv4("127.0.0.5", 5200), rd);
+        CPPUNIT_ASSERT(crowded.canAddListener(n));
+        crowded.listeners[n].emplace(0u, Listener {clock::now(), Query {}, 0});
+    }
+    auto extra = std::make_shared<Node>(InfoHash::getRandom(rd), makeIPv4("127.0.0.5", 5200), rd);
+    CPPUNIT_ASSERT(not crowded.canAddListener(extra));
+    CPPUNIT_ASSERT_EQUAL((size_t) Storage::MAX_LISTENING_NODES, crowded.listeners.size());
+
+    // An already registered socket is still refreshable at quota.
+    CPPUNIT_ASSERT(storage.listeners[node].find(0) != storage.listeners[node].end());
+}
+
 } // namespace test
 
 #endif
