@@ -52,6 +52,9 @@ fn binary_crypto_and_password_slices() {
     assert!(restored.decrypt(b"invalid").is_err());
     let plain = private.serialize("").unwrap();
     assert!(PrivateKey::from_bytes(&plain, "").is_ok());
+    let ec = PrivateKey::new_ec().unwrap();
+    assert!(ec.public_key().check_signature(data, ec.sign(data).unwrap()));
+    assert!(ec.public_key().encrypt(data).is_err());
 }
 
 #[test]
@@ -75,6 +78,9 @@ fn join_releases_pending_callbacks_and_allows_restart() {
     let mut runner = DhtRunner::new();
     let mut config = DhtRunnerConfig::new();
     config.threaded = false;
+    let status_released = Arc::new(AtomicUsize::new(0));
+    let status_counter = DropCounter(status_released.clone());
+    config.set_status_callback(move |_, _| { let _ = &status_counter; });
     config.set_proxy_user_agent("regression").unwrap();
     config.set_proxy_user_agent("replacement").unwrap();
     runner.run_config(0, config).unwrap();
@@ -87,6 +93,7 @@ fn join_releases_pending_callbacks_and_allows_restart() {
     let (sent, received) = mpsc::channel();
     runner.get(&hash, |_| true, move |ok| { sent.send(ok).unwrap(); });
     runner.join().unwrap();
+    assert_eq!(status_released.load(Ordering::SeqCst), 1);
     assert_eq!(released.load(Ordering::SeqCst), 1);
     assert!(!received.recv_timeout(Duration::from_secs(5)).unwrap());
     drop(token);
@@ -148,6 +155,7 @@ fn bound_filtered_queries_and_extension_hooks() {
     runner.set_push_notification_token("token").unwrap();
     runner.set_push_notification_topic("topic").unwrap();
     runner.set_push_notification_platform("android").unwrap();
+    runner.loop_once().unwrap();
     let hash = InfoHash::get("filtered query");
     let seen = Arc::new(AtomicUsize::new(0));
     let callback_seen = seen.clone();
@@ -177,4 +185,40 @@ fn bound_filtered_queries_and_extension_hooks() {
     assert!(push.poll().unwrap().is_some());
     runner.cancel_listen(&hash, token);
     runner.join().unwrap();
+}
+
+#[test]
+fn threaded_signed_and_encrypted_roundtrips() {
+    let mut source = DhtRunner::new();
+    let mut destination = DhtRunner::new();
+    for (runner, name) in [(&mut source, "source"), (&mut destination, "destination")] {
+        let mut config = DhtRunnerConfig::new();
+        config.dht_config.id = Some(DhtIdentity::new(name).unwrap());
+        runner.run_bind("127.0.0.1", "::1", 0, config).unwrap();
+    }
+    let recipient = destination.public_key().unwrap().long_id();
+    let (sent, received) = mpsc::channel();
+    source.ping(([127, 0, 0, 1], destination.bound_port(libc::AF_INET as _)).into(), move |ok| { sent.send(ok).unwrap(); });
+    assert!(received.recv_timeout(Duration::from_secs(10)).unwrap());
+    for encrypted in [false, true] {
+        let hash = InfoHash::get(if encrypted { "threaded encrypted" } else { "threaded signed" });
+        let (sent, received) = mpsc::channel();
+        let token = destination.listen(&hash, move |value, expired| {
+            if !expired { let _ = sent.send(value.as_bytes()); }
+            true
+        }).unwrap();
+        let (sent, done) = mpsc::channel();
+        let callback = move |ok| { let _ = sent.send(ok); };
+        if encrypted { source.put_encrypted(&hash, &recipient, Value::new("network value"), callback, false); }
+        else { source.put_signed(&hash, Value::new("network value"), callback, false); }
+        assert!(done.recv_timeout(Duration::from_secs(15)).unwrap());
+        assert_eq!(received.recv_timeout(Duration::from_secs(15)).unwrap(), b"network value");
+        destination.cancel_listen(&hash, token);
+    }
+    for runner in [&mut source, &mut destination] {
+        let (sent, received) = mpsc::channel();
+        runner.shutdown(move || { sent.send(()).unwrap(); });
+        received.recv_timeout(Duration::from_secs(15)).unwrap();
+        runner.join().unwrap();
+    }
 }
