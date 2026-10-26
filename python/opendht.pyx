@@ -12,7 +12,7 @@ from libcpp.map cimport map as map
 from libcpp cimport bool
 from libcpp.utility cimport pair
 from libcpp.string cimport string
-from libcpp.memory cimport shared_ptr
+from libcpp.memory cimport shared_ptr, unique_ptr
 
 from cython.operator cimport dereference as deref, preincrement as inc, predecrement as dec
 from cpython cimport ref
@@ -20,6 +20,8 @@ from datetime import timedelta
 from operator import index as _index
 
 cimport opendht_cpp as cpp
+
+ctypedef cpp.Pht* _PhtPtr
 
 import threading
 
@@ -52,9 +54,11 @@ cdef inline void lookup_callback(cpp.vector[cpp.shared_ptr[cpp.IndexValue]]* val
 
 cdef inline void shutdown_callback(void* user_data) noexcept with gil:
     cbs = <object>user_data
-    if 'shutdown' in cbs and cbs['shutdown']:
-        cbs['shutdown']()
-    ref.Py_DECREF(cbs)
+    try:
+        if 'shutdown' in cbs and cbs['shutdown']:
+            cbs['shutdown']()
+    finally:
+        ref.Py_DECREF(cbs)
 
 cdef inline bool get_callback(shared_ptr[cpp.Value] value, void *user_data) noexcept with gil:
     cbs = <object>user_data
@@ -73,22 +77,26 @@ cdef inline bool value_callback(shared_ptr[cpp.Value] value, bool expired, void 
     return cb(pv, expired) if not f or f(pv) else True
 
 cdef inline void done_callback(bool done, cpp.vector[shared_ptr[cpp.Node]]* nodes, void *user_data) noexcept with gil:
-    node_ids = []
-    for n in deref(nodes):
-        h = NodeEntry()
-        h._v.first = n.get().getId()
-        h._v.second = n
-        node_ids.append(h)
     cbs = <object>user_data
-    if 'done' in cbs and cbs['done']:
-        cbs['done'](done, node_ids)
-    ref.Py_DECREF(cbs)
+    try:
+        node_ids = []
+        for n in deref(nodes):
+            h = NodeEntry()
+            h._v.first = n.get().getId()
+            h._v.second = n
+            node_ids.append(h)
+        if 'done' in cbs and cbs['done']:
+            cbs['done'](done, node_ids)
+    finally:
+        ref.Py_DECREF(cbs)
 
 cdef inline void done_callback_simple(bool done, void *user_data) noexcept with gil:
     cbs = <object>user_data
-    if 'done' in cbs and cbs['done']:
-        cbs['done'](done)
-    ref.Py_DECREF(cbs)
+    try:
+        if 'done' in cbs and cbs['done']:
+            cbs['done'](done)
+    finally:
+        ref.Py_DECREF(cbs)
 
 cdef class _WithID(object):
     def __repr__(self):
@@ -219,12 +227,18 @@ cdef class SockAddr(object):
 cdef class Node(_WithID):
     cdef shared_ptr[cpp.Node] _node
     def getId(self):
+        if not self._node:
+            raise ValueError("Node is not initialized")
         h = InfoHash()
         h._infohash = self._node.get().getId()
         return h
     def getAddr(self):
+        if not self._node:
+            raise ValueError("Node is not initialized")
         return self._node.get().getAddrStr()
     def isExpired(self):
+        if not self._node:
+            raise ValueError("Node is not initialized")
         return self._node.get().isExpired()
 
 cdef class NodeEntry(_WithID):
@@ -359,12 +373,12 @@ cdef class Value(object):
         return self._value.get().size()
 
 cdef class ValueType(object):
-    cdef cpp.ValueType * _value
+    cdef unique_ptr[cpp.ValueType] _value
     def __init__(self, cpp.uint16_t id, str name, expiration: timedelta):
         if not isinstance(expiration, timedelta):
             raise TypeError("expiration argument must be of type timedelta")
         cdef cpp.seconds duration = cpp.seconds(int(expiration.total_seconds()))
-        self._value =  new cpp.ValueType(id, name.encode(), duration)
+        self._value.reset(new cpp.ValueType(id, name.encode(), duration))
 
 cdef class NodeSetIter(object):
     cdef NodeSet _owner
@@ -407,6 +421,8 @@ cdef class NodeSet(object):
         s = ''
         cdef map[cpp.InfoHash, shared_ptr[cpp.Node]].iterator it = self._nodes.begin()
         while it != self._nodes.end():
+            if not deref(it).second:
+                raise ValueError("Node is not initialized")
             s += deref(it).first.toString().decode() + ' ' + deref(it).second.get().getAddrStr().decode() + '\n'
             inc(it)
         return s
@@ -733,10 +749,14 @@ cdef class DhtConfig(object):
 
 cdef class DhtRunner(_WithID):
     cdef cpp.shared_ptr[cpp.DhtRunner] thisptr
+    cdef map[_PhtPtr, shared_ptr[cpp.Pht]] _indexes
     def __cinit__(self):
         self.thisptr.reset(new cpp.DhtRunner())
     def __dealloc__(self):
         with nogil:
+            if self.thisptr:
+                self.thisptr.get().join()
+            self._indexes.clear()
             self.thisptr.reset()
     def getId(self) -> InfoHash:
         h = InfoHash()
@@ -794,12 +814,13 @@ cdef class DhtRunner(_WithID):
     def join(self):
         with nogil:
             self.thisptr.get().join()
+        self._indexes.clear()
     def shutdown(self, shutdown_cb=None):
         cb_obj = {'shutdown':shutdown_cb}
         ref.Py_INCREF(cb_obj)
         self.thisptr.get().shutdown(cpp.bindShutdownCb(shutdown_callback, <void*>cb_obj))
     def registerType(self, ValueType type):
-        self.thisptr.get().registerType(deref(type._value))
+        self.thisptr.get().registerType(deref(type._value.get()))
     def enableLogging(self):
         cpp.enableLogging(self.thisptr.get()[0])
     def disableLogging(self):
@@ -983,12 +1004,18 @@ cdef class IndexValue(object):
         return self._value.get().second
 
 cdef class Pht(object):
-    cdef cpp.Pht* thisptr
-    def __cinit__(self, bytes name, key_spec, DhtRunner dht):
+    """PHT index; active native indexes live until the runner is joined."""
+    cdef shared_ptr[cpp.Pht] thisptr
+    cdef DhtRunner _runner
+    def __cinit__(self, bytes name, key_spec, DhtRunner dht not None):
         cdef cpp.IndexKeySpec cpp_key_spec
         for kk, size in key_spec.items():
             cpp_key_spec[bytes(kk, 'utf-8')] = size
-        self.thisptr = new cpp.Pht(name, cpp_key_spec, dht.thisptr)
+        self._runner = dht
+        self.thisptr.reset(new cpp.Pht(name, cpp_key_spec, dht.thisptr))
+    def __dealloc__(self):
+        with nogil:
+            self.thisptr.reset()
     @property
     def MAX_NODE_ENTRY_COUNT(self):
         return cpp.PHT_MAX_NODE_ENTRY_COUNT
@@ -1004,10 +1031,11 @@ cdef class Pht(object):
         cdef cpp.IndexKey cppk
         for kk, v in key.items():
             cppk[bytes(kk, 'utf-8')] = bytes(v)
+        self._runner._indexes[self.thisptr.get()] = self.thisptr
         cb_obj = {'lookup':lookup_cb, 'done':done_cb} # TODO: donecallback is to be removed
         ref.Py_INCREF(cb_obj)
         try:
-            self.thisptr.lookup(
+            self.thisptr.get().lookup(
                     cppk,
                     cpp.Pht.bindLookupCb(lookup_callback, <void*>cb_obj),
                     cpp.bindDoneCbSimple(done_callback_simple, <void*>cb_obj)
@@ -1028,10 +1056,11 @@ cdef class Pht(object):
         cdef cpp.IndexValue val
         val.first = (<InfoHash>value.getKey())._infohash
         val.second = value.getValueId()
+        self._runner._indexes[self.thisptr.get()] = self.thisptr
         cb_obj = {'done':done_cb}
         ref.Py_INCREF(cb_obj)
         try:
-            self.thisptr.insert(
+            self.thisptr.get().insert(
                     cppk,
                     val,
                     cpp.bindDoneCbSimple(done_callback_simple, <void*>cb_obj)
