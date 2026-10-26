@@ -19,6 +19,165 @@ class _ListenerCallback:
 
 class OpenDhtTester(unittest.TestCase):
 
+    def test_observability_snapshots(self):
+        node = dht.DhtRunner()
+        self.addCleanup(node.join)
+        self.assertFalse(node.getNodeInfo().node_id)
+        self.assertEqual(node.getPublicAddress(), [])
+        node.run(ipv4="127.0.0.1", ipv6="::1")
+        info = node.getNodeInfo()
+        bound4 = info.bound4
+        self.assertIsInstance(info, dht.NodeInfo)
+        self.assertEqual(info.node_id, node.getNodeId())
+        self.assertEqual(info.bound4, node.getBound(socket.AF_INET).getPort())
+        self.assertEqual(info.bound6, node.getBound(socket.AF_INET6).getPort())
+        for stats in (info.ipv4, info.ipv6, node.getNodesStats(socket.AF_INET)):
+            self.assertIsInstance(stats, dht.NodeStats)
+            self.assertEqual(stats.getKnownNodes(), stats.good_nodes + stats.dubious_nodes)
+            self.assertGreaterEqual(stats.getNetworkSizeEstimation(), 0)
+        for field in ("ongoing_ops", "storage_values", "storage_size",
+                      "local_storage_values", "local_storage_size"):
+            self.assertGreaterEqual(getattr(info, field), 0)
+        with self.assertRaises(AttributeError):
+            info.bound4 = 1
+        with self.assertRaises(ValueError):
+            node.getNodesStats(socket.AF_UNSPEC)
+        self.assertTrue(all(isinstance(address, dht.SockAddr)
+                            for address in node.getPublicAddress(socket.AF_INET)))
+        node.join()
+        self.assertFalse(node.getNodeInfo().node_id)
+        self.assertEqual(info.bound4, bound4)
+
+    def test_status_callback_lifetime(self):
+        node = dht.DhtRunner()
+        self.addCleanup(node.join)
+        changed = threading.Event()
+        statuses = []
+        class Callback:
+            def __call__(self, ipv4, ipv6):
+                statuses.append((ipv4, ipv6))
+                changed.set()
+        callback = Callback()
+        callback_ref = weakref.ref(callback)
+        node.setOnStatusChanged(callback)
+        del callback
+        gc.collect()
+        self.assertIsNotNone(callback_ref())
+        node.run(ipv4="127.0.0.1", ipv6="::1")
+        peer = self._run_node(ipv4="127.0.0.1", ipv6="::1")
+        self.assertTrue(node.ping(peer.getBound(socket.AF_INET)))
+        self.assertTrue(changed.wait(5))
+        self.assertTrue(all(isinstance(status, dht.NodeStatus)
+                            for pair in statuses for status in pair))
+        node.setOnStatusChanged(None)
+        gc.collect()
+        self.assertIsNone(callback_ref())
+        with self.assertRaises(TypeError):
+            node.setOnStatusChanged(42)
+
+    def test_status_callback_cycles_are_collectible(self):
+        class Observer:
+            def __init__(self):
+                self.node = dht.DhtRunner()
+                self.node.setOnStatusChanged(self.changed)
+                self.node.run()
+            def changed(self, ipv4, ipv6):
+                pass
+        observer = Observer()
+        reference = weakref.ref(observer)
+        del observer
+        gc.collect()
+        self.assertIsNone(reference())
+
+    def test_observability_getters_release_gil(self):
+        self._run_binding_script("""
+            import socket
+            import threading
+            from unittest import TestCase
+            check = TestCase()
+            for name in ("getBound", "getNodeId", "getId", "getPublicKey",
+                         "getNodeInfo", "getNodesStats", "getPublicAddress",
+                         "getNodeMessageStats", "getStorageLog",
+                         "getRoutingTablesLog", "getSearchesLog"):
+                node, peer = dht.DhtRunner(), dht.DhtRunner()
+                entered, release = threading.Event(), threading.Event()
+                def on_status(ipv4, ipv6):
+                    entered.set()
+                    release.wait(5)
+                try:
+                    node.setOnStatusChanged(on_status)
+                    node.run(ipv4="127.0.0.1", ipv6="::1")
+                    peer.run(ipv4="127.0.0.1", ipv6="::1")
+                    node.ping(peer.getBound(socket.AF_INET), done_cb=lambda ok: None)
+                    check.assertTrue(entered.wait(5))
+                    timer = threading.Timer(0.01, release.set)
+                    timer.start()
+                    arguments = (socket.AF_INET,) if name in (
+                        "getRoutingTablesLog", "getSearchesLog") else ()
+                    getattr(node, name)(*arguments)
+                    timer.join()
+                finally:
+                    release.set()
+                    node.join()
+                    peer.join()
+        """, timeout=15)
+
+    def test_query_projection(self):
+        node = self._run_node(ipv4="127.0.0.1", ipv6="::1")
+        peer = self._run_node(ipv4="127.0.0.1", ipv6="::1")
+        self.assertTrue(node.ping(peer.getBound(socket.AF_INET)))
+        key = dht.InfoHash.getRandom()
+        for number, user_type in ((101, "skip"), (202, "keep")):
+            value = dht.Value(b"query")
+            value.id, value.user_type = number, user_type
+            self.assertTrue(node.put(key, value))
+        selection = (dht.Select().field(dht.ValueField.Id)
+                     .field(dht.ValueField.ValueType).field(dht.ValueField.UserType))
+        query = dht.Query()
+        query.buildFrom(selection, dht.Where().userType("keep"))
+        rows = peer.query(key, query=query)
+        self.assertEqual(rows, [{dht.ValueField.Id: 202,
+                                 dht.ValueField.ValueType: 0,
+                                 dht.ValueField.UserType: "keep"}])
+        completed = threading.Event()
+        received, results = [], []
+        def on_done(ok, nodes):
+            results.append(ok)
+            completed.set()
+        peer.query(key, lambda row: received.append(row) or True, on_done, query)
+        self.assertTrue(completed.wait(5))
+        self.assertEqual(results, [True])
+        self.assertEqual(received, rows)
+        all_rows = peer.query(key)
+        self.assertEqual({row[dht.ValueField.Id] for row in all_rows}, {101, 202})
+        self.assertTrue(all(isinstance(row[dht.ValueField.OwnerPk], dht.InfoHash)
+                    for row in all_rows))
+        self.assertEqual(dht.DhtRunner().query(key), [])
+        with self.assertRaises(ValueError):
+            dht.Select().field(999)
+
+    def test_listener_filters(self):
+        node = self._run_node(ipv4="127.0.0.1", ipv6="::1")
+        peer = self._run_node(ipv4="127.0.0.1", ipv6="::1")
+        self.assertTrue(node.ping(peer.getBound(socket.AF_INET)))
+        key = dht.InfoHash.getRandom()
+        for number, data, user_type in ((101, b"rejected", "keep"),
+                                        (202, b"accepted", "skip"),
+                                        (303, b"accepted", "keep")):
+            value = dht.Value(data)
+            value.id, value.user_type = number, user_type
+            self.assertTrue(peer.put(key, value))
+        received, finished = [], threading.Event()
+        def on_value(value, expired):
+            received.append((value.id, expired))
+            finished.set()
+            return True
+        token = node.listen(key, on_value, filter=lambda value: value.data == b"accepted",
+                            where=dht.Where().userType("keep"))
+        self.addCleanup(node.cancelListen, token)
+        self.assertTrue(finished.wait(5))
+        self.assertEqual(received, [(303, False)])
+
     def test_persistence_configuration(self):
         with TemporaryDirectory() as directory:
             state_path = Path(directory) / "state-\u00e9"
@@ -611,6 +770,101 @@ class OpenDhtTester(unittest.TestCase):
 
 
 class AsyncOpenDhtTester(unittest.IsolatedAsyncioTestCase):
+
+    async def test_async_observability_and_query_integration(self):
+        node, peer = aio.DhtRunner(), aio.DhtRunner()
+        changed = asyncio.Event()
+        snapshots = []
+        def on_status(ipv4, ipv6):
+            snapshots.append(node.getNodeInfo())
+            changed.set()
+        node.setOnStatusChanged(on_status)
+        try:
+            node.run(ipv4="127.0.0.1", ipv6="::1")
+            peer.run(ipv4="127.0.0.1", ipv6="::1")
+            self.assertTrue(await asyncio.wait_for(node.ping(peer.getBound(socket.AF_INET)), 5))
+            await asyncio.wait_for(changed.wait(), 5)
+            self.assertTrue(all(isinstance(info, dht.NodeInfo) for info in snapshots))
+            key, value = dht.InfoHash.getRandom(), dht.Value(b"async query")
+            value.id, value.user_type = 42, "async"
+            self.assertTrue(await asyncio.wait_for(peer.put(key, value), 5))
+            query = dht.Query("SELECT id WHERE user_type=async")
+            rows = await asyncio.wait_for(node.queryAll(key, query=query), 5)
+            self.assertEqual(rows, [{dht.ValueField.Id: 42}])
+        finally:
+            node.setOnStatusChanged(None)
+            await asyncio.gather(node.join(), peer.join())
+
+    async def test_async_query(self):
+        core = Mock()
+        node = aio.DhtRunner(core=core)
+        key = dht.InfoHash.getRandom()
+        query = dht.Query("SELECT id")
+        task = asyncio.create_task(node.queryAll(key, query=query))
+        await asyncio.sleep(0)
+        arguments = core.query.call_args.args
+        self.assertEqual(arguments[0], key)
+        self.assertIs(arguments[3], query)
+        row = {dht.ValueField.Id: 42}
+        self.assertTrue(arguments[1](row))
+        arguments[2](True, [])
+        self.assertEqual(await asyncio.wait_for(task, 1), [row])
+
+    async def test_async_listener_filters(self):
+        core = Mock()
+        node = aio.DhtRunner(core=core)
+        key = dht.InfoHash.getRandom()
+        where = dht.Where().userType("keep")
+        predicate = lambda value: value.data == b"accepted"
+        with node.listen(key, where=where, filter=predicate):
+            arguments = core.listen.call_args.args
+            self.assertEqual(arguments[0], key)
+            self.assertIs(arguments[2], predicate)
+            self.assertIs(arguments[3], where)
+
+    async def test_async_status_callback_thread(self):
+        core = Mock()
+        node = aio.DhtRunner(core=core)
+        delivered = asyncio.Event()
+        thread_ids = []
+        def callback(ipv4, ipv6):
+            thread_ids.append(threading.get_ident())
+            delivered.set()
+        node.setOnStatusChanged(callback)
+        dispatch = core.setOnStatusChanged.call_args.args[0]
+        await asyncio.to_thread(dispatch, dht.NodeStatus.Connected, dht.NodeStatus.Disconnected)
+        await asyncio.wait_for(delivered.wait(), 1)
+        self.assertEqual(thread_ids, [threading.get_ident()])
+        node.setOnStatusChanged(None)
+        core.setOnStatusChanged.assert_called_with(None)
+
+    async def test_async_query_failure_and_cancellation(self):
+        core = Mock()
+        node = aio.DhtRunner(core=core)
+        key = dht.InfoHash.getRandom()
+        stream = node.query(key)
+        callback, done = core.query.call_args.args[1:3]
+        done(False, [])
+        with self.assertRaisesRegex(RuntimeError, "DHT query failed"):
+            await asyncio.wait_for(stream.__anext__(), 1)
+        stream = node.query(key)
+        callback, done = core.query.call_args.args[1:3]
+        stream.cancel()
+        self.assertFalse(callback({dht.ValueField.Id: 42}))
+        done(True, [])
+        with self.assertRaises(StopAsyncIteration):
+            await stream.__anext__()
+
+    async def test_async_status_queued_before_removal(self):
+        core = Mock()
+        node = aio.DhtRunner(core=core)
+        callback = Mock()
+        node.setOnStatusChanged(callback)
+        dispatch = core.setOnStatusChanged.call_args.args[0]
+        dispatch(dht.NodeStatus.Connected, dht.NodeStatus.Disconnected)
+        node.setOnStatusChanged(None)
+        await asyncio.sleep(0)
+        callback.assert_not_called()
 
     def _completion_cases(self):
         key = dht.InfoHash.getRandom()
