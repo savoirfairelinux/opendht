@@ -115,6 +115,35 @@ cmake -DOPENDHT_PYTHON=ON \
 | `OPENDHT_PUSH_NOTIFICATIONS` | OFF | Push notification support |
 | `OPENDHT_SANITIZE` | OFF | AddressSanitizer + stack protector |
 
+## C and Rust Bindings
+
+Enable `OPENDHT_C=ON` to build the C ABI. With `BUILD_TESTING=ON`, CTest runs
+`test_c`; Meson registers the same test as `CBindings` when `c` and `tests` are
+enabled. Rust regression and callback-lifetime tests run with Cargo; see
+[the Rust binding guide](rust/README.md) for build and library-path settings.
+
+C handles returned by constructors, imports, and reference functions are owned
+and require their matching delete/unref function. Data views, string getters,
+query fields, and callback arguments are borrowed: copy them or take a reference
+before returning from the callback. `dht_sockaddr_array_delete` releases both the
+public-address array and its elements.
+
+Operation completion callbacks run once, including failure when pending work is
+discarded on runner teardown. Listener release callbacks run after the native
+registration is destroyed; deleting an operation token alone does not cancel its
+listener. Cancel first, then delete the consumed token. Startup-context release
+callbacks run after all native status/store callback captures are released, also
+on startup failure. Certificate-store callbacks must invoke the supplied emitter
+synchronously with borrowed certificates. Query-result views are callback-scoped.
+
+`dht_runner_loop` drives non-threaded nodes. `dht_runner_join` waits for callbacks
+and allows restart; never call it from a DHT callback. For persisted shutdown,
+wait for the shutdown callback before joining. Push tokens can be polled without
+blocking and must be deleted separately. `dht_push_token_poll` returns `EAGAIN`
+while pending, 0 with the native outcome when ready, and an error code otherwise;
+consume a successful result only once. Native push outcomes are 0 through 3 for
+refresh/value events, 128 through 131 for ignored events, and 132 for errors.
+
 ## Windows/MSVC
 
 Building on Windows with MSVC is supported with VCPKG and CMake.
