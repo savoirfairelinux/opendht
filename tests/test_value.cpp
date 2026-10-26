@@ -63,6 +63,29 @@ ValueTester::tearDown()
 {}
 
 void
+ValueTester::testSequenceFilterMsgpackRoundTrip()
+{
+    for (uint64_t sequence : {0u, 1u, 65535u}) {
+        dht::FieldValue original(dht::Value::Field::SeqNum, sequence);
+        msgpack::sbuffer buffer;
+        msgpack::pack(buffer, original);
+
+        msgpack::unpacked message;
+        msgpack::unpack(message, buffer.data(), buffer.size());
+        dht::FieldValue restored;
+        restored.msgpack_unpack(message.get());
+        CPPUNIT_ASSERT(restored.getField() == dht::Value::Field::SeqNum);
+        CPPUNIT_ASSERT_EQUAL(sequence, restored.getInt());
+
+        dht::Value value;
+        value.seq = sequence;
+        CPPUNIT_ASSERT(restored.getLocalFilter()(value));
+        value.seq = sequence == 0 ? 1 : 0;
+        CPPUNIT_ASSERT(!restored.getLocalFilter()(value));
+    }
+}
+
+void
 ValueTester::testPushTypeMsgpackRoundTrip()
 {
     dht::Value original {(const uint8_t*) "hello", 5};
