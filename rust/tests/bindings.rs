@@ -308,6 +308,116 @@ fn bound_filtered_queries_and_extension_hooks() {
 }
 
 #[test]
+fn threaded_sequence_filters_roundtrip() {
+    let mut source = DhtRunner::new();
+    let mut destination = DhtRunner::new();
+    let mut config = DhtRunnerConfig::new();
+    config.dht_config.id = Some(DhtIdentity::new_ec("sequence publisher").unwrap());
+    source.run_bind("127.0.0.1", "::1", 0, config).unwrap();
+    destination
+        .run_bind("127.0.0.1", "::1", 0, DhtRunnerConfig::new())
+        .unwrap();
+    let (sent, received) = mpsc::channel();
+    destination.ping(
+        ([127, 0, 0, 1], source.bound_port(libc::AF_INET as _)).into(),
+        move |ok| {
+            sent.send(ok).unwrap();
+        },
+    );
+    assert!(received.recv_timeout(Duration::from_secs(10)).unwrap());
+
+    let hash = InfoHash::get("network sequence filter");
+    let (sent, received) = mpsc::channel();
+    let token = destination
+        .listen_filtered(&hash, "WHERE seq=7", move |value, expired| {
+            if !expired {
+                let _ = sent.send((value.id(), value.seq(), value.as_bytes()));
+            }
+            true
+        })
+        .unwrap();
+    let mut value = Value::with_id(b"sequence seven", 42);
+    value.set_seq(7);
+    let (sent, done) = mpsc::channel();
+    source.put_signed(
+        &hash,
+        value,
+        move |ok| {
+            let _ = sent.send(ok);
+        },
+        false,
+    );
+    assert!(done.recv_timeout(Duration::from_secs(10)).unwrap());
+    assert_eq!(
+        received.recv_timeout(Duration::from_secs(10)).unwrap(),
+        (42, 7, b"sequence seven".to_vec())
+    );
+
+    let (sent, received) = mpsc::channel();
+    let (completed, done) = mpsc::channel();
+    destination
+        .get_filtered(
+            &hash,
+            "WHERE seq=7",
+            move |value| {
+                let _ = sent.send((value.id(), value.seq()));
+                true
+            },
+            move |ok| {
+                let _ = completed.send(ok);
+            },
+        )
+        .unwrap();
+    assert_eq!(
+        received.recv_timeout(Duration::from_secs(10)).unwrap(),
+        (42, 7)
+    );
+    assert!(done.recv_timeout(Duration::from_secs(10)).unwrap());
+
+    let (sent, received) = mpsc::channel();
+    let (completed, done) = mpsc::channel();
+    destination
+        .query(
+            &hash,
+            "SELECT id,seq WHERE seq=7",
+            move |row| {
+                let _ = sent.send((row.id, row.seq));
+                true
+            },
+            move |ok| {
+                let _ = completed.send(ok);
+            },
+        )
+        .unwrap();
+    assert_eq!(
+        received.recv_timeout(Duration::from_secs(10)).unwrap(),
+        (Some(42), Some(7))
+    );
+    assert!(done.recv_timeout(Duration::from_secs(10)).unwrap());
+
+    let (sent, received) = mpsc::channel();
+    let (completed, done) = mpsc::channel();
+    destination
+        .get_filtered(
+            &hash,
+            "WHERE seq=8",
+            move |_| {
+                let _ = sent.send(());
+                true
+            },
+            move |ok| {
+                let _ = completed.send(ok);
+            },
+        )
+        .unwrap();
+    assert!(done.recv_timeout(Duration::from_secs(10)).unwrap());
+    assert!(received.try_recv().is_err());
+    destination.cancel_listen(&hash, token);
+    destination.join().unwrap();
+    source.join().unwrap();
+}
+
+#[test]
 fn threaded_signed_and_encrypted_roundtrips() {
     let mut source = DhtRunner::new();
     let mut destination = DhtRunner::new();
