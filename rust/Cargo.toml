@@ -2,7 +2,7 @@
 name = "opendht"
 version = "0.2.0"
 authors = ["Sébastien Blin <sebastien.blin@savoirfairelinux.com>", "Adrien Beraud <adrien.beraud@savoirfairelinux.com>"]
-edition = "2021"
+edition = "2024"
 
 [dependencies]
 libc="0.2"

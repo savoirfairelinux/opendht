@@ -133,7 +133,7 @@ pub struct PushToken {
 }
 
 #[link(name = "opendht-c")]
-extern "C" {
+unsafe extern "C" {
     // dht::Value
     pub fn dht_value_new(data: *const u8, size: size_t) -> *mut Value;
     pub fn dht_value_with_id_new(data: *const u8, size: size_t, id: u64) -> *mut Value;
