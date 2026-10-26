@@ -1,4 +1,8 @@
 import gc
+from pathlib import Path
+import subprocess
+import sys
+import textwrap
 import threading
 import unittest
 import weakref
@@ -9,6 +13,87 @@ class _ListenerCallback:
         return True
 
 class OpenDhtTester(unittest.TestCase):
+
+    def _run_binding_script(self, script, timeout=10):
+        core = sys.modules[dht.DhtRunner.__module__]
+        bootstrap = (
+            "import importlib.util, sys\n"
+            f"sys.path.insert(0, {str(Path(dht.__file__).resolve().parent.parent)!r})\n"
+            f"spec = importlib.util.spec_from_file_location({core.__name__!r}, {core.__file__!r})\n"
+            "core = importlib.util.module_from_spec(spec)\n"
+            "sys.modules[spec.name] = core\n"
+            "spec.loader.exec_module(core)\n"
+            "import opendht as dht\n"
+        )
+        result = subprocess.run(
+            [sys.executable, "-c", bootstrap + textwrap.dedent(script)],
+            capture_output=True, text=True, timeout=timeout,
+        )
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_crypto_errors_are_exceptions(self):
+        self._run_binding_script("""
+            from unittest import TestCase
+            check = TestCase()
+            key = dht.PrivateKey.generateEC()
+            with check.assertRaises(RuntimeError):
+                key.decrypt(b"invalid ciphertext")
+            with check.assertRaises(RuntimeError):
+                key.getPublicKey().encrypt(b"message")
+            with check.assertRaises(RuntimeError):
+                dht.PrivateKey.generate().decrypt(b"invalid ciphertext")
+            with check.assertRaises(RuntimeError):
+                dht.Certificate(b"invalid certificate")
+        """)
+
+    def test_crypto_uninitialized_objects(self):
+        self._run_binding_script("""
+            from unittest import TestCase
+            check = TestCase()
+            key = dht.PrivateKey.generateEC()
+            cert = dht.Certificate.generate(key, "test")
+            trust = dht.TrustList()
+            operations = (
+                lambda: dht.PrivateKey().decrypt(b"ciphertext"),
+                lambda: dht.Certificate().getName(),
+                lambda: dht.Certificate().revoke(key, cert),
+                lambda: cert.revoke(dht.PrivateKey(), cert),
+                lambda: cert.revoke(None, cert),
+                lambda: cert.revoke(key, dht.Certificate()),
+                lambda: cert.revoke(key, None),
+                lambda: dht.Certificate.generate(dht.PrivateKey(), "test"),
+                lambda: dht.Certificate.generate(None, "test"),
+                lambda: trust.add(dht.Certificate()),
+                lambda: trust.add(None),
+                lambda: trust.remove(dht.Certificate()),
+                lambda: trust.remove(None),
+                lambda: trust.verify(dht.Certificate()),
+                lambda: trust.verify(None),
+            )
+            for operation in operations:
+                with check.assertRaises(ValueError):
+                    operation()
+        """)
+
+    def test_runner_shutdown_releases_gil(self):
+        for close in ("node.join()", "del node"):
+            with self.subTest(close=close):
+                self._run_binding_script(textwrap.dedent("""
+                    import threading
+                    node = dht.DhtRunner()
+                    node.run()
+                    entered = threading.Event()
+                    release = threading.Event()
+                    finished = threading.Event()
+                    def on_shutdown():
+                        entered.set()
+                        release.wait()
+                        finished.set()
+                    node.shutdown(on_shutdown)
+                    assert entered.wait(5)
+                    timer = threading.Timer(0.1, release.set)
+                    timer.start()
+                """) + f"\n{close}\nassert finished.is_set()\ntimer.join()\n", timeout=8)
 
     def _run_node(self, **kwargs):
         node = dht.DhtRunner()
