@@ -17,6 +17,83 @@ class _ListenerCallback:
 
 class OpenDhtTester(unittest.TestCase):
 
+    def test_key_serialization(self):
+        message = b"persisted identity"
+        for generate in (dht.PrivateKey.generate, dht.PrivateKey.generateEC):
+            key = generate()
+            public_key = key.getPublicKey()
+            restored_public = dht.PublicKey(public_key.serialize())
+            self.assertEqual(restored_public.getLongId(), public_key.getLongId())
+            self.assertEqual(bytes(restored_public), public_key.serialize())
+            for password in ("", "test-password"):
+                with self.subTest(algorithm=generate.__name__, encrypted=bool(password)):
+                    encoded = key.serialize(password)
+                    self.assertIsInstance(encoded, bytes)
+                    restored_key = dht.PrivateKey(encoded, password)
+                    self.assertEqual(restored_key.getLongId(), key.getLongId())
+                    self.assertTrue(restored_public.checkSignature(message, restored_key.sign(message)))
+            self.assertEqual(dht.PrivateKey(bytes(key)).getLongId(), key.getLongId())
+
+    def test_key_import_errors(self):
+        for key_type in (dht.PrivateKey, dht.PublicKey):
+            for encoded in (b"", b"invalid key"):
+                with self.subTest(key_type=key_type.__name__, encoded=encoded):
+                    with self.assertRaises((ValueError, RuntimeError)):
+                        key_type(encoded)
+            with self.assertRaises(ValueError):
+                key_type().serialize()
+            with self.assertRaises(ValueError):
+                bytes(key_type())
+        encoded = dht.PrivateKey.generateEC().serialize("test-password")
+        for password in ("", "wrong-password"):
+            with self.assertRaises(RuntimeError):
+                dht.PrivateKey(encoded, password)
+
+    def test_identity_persistence(self):
+        ca_key = dht.PrivateKey.generateEC()
+        ca_cert = dht.Certificate.generate(ca_key, "root", is_ca=True)
+        ca = dht.Identity(ca_key, ca_cert)
+        key = dht.PrivateKey.generateEC()
+        cert = dht.Certificate.generate(key, "persisted", ca)
+        identity = dht.Identity(
+            dht.PrivateKey(key.serialize("test-password"), "test-password"),
+            dht.Certificate(bytes(cert)),
+        )
+        self.assertEqual(identity.publickey.getLongId(), key.getLongId())
+        self.assertEqual(identity.certificate.getLongId(), cert.getLongId())
+        self.assertEqual(identity.certificate.issuer.getLongId(), ca_cert.getLongId())
+        trust = dht.TrustList()
+        trust.add(ca_cert)
+        self.assertTrue(trust.verify(identity.certificate))
+        node = self._run_node(id=identity)
+        self.assertEqual(node.getPublicKey().getLongId(), key.getLongId())
+
+    def test_value_metadata(self):
+        value = dht.Value(b"metadata", 42)
+        self.assertEqual(value.type, 42)
+        self.assertEqual(value.seq, 0)
+        self.assertEqual(value.priority, 0)
+        self.assertEqual(value.pushType, "")
+        value.type = 7
+        value.seq = 3
+        value.priority = 1
+        value.pushType = "audioCall-\u00e9"
+        self.assertEqual((value.type, value.seq, value.priority, value.pushType), (7, 3, 1, "audioCall-\u00e9"))
+        self.assertEqual(value.data, b"metadata")
+        value.pushType = ""
+        self.assertEqual(value.pushType, "")
+
+    def test_value_metadata_bounds(self):
+        value = dht.Value()
+        for field, maximum in (("type", 65535), ("seq", 65535), ("priority", 2**32 - 1)):
+            with self.subTest(field=field):
+                setattr(value, field, maximum)
+                self.assertEqual(getattr(value, field), maximum)
+                for invalid in (-1, maximum + 1):
+                    with self.assertRaises(OverflowError):
+                        setattr(value, field, invalid)
+                self.assertEqual(getattr(value, field), maximum)
+
     def _run_binding_script(self, script, timeout=10):
         core = sys.modules[dht.DhtRunner.__module__]
         bootstrap = (
