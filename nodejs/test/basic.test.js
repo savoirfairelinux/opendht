@@ -191,3 +191,48 @@ test('queue overflow reports an error and rejects close', { timeout: 15000 }, as
         await runner.close().catch(() => {});
     }
 });
+
+test('dhtnode example prints help and validates its port', async () => {
+    const example = require('node:path').resolve(__dirname, '../examples/dhtnode.js');
+    const { stdout } = await promisify(execFile)(process.execPath, [example, '--help']);
+    assert.match(stdout, /Usage:.*dhtnode\.js/);
+    assert.match(stdout, /bootstrap/);
+    await assert.rejects(promisify(execFile)(process.execPath, [example, '--port', '65536']), error => {
+        assert.equal(error.code, 1);
+        assert.match(error.stderr, /port/i);
+        return true;
+    });
+});
+
+test('dhtnode example accepts piped commands and shuts down on EOF', { timeout: 20000 }, async () => {
+    const peer = startNode();
+    const example = require('node:path').resolve(__dirname, '../examples/dhtnode.js');
+    try {
+        const execution = promisify(execFile)(process.execPath, [example,
+            '--port', '0', '--ipv4', '127.0.0.1',
+            '--bootstrap', '127.0.0.1', '--bootstrap-port', String(peer.getBoundPort()),
+        ], { timeout: 15000 });
+        execution.child.stdin.end('listen example\nput example hello world\nsign signed signed message\nget example\nget signed\ncancel example\n');
+        const { stdout, stderr } = await execution;
+        assert.equal(stderr, '');
+        assert.match(stdout, /Node [0-9a-f]{40}/);
+        assert.match(stdout, /hello world/);
+        assert.match(stdout, /signed message.*\[signed\]/);
+        assert.match(stdout, /Cancelled example/);
+    } finally {
+        await peer.close();
+    }
+});
+
+test('dhtnode example shuts down on SIGTERM', { timeout: 10000 }, async () => {
+    if (process.platform === 'win32') return;
+    const example = require('node:path').resolve(__dirname, '../examples/dhtnode.js');
+    const execution = promisify(execFile)(process.execPath, [example, '--port', '0', '--ipv4', '127.0.0.1'], { timeout: 8000 });
+    let output = '';
+    execution.child.stdout.on('data', data => {
+        output += data;
+        if (/Node [0-9a-f]{40}/.test(output)) execution.child.kill('SIGTERM');
+    });
+    const { stderr } = await execution;
+    assert.equal(stderr, '');
+});
