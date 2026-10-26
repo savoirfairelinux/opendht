@@ -164,6 +164,112 @@ class OpenDhtTester(unittest.TestCase):
         )
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
+    def test_run_bind_errors_are_exceptions(self):
+        self._run_binding_script("""
+            from unittest import TestCase
+            check = TestCase()
+            config = dht.DhtConfig()
+            config.setBound(
+                dht.SockAddr.resolve("192.0.2.1")[0],
+                dht.SockAddr.resolve("2001:db8::1")[0],
+            )
+            node = dht.DhtRunner()
+            for options in (
+                {"config": config},
+                {"ipv4": "192.0.2.1", "ipv6": "2001:db8::1"},
+            ):
+                with check.assertRaises(RuntimeError):
+                    node.run(**options)
+                check.assertFalse(node.isRunning())
+                node.run(ipv4="127.0.0.1", ipv6="::1")
+                check.assertTrue(node.isRunning())
+                node.join()
+        """)
+
+    def test_pht_invalid_keys_are_exceptions(self):
+        for method in ("lookup", "insert"):
+            with self.subTest(method=method):
+                self._run_binding_script(f"""
+                    import gc
+                    import weakref
+                    from unittest import TestCase
+                    check = TestCase()
+                    class Callback:
+                        def __call__(self, *args):
+                            raise AssertionError("Invalid keys must not invoke callbacks")
+                    node = dht.DhtRunner()
+                    index = dht.Pht(b"invalid-key-test", {{"field": 1}}, node)
+                    callback = Callback()
+                    callback_ref = weakref.ref(callback)
+                    with check.assertRaises(ValueError):
+                        if {method!r} == "lookup":
+                            index.lookup({{"other": b"x"}}, done_cb=callback)
+                        else:
+                            index.insert(
+                                {{"other": b"x"}},
+                                dht.IndexValue(dht.InfoHash.getRandom(), 1),
+                                done_cb=callback,
+                            )
+                    del callback
+                    gc.collect()
+                    check.assertIsNone(callback_ref())
+                """)
+
+    def test_node_set_iterator_keeps_owner_alive(self):
+        self._run_binding_script("""
+            import gc
+            from unittest import TestCase
+            check = TestCase()
+            entry = dht.NodeEntry()
+            expected_id = entry.getId()
+            nodes = dht.NodeSet()
+            check.assertTrue(nodes.insert(entry))
+            iterator = iter(nodes)
+            del nodes
+            gc.collect()
+            check.assertEqual(next(iterator).getId(), expected_id)
+            check.assertIs(iter(iterator), iterator)
+            with check.assertRaises(StopIteration):
+                next(iterator)
+        """)
+
+    def test_hash_bit_access(self):
+        class BitIndex:
+            def __index__(self):
+                return 1
+
+        for hash_type, width in ((dht.InfoHash, 160), (dht.PkId, 256)):
+            with self.subTest(hash_type=hash_type.__name__):
+                value = hash_type()
+                for bit in (0, width - 1, BitIndex()):
+                    self.assertFalse(value.getBit(bit))
+                    value.setBit(bit, True)
+                    self.assertTrue(value.getBit(bit))
+                    value.setBit(bit, False)
+                    self.assertFalse(value.getBit(bit))
+                self.assertFalse(value)
+
+    def test_hash_bit_bounds(self):
+        for name, width in (("InfoHash", 160), ("PkId", 256)):
+            with self.subTest(hash_type=name):
+                self._run_binding_script(f"""
+                    from unittest import TestCase
+                    check = TestCase()
+                    value = dht.{name}.getRandom()
+                    original = value.toString()
+                    for bit in ({width}, {width + 1}, -1, 2**32 - 1, 2**100):
+                        with check.assertRaises(IndexError):
+                            value.getBit(bit)
+                        with check.assertRaises(IndexError):
+                            value.setBit(bit, True)
+                        check.assertEqual(value.toString(), original)
+                    for bit in (None, "0", 0.5):
+                        with check.assertRaises(TypeError):
+                            value.getBit(bit)
+                        with check.assertRaises(TypeError):
+                            value.setBit(bit, True)
+                """)
+
     def test_crypto_errors_are_exceptions(self):
         self._run_binding_script("""
             from unittest import TestCase
