@@ -18,6 +18,55 @@ fn values_can_move_out_of_their_box() {
 }
 
 #[test]
+fn native_handles_can_move_out_of_their_boxes() {
+    let private = *PrivateKey::new(2048).unwrap();
+    let public = *private.public_key();
+    let signature = private.sign(b"moved handles").unwrap();
+    assert!(public.check_signature(b"moved handles", &signature));
+    let encrypted = *public.encrypt(b"moved blob").unwrap();
+    assert_eq!(
+        private.decrypt(&encrypted.as_bytes()).unwrap().as_bytes(),
+        b"moved blob"
+    );
+    let certificate = *DhtIdentity::new_ec("moved certificate")
+        .unwrap()
+        .certificate;
+    let restored = DhtCertificate::from_bytes(&certificate.serialize().unwrap()).unwrap();
+    assert!(certificate.id() == restored.id());
+
+    let mut runner = *DhtRunner::new();
+    let mut config = DhtRunnerConfig::new();
+    config.threaded = false;
+    runner.run_config(0, config).unwrap();
+    let hash = InfoHash::get("moved listener token");
+    let (sent, received) = mpsc::channel();
+    let token = *runner
+        .listen(&hash, move |value, expired| {
+            if !expired {
+                let value = *value;
+                sent.send(value.as_bytes()).unwrap();
+            }
+            true
+        })
+        .unwrap();
+    runner.put(&hash, Value::new("moved callback value"), |_| {}, false);
+    runner.loop_once().unwrap();
+    assert_eq!(
+        received.recv_timeout(Duration::from_secs(5)).unwrap(),
+        b"moved callback value"
+    );
+    runner.cancel_listen(&hash, Box::new(token));
+    let push = runner.push_notification_received(&[]).unwrap();
+    runner.loop_once().unwrap();
+    let mut push = Box::new(push);
+    assert!(push.poll().unwrap().is_some());
+    runner.join().unwrap();
+    let mut runner = Box::new(runner);
+    runner.run(0).unwrap();
+    runner.join().unwrap();
+}
+
+#[test]
 fn value_metadata_and_borrowed_strings() {
     let mut value = Value::with_id(b"binary\0value", 42);
     value.set_user_type("application/octet-stream").unwrap();
