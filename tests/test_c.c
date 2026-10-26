@@ -65,6 +65,22 @@ main(void)
     dht_infohash_from_hex_null(&restored, dht_infohash_print(&hash));
     assert(memcmp(&hash, &restored, sizeof(hash)) == 0);
 
+    struct {
+        uint32_t alignment;
+        uint8_t prefix;
+        dht_infohash hash;
+    } unaligned = {0};
+    dht_infohash_get_from_string(&unaligned.hash, "abc");
+    assert(!dht_infohash_is_zero(&unaligned.hash));
+    assert(strcmp(dht_infohash_print(&unaligned.hash), "a9993e364706816aba3e25717850c26c9cd0d89d") == 0);
+    dht_infohash_from_hex_null(&unaligned.hash, "a9993e364706816aba3e25717850c26c9cd0d89d");
+    dht_infohash_from_hex(&restored, dht_infohash_print(&unaligned.hash));
+    assert(memcmp(&unaligned.hash, &restored, sizeof(restored)) == 0);
+    dht_infohash_zero(&unaligned.hash);
+    assert(dht_infohash_is_zero(&unaligned.hash));
+    dht_infohash_random(&unaligned.hash);
+    assert(!dht_infohash_is_zero(&unaligned.hash));
+
     dht_value* value = dht_value_with_id_new(invalid, sizeof(invalid), 42);
     assert(value != NULL);
     assert(dht_value_get_id(value) == 42);
