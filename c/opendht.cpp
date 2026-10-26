@@ -255,8 +255,12 @@ dht_privatekey_generate(unsigned key_length_bits)
 {
     if (key_length_bits == 0)
         key_length_bits = 4096;
-    return reinterpret_cast<dht_privatekey*>(
-        new PrivkeySp(std::make_shared<dht::crypto::PrivateKey>(dht::crypto::PrivateKey::generate(key_length_bits))));
+    try {
+        return reinterpret_cast<dht_privatekey*>(
+            new PrivkeySp(std::make_shared<dht::crypto::PrivateKey>(dht::crypto::PrivateKey::generate(key_length_bits))));
+    } catch (...) {
+        return nullptr;
+    }
 }
 
 dht_privatekey*
@@ -376,7 +380,11 @@ extern "C" {
 OPENDHT_C_PUBLIC dht_identity
 dht_identity_generate(const char* common_name, const dht_identity* ca)
 {
-    return dht_identity_to_c(dht::crypto::generateIdentity(common_name, dht_identity_from_c(ca)));
+    try {
+        return dht_identity_to_c(dht::crypto::generateIdentity(common_name ? common_name : "dhtnode", dht_identity_from_c(ca)));
+    } catch (...) {
+        return {};
+    }
 }
 
 OPENDHT_C_PUBLIC void

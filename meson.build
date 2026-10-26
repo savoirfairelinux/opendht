@@ -263,6 +263,15 @@ endif
 
 # Unit tests
 if get_option('tests').enabled()
+    if get_option('c').enabled()
+        test_c = executable(
+            'test_c',
+            'tests/test_c.c',
+            include_directories: ['c', opendht_interface_inc],
+            link_with: opendht_c,
+        )
+        test('CBindings', test_c)
+    endif
     cppunit = dependency('cppunit')
 
     test_infohash = executable(

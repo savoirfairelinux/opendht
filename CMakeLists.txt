@@ -845,6 +845,12 @@ endif()
 
 # Unit tests
 if (BUILD_TESTING)
+    if (OPENDHT_C)
+        add_executable(test_c tests/test_c.c)
+        target_include_directories(test_c PRIVATE c include)
+        target_link_libraries(test_c PRIVATE opendht-c)
+        add_test(NAME test_c COMMAND test_c)
+    endif()
     if (NOT MSVC)
         pkg_search_module(Cppunit REQUIRED IMPORTED_TARGET cppunit)
         set(cppunit_LIBRARIES PkgConfig::Cppunit)
