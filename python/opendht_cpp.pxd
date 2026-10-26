@@ -243,9 +243,35 @@ cdef extern from "opendht/callbacks.h" namespace "dht":
         Config node_config
         Identity id
 
+cdef extern from *:
+    """
+    #include <Python.h>
+    #include <opendht/callbacks.h>
+
+    static dht::ValueCallback opendht_bind_python_value_cb(
+        dht::ValueCallbackRaw callback, PyObject* data)
+    {
+        Py_INCREF(data);
+        auto owner = std::shared_ptr<PyObject>(data, [](PyObject* object) {
+            auto state = PyGILState_Ensure();
+            Py_DECREF(object);
+            PyGILState_Release(state);
+        });
+        return [callback, owner = std::move(owner)](
+                   const std::vector<std::shared_ptr<dht::Value>>& values, bool expired) {
+            for (const auto& value : values)
+                if (!callback(value, expired, owner.get()))
+                    return false;
+            return true;
+        };
+    }
+    """
+    ValueCallback bindPythonValueCb "opendht_bind_python_value_cb"(ValueCallbackRaw callback, object data) except +
+
+ctypedef future[size_t] ListenToken
+ctypedef shared_future[size_t] SharedListenToken
+
 cdef extern from "opendht/dhtrunner.h" namespace "dht":
-    ctypedef future[size_t] ListenToken
-    ctypedef shared_future[size_t] SharedListenToken
     cdef cppclass DhtRunner:
         DhtRunner() except +
         cppclass Config:
@@ -285,8 +311,8 @@ cdef extern from "opendht/dhtrunner.h" namespace "dht":
         void putEncrypted(InfoHash key, PkId to, shared_ptr[Value] val, DoneCallback done_cb, bool permanent)
         void putEncrypted(InfoHash key, shared_ptr[PublicKey] to, shared_ptr[Value] val, DoneCallback done_cb, bool permanent)
         void cancelPut(InfoHash key, shared_ptr[Value] val)
-        ListenToken listen(InfoHash key, ValueCallback get_cb)
-        void cancelListen(InfoHash key, SharedListenToken token)
+        ListenToken listen(InfoHash key, ValueCallback get_cb) except +
+        void cancelListen(InfoHash key, SharedListenToken token) except +
         vector[unsigned] getNodeMessageStats(bool i)
 
 ctypedef DhtRunner.Config DhtRunnerConfig

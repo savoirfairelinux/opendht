@@ -539,7 +539,7 @@ cdef class TrustList(object):
 cdef class ListenToken(object):
     cdef cpp.InfoHash _h
     cdef cpp.shared_future[size_t] _t
-    _cb = dict()
+    cdef bool _cancelled
 
 cdef class Identity(object):
     cdef cpp.Identity _id
@@ -673,15 +673,18 @@ cdef class DhtRunner(_WithID):
         host_bytes = host.encode()
         port_bytes = port.encode() if port else b'4222'
         self.thisptr.get().bootstrap(<cpp.const_char*>host_bytes, <cpp.const_char*>port_bytes)
-    def run(self, Identity id=None, is_bootstrap=False, cpp.in_port_t port=0, str ipv4="", str ipv6="", DhtConfig config=DhtConfig()):
-        if id:
-            config.setIdentity(id)
+    def run(self, Identity id=None, is_bootstrap=False, cpp.in_port_t port=0, str ipv4="", str ipv6="", DhtConfig config=None):
+        cdef cpp.DhtRunnerConfig run_config = config._config if config is not None else cpp.DhtRunnerConfig()
+        if id is not None:
+            run_config.dht_config.id = id._id
+        if is_bootstrap:
+            run_config.dht_config.node_config.is_bootstrap = True
         if ipv4 or ipv6:
             bind4 = ipv4.encode() if ipv4 else b''
             bind6 = ipv6.encode() if ipv6 else b''
-            self.thisptr.get().run(bind4, bind6, str(port).encode(), config._config)
+            self.thisptr.get().run(bind4, bind6, str(port).encode(), run_config)
         else:
-            self.thisptr.get().run(port, config._config)
+            self.thisptr.get().run(port, run_config)
     def join(self):
         self.thisptr.get().join()
     def shutdown(self, shutdown_cb=None):
@@ -849,15 +852,14 @@ cdef class DhtRunner(_WithID):
         t = ListenToken()
         t._h = key._infohash
         cb_obj = {'valcb':value_cb}
-        t._cb['cb'] = cb_obj
-        # avoid the callback being destructed if the token is destroyed
-        ref.Py_INCREF(cb_obj)
-        t._t = self.thisptr.get().listen(t._h, cpp.bindValueCb(value_callback, <void*>cb_obj)).share()
+        t._t = self.thisptr.get().listen(t._h, cpp.bindPythonValueCb(value_callback, cb_obj)).share()
         return t
     def cancelListen(self, ListenToken token):
-        self.thisptr.get().cancelListen(token._h, token._t)
-        ref.Py_DECREF(<object>token._cb['cb'])
-        # fixme: not thread safe
+        if token is None:
+            raise TypeError("token must be a ListenToken")
+        if not token._cancelled and token._t.valid():
+            self.thisptr.get().cancelListen(token._h, token._t)
+            token._cancelled = True
 
 cdef class IndexValue(object):
     cdef cpp.shared_ptr[cpp.IndexValue] _value
