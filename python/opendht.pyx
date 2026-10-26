@@ -803,7 +803,7 @@ cdef class DhtRunner(_WithID):
                     lock.notify()
             with lock:
                 pending += 1
-                self.put(key, val, done_cb=tmp_done)
+                self.put(key, val, done_cb=tmp_done, permanent=permanent)
                 while pending > 0:
                     lock.wait()
             return ok
@@ -825,7 +825,7 @@ cdef class DhtRunner(_WithID):
                     lock.notify()
             with lock:
                 pending += 1
-                self.putSigned(key, val, done_cb=tmp_done)
+                self.putSigned(key, val, done_cb=tmp_done, permanent=permanent)
                 while pending > 0:
                     lock.wait()
             return ok
