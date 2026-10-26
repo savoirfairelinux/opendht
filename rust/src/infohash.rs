@@ -42,7 +42,7 @@ impl InfoHash {
         let mut h = InfoHash::new();
         unsafe {
             let c_str = CString::new(data).unwrap();
-            dht_infohash_from_hex(&mut h, c_str.as_ptr());
+            dht_infohash_from_hex_null(&mut h, c_str.as_ptr());
         }
         h
     }

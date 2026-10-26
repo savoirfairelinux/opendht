@@ -164,6 +164,7 @@ extern "C" {
     pub fn dht_infohash_random(h: *mut InfoHash);
     pub fn dht_infohash_get(h: *mut InfoHash, dat: *const u8, dat_size: size_t);
     pub fn dht_infohash_from_hex(h: *mut InfoHash, dat: *const c_char);
+    pub fn dht_infohash_from_hex_null(h: *mut InfoHash, dat: *const c_char);
     pub fn dht_infohash_is_zero(j: *const InfoHash) -> bool;
 
     // dht::PkId
