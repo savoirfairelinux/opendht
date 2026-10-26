@@ -1,3 +1,4 @@
+import asyncio
 import gc
 from pathlib import Path
 import subprocess
@@ -5,8 +6,10 @@ import sys
 import textwrap
 import threading
 import unittest
+from unittest.mock import Mock
 import weakref
 import opendht as dht
+import opendht.aio as aio
 
 class _ListenerCallback:
     def __call__(self, value, expired):
@@ -100,6 +103,23 @@ class OpenDhtTester(unittest.TestCase):
         self.addCleanup(node.join)
         node.run(**kwargs)
         return node
+
+    def test_blocking_put_forwards_permanence(self):
+        class RecordingRunner(dht.DhtRunner):
+            def put(self, key, value, done_cb=None, permanent=False):
+                self.permanent = permanent
+                done_cb(True, [])
+
+            putSigned = put
+
+        node = RecordingRunner()
+        key = dht.InfoHash.getRandom()
+        value = dht.Value(b"permanent")
+        for name in ("put", "putSigned"):
+            for permanent in (False, True):
+                with self.subTest(method=name, permanent=permanent):
+                    self.assertTrue(getattr(dht.DhtRunner, name)(node, key, value, permanent=permanent))
+                    self.assertIs(node.permanent, permanent)
 
     def test_run_default_config(self):
         self.assertIsNone(dht.DhtRunner.run.__defaults__[-1])
@@ -215,6 +235,73 @@ class OpenDhtTester(unittest.TestCase):
         self.assertTrue(trust.verify(sub_id1.certificate))
         self.assertFalse(trust.verify(sub_id2.certificate))
         self.assertFalse(trust.verify(main_id2.certificate))
+
+
+class AsyncOpenDhtTester(unittest.IsolatedAsyncioTestCase):
+
+    def _completion_cases(self):
+        key = dht.InfoHash.getRandom()
+        value = dht.Value(b"async")
+        return (
+            ("ping", (dht.SockAddr(),), 1, (True,), True),
+            ("put", (key, value), 2, (True, []), True),
+            ("putSigned", (key, value), 2, (True, []), True),
+            ("putEncrypted", (key, dht.PkId.getRandom(), value), 3, (True, []), True),
+            ("shutdown", (), 0, (), None),
+        )
+
+    async def test_cancel_listener(self):
+        core = Mock()
+        node = aio.DhtRunner(core=core)
+        listener = node.listen(dht.InfoHash.getRandom())
+        pending = asyncio.create_task(listener.__anext__())
+        await asyncio.sleep(0)
+        await node.cancelListen(listener)
+        await node.cancelListen(listener)
+        with self.assertRaises(StopAsyncIteration):
+            await asyncio.wait_for(pending, 1)
+        core.cancelListen.assert_called_once_with(core.listen.return_value)
+
+    async def test_cancelled_completions_are_ignored(self):
+        loop = asyncio.get_running_loop()
+        errors = []
+        self.addCleanup(loop.set_exception_handler, loop.get_exception_handler())
+        loop.set_exception_handler(lambda active_loop, context: errors.append(context))
+        for name, arguments, callback_index, results, expected in self._completion_cases():
+            for queued_first in (False, True):
+                with self.subTest(method=name, queued_first=queued_first):
+                    core = Mock()
+                    node = aio.DhtRunner(core=core)
+                    task = asyncio.create_task(getattr(node, name)(*arguments))
+                    await asyncio.sleep(0)
+                    callback = getattr(core, name).call_args.args[callback_index]
+                    if queued_first:
+                        callback(*results)
+                    task.cancel()
+                    if not queued_first:
+                        callback(*results)
+                    with self.assertRaises(asyncio.CancelledError):
+                        await task
+                    await asyncio.sleep(0)
+                    self.assertEqual(errors, [])
+
+    async def test_completions_resolve_once(self):
+        loop = asyncio.get_running_loop()
+        errors = []
+        self.addCleanup(loop.set_exception_handler, loop.get_exception_handler())
+        loop.set_exception_handler(lambda active_loop, context: errors.append(context))
+        for name, arguments, callback_index, results, expected in self._completion_cases():
+            with self.subTest(method=name):
+                core = Mock()
+                node = aio.DhtRunner(core=core)
+                task = asyncio.create_task(getattr(node, name)(*arguments))
+                await asyncio.sleep(0)
+                callback = getattr(core, name).call_args.args[callback_index]
+                callback(*results)
+                callback(*results)
+                self.assertEqual(await asyncio.wait_for(task, 1), expected)
+                await asyncio.sleep(0)
+                self.assertEqual(errors, [])
 
 if __name__ == '__main__':
     unittest.main()
