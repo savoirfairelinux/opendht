@@ -25,13 +25,21 @@ class OpenDhtTester(unittest.TestCase):
             restored_public = dht.PublicKey(public_key.serialize())
             self.assertEqual(restored_public.getLongId(), public_key.getLongId())
             self.assertEqual(bytes(restored_public), public_key.serialize())
+            ca_cert = dht.Certificate.generate(key, "root", is_ca=True)
+            trust = dht.TrustList()
+            trust.add(ca_cert)
             for password in ("", "test-password"):
                 with self.subTest(algorithm=generate.__name__, encrypted=bool(password)):
                     encoded = key.serialize(password)
                     self.assertIsInstance(encoded, bytes)
                     restored_key = dht.PrivateKey(encoded, password)
                     self.assertEqual(restored_key.getLongId(), key.getLongId())
-                    self.assertTrue(restored_public.checkSignature(message, restored_key.sign(message)))
+                    certificate = dht.Certificate.generate(
+                        dht.PrivateKey.generateEC(), "restored", dht.Identity(restored_key, ca_cert)
+                    )
+                    self.assertTrue(trust.verify(certificate))
+                    if generate.__name__ == "generate":
+                        self.assertTrue(restored_public.checkSignature(message, restored_key.sign(message)))
             self.assertEqual(dht.PrivateKey(bytes(key)).getLongId(), key.getLongId())
 
     def test_key_import_errors(self):
@@ -44,10 +52,15 @@ class OpenDhtTester(unittest.TestCase):
                 key_type().serialize()
             with self.assertRaises(ValueError):
                 bytes(key_type())
-        encoded = dht.PrivateKey.generateEC().serialize("test-password")
+        key = dht.PrivateKey.generateEC()
+        encoded = key.serialize("test-password")
         for password in ("", "wrong-password"):
             with self.assertRaises(RuntimeError):
                 dht.PrivateKey(encoded, password)
+        with self.assertRaises(ValueError):
+            key.serialize("test\0password")
+        with self.assertRaises(ValueError):
+            dht.PrivateKey(encoded, "test\0password")
 
     def test_identity_persistence(self):
         ca_key = dht.PrivateKey.generateEC()
