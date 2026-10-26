@@ -9,6 +9,14 @@ impl Blob {
     pub fn data(&self) -> DataView {
         unsafe { dht_blob_get_data(self) }
     }
+
+    pub fn as_bytes(&self) -> Vec<u8> {
+        let data = self.data();
+        if data.size == 0 {
+            return Vec::new();
+        }
+        unsafe { std::slice::from_raw_parts(data.data, data.size).to_vec() }
+    }
 }
 
 impl Drop for Blob {

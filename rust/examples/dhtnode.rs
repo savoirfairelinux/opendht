@@ -2,18 +2,17 @@
 // SPDX-License-Identifier: MIT
 
 extern crate opendht;
-use std::{ thread, time };
+use std::{thread, time};
 
-use opendht::{ InfoHash, DhtRunner, DhtRunnerConfig, Value };
+use opendht::{DhtRunner, DhtRunnerConfig, InfoHash, Value};
 // use opendht::crypto::*;
 
-fn main() {
+fn main() -> std::io::Result<()> {
     println!("{}", InfoHash::random());
     println!("{}", InfoHash::new());
     println!("{}", InfoHash::new().is_zero());
     println!("{}", InfoHash::get("alice"));
     println!("{}", InfoHash::get("alice").is_zero());
-
 
     let mut dht = DhtRunner::new();
     let /*mut*/ config = DhtRunnerConfig::new();
@@ -23,36 +22,40 @@ fn main() {
     //let cert = DhtCertificate::import("example.crt").ok().expect("Invalid cert file");
     //let pk = PrivateKey::import("example.key", "");
     //config.set_identity(cert, pk);
-    dht.run_config(1412, config);
-    dht.bootstrap("bootstrap.jami.net", 4222);
+    dht.run_config(1412, config)?;
+    dht.bootstrap("bootstrap.jami.net", 4222)?;
     println!("Current node id: {}", dht.node_id());
 
     let /* mut */ data = 42;
-    let mut get_cb = |v: Box<Value>| {
+    let get_cb = move |v: Box<Value>| {
         //data += 1;
         println!("GET: VALUE CB - data: {} - v: {}", data, v);
         true
     };
-    let mut done_cb = |ok: bool| {
+    let done_cb = move |ok: bool| {
         println!("GET: DONE CB - data: {} - ok: {}", data, ok);
     };
 
-    dht.get(&InfoHash::get("alice"), &mut get_cb, &mut done_cb);
+    dht.get(&InfoHash::get("alice"), get_cb, done_cb);
 
-    let mut put_done_cb = |ok: bool| {
+    let put_done_cb = move |ok: bool| {
         println!("PUT: DONE CB - data: {} - ok: {}", data, ok);
     };
-    dht.put(&InfoHash::get("bob"), Value::new("hi!"), &mut put_done_cb, false);
-
+    dht.put(&InfoHash::get("bob"), Value::new("hi!"), put_done_cb, false);
 
     println!("Start listening /foo");
-    let mut value_cb = |v, expired| {
-        println!("LISTEN: DONE CB - data: {} - v: {} - expired: {}", data, v, expired);
+    let value_cb = move |v, expired| {
+        println!(
+            "LISTEN: DONE CB - data: {} - v: {} - expired: {}",
+            data, v, expired
+        );
         true
     };
-    let token = dht.listen(&InfoHash::get("foo"), &mut value_cb);
+    let token = dht.listen(&InfoHash::get("foo"), value_cb)?;
     let one_min = time::Duration::from_secs(10);
     thread::sleep(one_min);
     dht.cancel_listen(&InfoHash::get("foo"), token);
     println!("Public ips: {:#?}", dht.public_addresses());
+    dht.join()?;
+    Ok(())
 }
