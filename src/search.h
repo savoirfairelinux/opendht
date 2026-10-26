@@ -180,11 +180,11 @@ struct Dht::SearchNode
      *
      * @param now     The time reference to now.
      * @param update  The time of the last 'get' op satisfying this request.
-     * @param q       The query defining the "get" operation we're referring to.
+     * @param get     The "get" operation we're referring to.
      *
      * @return true if we can send get, else false.
      */
-    bool canGet(time_point now, time_point update, const Sp<Query>& q) const
+    bool canGet(time_point now, time_point update, const Get& get) const
     {
         if (node->isExpired())
             return false;
@@ -193,7 +193,7 @@ struct Dht::SearchNode
         for (const auto& s : getStatus) {
             if (s.second and s.second->pending())
                 is_pending = true;
-            if (s.first and q and q->isSatisfiedBy(*s.first) and s.second) {
+            if (s.first and get.query and get.isSatisfiedBy(*s.first) and s.second) {
                 if (s.second->pending())
                     pending_sq_status = true;
                 else if (s.second->completed() and not(update > s.second->reply_time))
@@ -204,7 +204,7 @@ struct Dht::SearchNode
         }
 
         return (not is_pending and now > last_get_reply + Node::NODE_EXPIRE_TIME)
-               or not(completed_sq_status or pending_sq_status or hasStartedPagination(q));
+               or not(completed_sq_status or pending_sq_status or hasStartedPagination(get.query));
     }
 
     /**

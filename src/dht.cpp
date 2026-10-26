@@ -402,17 +402,18 @@ Dht::searchSendGetValues(Sp<Search> sr, SearchNode* pn, bool update)
 
     std::weak_ptr<Search> ws = sr;
     auto cb = sr->callbacks.begin();
-    static const auto ANY_QUERY = std::make_shared<Query>(Select {}, Where {}, true);
+    static const Get ANY_GET {time_point::min(), {}, std::make_shared<Query>(Select {}, Where {}, true), {}, {}, {}};
     do { /* for all requests to send */
         SearchNode* n = nullptr;
-        auto& query = sr->callbacks.empty() ? ANY_QUERY : cb->second.query;
+        const auto& get = sr->callbacks.empty() ? ANY_GET : cb->second;
+        const auto& query = get.query;
         const time_point up = (not sr->callbacks.empty() and update) ? sr->getLastGetTime(*query) : time_point::min();
 
-        if (pn and pn->canGet(now, up, query)) {
+        if (pn and pn->canGet(now, up, get)) {
             n = pn;
         } else {
             for (auto& sn : sr->nodes) {
-                if (sn->canGet(now, up, query)) {
+                if (sn->canGet(now, up, get)) {
                     n = sn.get();
                     break;
                 }
