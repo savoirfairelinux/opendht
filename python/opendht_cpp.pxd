@@ -98,49 +98,49 @@ ctypedef vector[uint8_t] Blob
 
 cdef extern from "opendht/crypto.h" namespace "dht::crypto":
     ctypedef pair[shared_ptr[PrivateKey], shared_ptr[Certificate]] Identity
-    cdef Identity generateIdentity(string name, Identity ca, unsigned bits)
+    cdef Identity generateIdentity(string name, Identity ca, unsigned bits) except +
     cdef Blob aesEncrypt(Blob data, string password) except +
     cdef Blob aesDecrypt(Blob encrypted, string password) except +
 
     cdef cppclass PrivateKey:
-        PrivateKey()
-        shared_ptr[PublicKey] getSharedPublicKey() const
-        Blob decrypt(Blob data) const
-        Blob sign(Blob data) const
+        PrivateKey() except +
+        shared_ptr[PublicKey] getSharedPublicKey() except +
+        Blob decrypt(Blob data) except +
+        Blob sign(Blob data) except +
         @staticmethod
-        PrivateKey generate()
+        PrivateKey generate() except +
         @staticmethod
-        PrivateKey generateEC()
+        PrivateKey generateEC() except +
 
     cdef cppclass PublicKey:
-        PublicKey()
-        InfoHash getId() const
-        PkId getLongId() const
-        Blob encrypt(Blob data) const
-        bool checkSignature(Blob data, Blob signature) const
+        PublicKey() except +
+        InfoHash getId() except +
+        PkId getLongId() except +
+        Blob encrypt(Blob data) except +
+        bool checkSignature(Blob data, Blob signature) except +
         bool operator==(PublicKey) const
 
     cdef cppclass Certificate:
-        Certificate()
-        Certificate(string pem)
-        InfoHash getId() const
-        PkId getLongId() const
-        string toString() const
-        string getName() const
-        void revoke(PrivateKey key, Certificate cert)
+        Certificate() except +
+        Certificate(string pem) except +
+        InfoHash getId() except +
+        PkId getLongId() except +
+        string toString() except +
+        string getName() except +
+        void revoke(PrivateKey key, Certificate cert) except +
         @staticmethod
-        Certificate generate(PrivateKey key, string name, Identity ca, bool is_ca)
+        Certificate generate(PrivateKey key, string name, Identity ca, bool is_ca) except +
         shared_ptr[Certificate] issuer
 
     cdef cppclass TrustList:
         cppclass VerifyResult:
             bool operator bool() const
             bool isValid() const
-            string toString() const
-        TrustList()
-        void add(Certificate)
-        void remove(Certificate)
-        VerifyResult verify(Certificate);
+            string toString() except +
+        TrustList() except +
+        void add(Certificate) except +
+        void remove(Certificate) except +
+        VerifyResult verify(Certificate) except +
 
 ctypedef TrustList.VerifyResult TrustListVerifyResult
 

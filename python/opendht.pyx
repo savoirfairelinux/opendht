@@ -405,6 +405,8 @@ cdef class PrivateKey(_WithPk):
         return pk
 
     def decrypt(self, bytes dat) -> bytes:
+        if not self._key:
+            raise ValueError("PrivateKey is not initialized")
         cdef size_t d_len = len(dat)
         cdef cpp.uint8_t* d_ptr = <cpp.uint8_t*>dat
         cdef cpp.Blob indat
@@ -500,8 +502,14 @@ cdef class Certificate(_WithPk):
             return ""
         return self._cert.get().toString().decode()
     def getName(self) -> str:
+        if not self._cert:
+            raise ValueError("Certificate is not initialized")
         return self._cert.get().getName().decode()
     def revoke(self, PrivateKey k, Certificate c):
+        if not self._cert or c is None or not c._cert:
+            raise ValueError("Certificate is not initialized")
+        if k is None or not k._key:
+            raise ValueError("PrivateKey is not initialized")
         self._cert.get().revoke(deref(k._key.get()), deref(c._cert.get()));
     def __bytes__(self):
         return self._cert.get().toString().encode() if self._cert else b''
@@ -514,6 +522,10 @@ cdef class Certificate(_WithPk):
         return None
     @staticmethod
     def generate(PrivateKey k, str name, Identity i = Identity(), bool is_ca = False):
+        if k is None or not k._key:
+            raise ValueError("PrivateKey is not initialized")
+        if i is None:
+            i = Identity()
         c = Certificate()
         c._cert = cpp.make_shared[cpp.Certificate](cpp.Certificate.generate(deref(k._key.get()), name.encode(), i._id, is_ca))
         return c
@@ -528,10 +540,16 @@ cdef class VerifyResult(object):
 cdef class TrustList(object):
     cdef cpp.TrustList _trust
     def add(self, Certificate cert):
+        if cert is None or not cert._cert:
+            raise ValueError("Certificate is not initialized")
         self._trust.add(deref(cert._cert.get()))
     def remove(self, Certificate cert):
+        if cert is None or not cert._cert:
+            raise ValueError("Certificate is not initialized")
         self._trust.remove(deref(cert._cert.get()))
     def verify(self, Certificate cert):
+        if cert is None or not cert._cert:
+            raise ValueError("Certificate is not initialized")
         r = VerifyResult()
         r._result = self._trust.verify(deref(cert._cert.get()))
         return r
@@ -550,6 +568,8 @@ cdef class Identity(object):
             self._id.second = c._cert
     @staticmethod
     def generate(str name = "pydht", Identity ca = Identity(), unsigned bits = 4096):
+        if ca is None:
+            ca = Identity()
         i = Identity()
         i._id = cpp.generateIdentity(name.encode(), ca._id, bits)
         return i
