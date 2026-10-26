@@ -7,6 +7,18 @@ use std::sync::{
 use std::time::Duration;
 
 #[test]
+fn hex_hash_parsing_checks_string_lengths() {
+    for length in 0..40 {
+        assert!(InfoHash::from_hex(&"a".repeat(length)).is_zero());
+    }
+    let hash = InfoHash::get("hex parsing regression");
+    let encoded = hash.to_string();
+    assert!(hash == InfoHash::from_hex(&encoded));
+    assert!(hash == InfoHash::from_hex(&encoded.to_uppercase()));
+    assert!(InfoHash::from_hex(&"z".repeat(40)).is_zero());
+}
+
+#[test]
 fn values_can_move_out_of_their_box() {
     let mut value = *Value::with_id(b"moved value", 42);
     value.set_seq(7);
