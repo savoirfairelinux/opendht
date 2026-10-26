@@ -8,6 +8,10 @@
 #include <stdio.h>
 #include <string.h>
 
+#ifdef _WIN32
+#include <stdlib.h>
+#endif
+
 static void
 done_cb(bool ok, void* user_data)
 {
@@ -41,12 +45,18 @@ released_cb(void* user_data)
 int
 main(void)
 {
+#ifdef _WIN32
+    _set_error_mode(_OUT_TO_STDERR);
+#endif
+    setvbuf(stdout, NULL, _IONBF, 0);
+    puts("C bindings: invalid crypto inputs");
     const uint8_t invalid[] = {1, 2, 3};
     assert(dht_publickey_import(invalid, sizeof(invalid)) == NULL);
     assert(dht_privatekey_import(invalid, sizeof(invalid), "") == NULL);
     assert(dht_certificate_import(invalid, sizeof(invalid)) == NULL);
     assert(dht_privatekey_generate(1) == NULL);
 
+    puts("C bindings: infohash roundtrip");
     dht_infohash hash;
     dht_infohash_get_from_string(&hash, "binding regression");
     assert(!dht_infohash_is_zero(&hash));
@@ -54,6 +64,7 @@ main(void)
     dht_infohash_from_hex_null(&restored, dht_infohash_print(&hash));
     assert(memcmp(&hash, &restored, sizeof(hash)) == 0);
 
+    puts("C bindings: value ownership and metadata");
     dht_value* value = dht_value_with_id_new(invalid, sizeof(invalid), 42);
     assert(value != NULL);
     assert(dht_value_get_id(value) == 42);
@@ -74,6 +85,7 @@ main(void)
     assert(strcmp(dht_value_get_push_type(copy), "audioCall") == 0);
     dht_value_unref(copy);
 
+    puts("C bindings: RSA signing and key persistence");
     dht_privatekey* private_key = dht_privatekey_generate(2048);
     assert(private_key != NULL);
     dht_publickey* public_key = dht_privatekey_get_publickey(private_key);
@@ -96,6 +108,7 @@ main(void)
     dht_privatekey_delete(private_key);
     dht_publickey_delete(public_key);
 
+    puts("C bindings: identity and certificate roundtrip");
     dht_identity identity = dht_identity_generate("binding regression", NULL);
     assert(identity.privatekey && identity.certificate);
     packed = dht_certificate_export(identity.certificate);
@@ -107,6 +120,7 @@ main(void)
     dht_blob_delete(packed);
     dht_identity_delete(&identity);
 
+    puts("C bindings: runner lifecycle and callbacks");
     dht_runner_config config;
     dht_runner_config_default(&config);
     config.threaded = false;
