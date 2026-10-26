@@ -268,6 +268,7 @@ if get_option('tests').enabled()
             'test_c',
             'tests/test_c.c',
             include_directories: ['c', opendht_interface_inc],
+            dependencies: [gnutls],
             link_with: opendht_c,
         )
         test('CBindings', test_c)

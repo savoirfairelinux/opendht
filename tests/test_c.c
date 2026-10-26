@@ -8,6 +8,10 @@
 #include <stdio.h>
 #include <string.h>
 
+#ifdef _MSC_VER
+#include <gnutls/gnutls.h>
+#endif
+
 static void
 done_cb(bool ok, void* user_data)
 {
@@ -41,6 +45,13 @@ released_cb(void* user_data)
 int
 main(void)
 {
+#ifdef _MSC_VER
+    int crypto_error = gnutls_global_init();
+    if (crypto_error != GNUTLS_E_SUCCESS) {
+        fprintf(stderr, "Failed to initialize GnuTLS: %s\n", gnutls_strerror(crypto_error));
+        return 1;
+    }
+#endif
     const uint8_t invalid[] = {1, 2, 3};
     assert(dht_publickey_import(invalid, sizeof(invalid)) == NULL);
     assert(dht_privatekey_import(invalid, sizeof(invalid), "") == NULL);
@@ -130,6 +141,9 @@ main(void)
     assert(dht_runner_run(runner, 0) == 0);
     assert(dht_runner_join(runner) == 0);
     dht_runner_delete(runner);
+#ifdef _MSC_VER
+    gnutls_global_deinit();
+#endif
     puts("C binding regressions passed");
     return 0;
 }
