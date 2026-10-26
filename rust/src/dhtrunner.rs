@@ -8,11 +8,14 @@ use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::ptr;
 
 use crate::crypto::{DhtCertificate, DhtIdentity, PrivateKey, PublicKey};
-pub use crate::ffi::{DhtRunner, OpToken};
-use crate::{checked_box, ffi, InfoHash, PkId, Value};
+use crate::{ffi, InfoHash, PkId, Value};
 use os_socketaddr::OsSocketAddr;
 use std::net::SocketAddr;
 use std::sync::Mutex;
+
+native_handle!(DhtRunner, dht_runner_delete);
+native_handle!(OpToken, dht_op_token_delete);
+native_handle!(PushToken, dht_push_token_delete);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum NodeStatus {
@@ -53,7 +56,7 @@ pub enum PushNotificationResult {
 }
 
 pub struct PushNotification {
-    token: Box<ffi::PushToken>,
+    token: Box<PushToken>,
     result: Option<PushNotificationResult>,
 }
 
@@ -63,7 +66,7 @@ impl PushNotification {
             return Ok(self.result);
         }
         let mut outcome = 0;
-        let code = unsafe { ffi::dht_push_token_poll(&mut *self.token, &mut outcome) };
+        let code = unsafe { ffi::dht_push_token_poll(self.token.as_ptr(), &mut outcome) };
         if code == libc::EAGAIN {
             return Ok(None);
         }
@@ -80,14 +83,6 @@ impl PushNotification {
             _ => PushNotificationResult::Error,
         });
         Ok(self.result)
-    }
-}
-
-impl Drop for ffi::PushToken {
-    fn drop(&mut self) {
-        unsafe {
-            ffi::dht_push_token_delete(self);
-        }
     }
 }
 
@@ -234,9 +229,7 @@ impl DhtRunnerConfig {
             server_ca: self
                 .server_ca
                 .as_ref()
-                .map_or(ptr::null_mut(), |certificate| {
-                    (&**certificate as *const DhtCertificate).cast_mut()
-                }),
+                .map_or(ptr::null_mut(), |certificate| certificate.as_ptr()),
             client_identity: self
                 .client_identity
                 .as_ref()
@@ -273,13 +266,13 @@ fn result(code: i32) -> io::Result<()> {
     }
 }
 
-extern "C" fn get_handler_cb(v: *const Value, ptr: *mut c_void) -> bool {
+extern "C" fn get_handler_cb(value: *const ffi::Value, ptr: *mut c_void) -> bool {
     if ptr.is_null() {
         return true;
     }
     callback(false, || unsafe {
         let handler = ptr as *mut GetHandler;
-        (*handler).get_cb((*v).boxed())
+        (*handler).get_cb(Value::from_raw(ffi::dht_value_copy(value)).expect("value copy failed"))
     })
 }
 
@@ -311,10 +304,13 @@ impl ListenHandler {
     }
 }
 
-extern "C" fn listen_handler(v: *const Value, expired: bool, ptr: *mut c_void) -> bool {
+extern "C" fn listen_handler(value: *const ffi::Value, expired: bool, ptr: *mut c_void) -> bool {
     callback(false, || unsafe {
         let handler = ptr as *mut ListenHandler;
-        (*handler).cb((*v).boxed(), expired)
+        (*handler).cb(
+            Value::from_raw(ffi::dht_value_copy(value)).expect("value copy failed"),
+            expired,
+        )
     })
 }
 
@@ -360,7 +356,7 @@ extern "C" fn certificate_store_handler(
             .unwrap_or_else(|error| error.into_inner());
         if let Some(handler) = &mut handlers.store {
             for certificate in handler(&*id) {
-                emit(&*certificate, emit_data);
+                emit(certificate.as_ptr(), emit_data);
             }
         }
     });
@@ -407,11 +403,11 @@ struct CertificateHandler {
     callback: Option<CertificateCompletion>,
 }
 
-extern "C" fn certificate_handler(certificate: *const DhtCertificate, data: *mut c_void) {
+extern "C" fn certificate_handler(certificate: *const ffi::DhtCertificate, data: *mut c_void) {
     callback((), || unsafe {
         let handler = &mut *(data as *mut CertificateHandler);
         if let Some(done) = handler.callback.take() {
-            done(checked_box(ffi::dht_certificate_ref(certificate)).ok());
+            done(DhtCertificate::from_raw(ffi::dht_certificate_ref(certificate)).ok());
         }
     });
 }
@@ -428,11 +424,11 @@ extern "C" fn certificate_released(data: *mut c_void) {
 #[allow(clippy::boxed_local)]
 impl DhtRunner {
     pub fn new() -> Box<DhtRunner> {
-        unsafe { checked_box(ffi::dht_runner_new()).expect("runner allocation failed") }
+        unsafe { Self::from_raw(ffi::dht_runner_new()).expect("runner allocation failed") }
     }
 
     pub fn run(&mut self, port: u16) -> io::Result<()> {
-        result(unsafe { ffi::dht_runner_run(self, port) })
+        result(unsafe { ffi::dht_runner_run(self.as_ptr(), port) })
     }
 
     pub fn run_config(&mut self, port: u16, config: Box<DhtRunnerConfig>) -> io::Result<()> {
@@ -466,7 +462,7 @@ impl DhtRunner {
         };
         result(unsafe {
             ffi::dht_runner_run_bind(
-                self,
+                self.as_ptr(),
                 ipv4.as_ptr(),
                 ipv6.as_ptr(),
                 port,
@@ -479,24 +475,24 @@ impl DhtRunner {
     pub fn bootstrap(&mut self, host: &str, service: u16) -> io::Result<()> {
         let host = CString::new(host)?;
         let service = CString::new(service.to_string())?;
-        unsafe { ffi::dht_runner_bootstrap(&mut *self, host.as_ptr(), service.as_ptr()) }
+        unsafe { ffi::dht_runner_bootstrap(self.as_ptr(), host.as_ptr(), service.as_ptr()) }
         Ok(())
     }
 
     pub fn node_id(&self) -> InfoHash {
-        unsafe { ffi::dht_runner_get_node_id(self) }
+        unsafe { ffi::dht_runner_get_node_id(self.as_ptr()) }
     }
 
     pub fn id(&self) -> InfoHash {
-        unsafe { ffi::dht_runner_get_id(self) }
+        unsafe { ffi::dht_runner_get_id(self.as_ptr()) }
     }
 
     pub fn public_key(&self) -> Option<Box<PublicKey>> {
-        unsafe { checked_box(ffi::dht_runner_get_publickey(self)).ok() }
+        unsafe { PublicKey::from_raw(ffi::dht_runner_get_publickey(self.as_ptr())).ok() }
     }
 
     pub fn register_certificate(&mut self, certificate: &DhtCertificate) -> io::Result<()> {
-        result(unsafe { ffi::dht_runner_register_certificate(self, certificate) })
+        result(unsafe { ffi::dht_runner_register_certificate(self.as_ptr(), certificate.as_ptr()) })
     }
 
     pub fn find_certificate(
@@ -509,7 +505,7 @@ impl DhtRunner {
         });
         unsafe {
             ffi::dht_runner_find_certificate(
-                self,
+                self.as_ptr(),
                 id,
                 certificate_handler,
                 certificate_released,
@@ -527,12 +523,18 @@ impl DhtRunner {
     ) -> io::Result<()> {
         let name = CString::new(name)?;
         result(unsafe {
-            ffi::dht_runner_register_type(self, id, name.as_ptr(), expiration_seconds, insecure)
+            ffi::dht_runner_register_type(
+                self.as_ptr(),
+                id,
+                name.as_ptr(),
+                expiration_seconds,
+                insecure,
+            )
         })
     }
 
     pub fn connectivity_changed(&mut self) -> io::Result<()> {
-        result(unsafe { ffi::dht_runner_connectivity_changed(self) })
+        result(unsafe { ffi::dht_runner_connectivity_changed(self.as_ptr()) })
     }
 
     pub fn get(
@@ -546,7 +548,7 @@ impl DhtRunner {
             done_cb: Box::new(done_cb),
         });
         let handler = Box::into_raw(handler) as *mut c_void;
-        unsafe { ffi::dht_runner_get(self, h, get_handler_cb, done_handler_cb, handler) }
+        unsafe { ffi::dht_runner_get(self.as_ptr(), h, get_handler_cb, done_handler_cb, handler) }
     }
 
     pub fn get_filtered(
@@ -563,7 +565,7 @@ impl DhtRunner {
         });
         unsafe {
             ffi::dht_runner_get_filtered(
-                self,
+                self.as_ptr(),
                 hash,
                 filter.as_ptr(),
                 get_handler_cb,
@@ -588,7 +590,7 @@ impl DhtRunner {
         });
         unsafe {
             ffi::dht_runner_query(
-                self,
+                self.as_ptr(),
                 hash,
                 query.as_ptr(),
                 query_handler,
@@ -610,7 +612,16 @@ impl DhtRunner {
             done_cb: Box::new(done_cb),
         });
         let handler = Box::into_raw(handler) as *mut c_void;
-        unsafe { ffi::dht_runner_put(self, h, &*v, put_handler_done, handler, permanent) }
+        unsafe {
+            ffi::dht_runner_put(
+                self.as_ptr(),
+                h,
+                v.as_ptr(),
+                put_handler_done,
+                handler,
+                permanent,
+            )
+        }
     }
 
     pub fn put_signed(
@@ -624,7 +635,16 @@ impl DhtRunner {
             done_cb: Box::new(done_cb),
         });
         let handler = Box::into_raw(handler) as *mut c_void;
-        unsafe { ffi::dht_runner_put_signed(self, h, &*v, put_handler_done, handler, permanent) }
+        unsafe {
+            ffi::dht_runner_put_signed(
+                self.as_ptr(),
+                h,
+                v.as_ptr(),
+                put_handler_done,
+                handler,
+                permanent,
+            )
+        }
     }
 
     pub fn put_encrypted(
@@ -640,12 +660,20 @@ impl DhtRunner {
         });
         let handler = Box::into_raw(handler) as *mut c_void;
         unsafe {
-            ffi::dht_runner_put_encrypted(self, h, to, &*v, put_handler_done, handler, permanent)
+            ffi::dht_runner_put_encrypted(
+                self.as_ptr(),
+                h,
+                to,
+                v.as_ptr(),
+                put_handler_done,
+                handler,
+                permanent,
+            )
         }
     }
 
     pub fn cancel_put(&mut self, h: &InfoHash, vid: u64) {
-        unsafe { ffi::dht_runner_cancel_put(self, h, vid) }
+        unsafe { ffi::dht_runner_cancel_put(self.as_ptr(), h, vid) }
     }
 
     /// Registers an owned callback. It is released after cancellation or `join()`.
@@ -675,8 +703,8 @@ impl DhtRunner {
         let handler = Box::new(ListenHandler { cb: Box::new(cb) });
         let handler = Box::into_raw(handler) as *mut c_void;
         unsafe {
-            checked_box(ffi::dht_runner_listen(
-                &mut *self,
+            OpToken::from_raw(ffi::dht_runner_listen(
+                self.as_ptr(),
                 h,
                 listen_handler,
                 listen_handler_done,
@@ -685,8 +713,8 @@ impl DhtRunner {
         }
     }
 
-    pub fn cancel_listen(&mut self, h: &InfoHash, mut token: Box<OpToken>) {
-        unsafe { ffi::dht_runner_cancel_listen(self, h, &mut *token) }
+    pub fn cancel_listen(&mut self, h: &InfoHash, token: Box<OpToken>) {
+        unsafe { ffi::dht_runner_cancel_listen(self.as_ptr(), h, token.as_ptr()) }
     }
 
     pub fn listen_filtered(
@@ -698,8 +726,8 @@ impl DhtRunner {
         let filter = CString::new(filter)?;
         let handler = Box::new(ListenHandler { cb: Box::new(cb) });
         unsafe {
-            checked_box(ffi::dht_runner_listen_filtered(
-                self,
+            OpToken::from_raw(ffi::dht_runner_listen_filtered(
+                self.as_ptr(),
                 hash,
                 filter.as_ptr(),
                 listen_handler,
@@ -711,20 +739,26 @@ impl DhtRunner {
 
     pub fn shutdown(&mut self, done_cb: impl FnOnce() + Send + 'static) {
         let handler: Box<Box<dyn FnOnce() + Send>> = Box::new(Box::new(done_cb));
-        unsafe { ffi::dht_runner_shutdown(self, shutdown_handler, Box::into_raw(handler).cast()) }
+        unsafe {
+            ffi::dht_runner_shutdown(
+                self.as_ptr(),
+                shutdown_handler,
+                Box::into_raw(handler).cast(),
+            )
+        }
     }
 
     pub fn join(&mut self) -> io::Result<()> {
-        result(unsafe { ffi::dht_runner_join(self) })
+        result(unsafe { ffi::dht_runner_join(self.as_ptr()) })
     }
     pub fn loop_once(&mut self) -> io::Result<()> {
-        result(unsafe { ffi::dht_runner_loop(self) })
+        result(unsafe { ffi::dht_runner_loop(self.as_ptr()) })
     }
     pub fn is_running(&self) -> bool {
-        unsafe { ffi::dht_runner_is_running(self) }
+        unsafe { ffi::dht_runner_is_running(self.as_ptr()) }
     }
     pub fn bound_port(&self, family: libc::sa_family_t) -> u16 {
-        unsafe { ffi::dht_runner_get_bound_port(self, family) }
+        unsafe { ffi::dht_runner_get_bound_port(self.as_ptr(), family) }
     }
 
     pub fn ping(&mut self, address: SocketAddr, done_cb: impl FnOnce(bool) + Send + 'static) {
@@ -734,7 +768,7 @@ impl DhtRunner {
         });
         unsafe {
             ffi::dht_runner_ping(
-                self,
+                self.as_ptr(),
                 address.as_ptr().cast_mut(),
                 address.len(),
                 put_handler_done,
@@ -745,15 +779,21 @@ impl DhtRunner {
 
     pub fn set_push_notification_token(&mut self, value: &str) -> io::Result<()> {
         let value = CString::new(value)?;
-        result(unsafe { ffi::dht_runner_set_push_notification_token(self, value.as_ptr()) })
+        result(unsafe {
+            ffi::dht_runner_set_push_notification_token(self.as_ptr(), value.as_ptr())
+        })
     }
     pub fn set_push_notification_topic(&mut self, value: &str) -> io::Result<()> {
         let value = CString::new(value)?;
-        result(unsafe { ffi::dht_runner_set_push_notification_topic(self, value.as_ptr()) })
+        result(unsafe {
+            ffi::dht_runner_set_push_notification_topic(self.as_ptr(), value.as_ptr())
+        })
     }
     pub fn set_push_notification_platform(&mut self, value: &str) -> io::Result<()> {
         let value = CString::new(value)?;
-        result(unsafe { ffi::dht_runner_set_push_notification_platform(self, value.as_ptr()) })
+        result(unsafe {
+            ffi::dht_runner_set_push_notification_platform(self.as_ptr(), value.as_ptr())
+        })
     }
     pub fn push_notification_received(
         &mut self,
@@ -773,8 +813,8 @@ impl DhtRunner {
             .map(|value| value.as_ptr())
             .collect::<Vec<_>>();
         let token = unsafe {
-            checked_box(ffi::dht_runner_push_notification_received(
-                self,
+            PushToken::from_raw(ffi::dht_runner_push_notification_received(
+                self.as_ptr(),
                 key_ptrs.as_ptr(),
                 value_ptrs.as_ptr(),
                 data.len(),
@@ -789,7 +829,7 @@ impl DhtRunner {
     pub fn public_addresses(&self) -> Vec<SocketAddr> {
         let mut result = Vec::new();
         unsafe {
-            let original = ffi::dht_runner_get_public_address(self);
+            let original = ffi::dht_runner_get_public_address(self.as_ptr());
             let mut addresses = original;
             while !addresses.is_null() && !(*addresses).is_null() {
                 let length = match (**addresses).sa_family as i32 {
@@ -806,17 +846,5 @@ impl DhtRunner {
             ffi::dht_sockaddr_array_delete(original);
         }
         result
-    }
-}
-
-impl Drop for DhtRunner {
-    fn drop(&mut self) {
-        unsafe { ffi::dht_runner_delete(self) }
-    }
-}
-
-impl Drop for OpToken {
-    fn drop(&mut self) {
-        unsafe { ffi::dht_op_token_delete(self) }
     }
 }

@@ -1,13 +1,13 @@
 // Copyright (c) 2014-2026 Savoir-faire Linux Inc.
 // SPDX-License-Identifier: MIT
 
-use crate::ffi::*;
+use crate::ffi::{self, DataView};
 
-pub use crate::ffi::Blob;
+native_handle!(Blob, dht_blob_delete);
 
 impl Blob {
     pub fn data(&self) -> DataView {
-        unsafe { dht_blob_get_data(self) }
+        unsafe { ffi::dht_blob_get_data(self.as_ptr()) }
     }
 
     pub fn as_bytes(&self) -> Vec<u8> {
@@ -16,11 +16,5 @@ impl Blob {
             return Vec::new();
         }
         unsafe { std::slice::from_raw_parts(data.data, data.size).to_vec() }
-    }
-}
-
-impl Drop for Blob {
-    fn drop(&mut self) {
-        unsafe { dht_blob_delete(&mut *self) }
     }
 }

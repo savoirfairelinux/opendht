@@ -4,6 +4,34 @@
 extern crate libc;
 extern crate os_socketaddr;
 
+macro_rules! native_handle {
+    ($name:ident, $delete:ident) => {
+        pub struct $name {
+            raw: std::ptr::NonNull<crate::ffi::$name>,
+        }
+
+        impl $name {
+            pub(crate) unsafe fn from_raw(
+                raw: *mut crate::ffi::$name,
+            ) -> std::io::Result<Box<Self>> {
+                let raw = std::ptr::NonNull::new(raw)
+                    .ok_or_else(|| std::io::Error::other("native operation failed"))?;
+                Ok(Box::new(Self { raw }))
+            }
+
+            pub(crate) fn as_ptr(&self) -> *mut crate::ffi::$name {
+                self.raw.as_ptr()
+            }
+        }
+
+        impl Drop for $name {
+            fn drop(&mut self) {
+                unsafe { crate::ffi::$delete(self.as_ptr()) }
+            }
+        }
+    };
+}
+
 mod blob;
 pub mod crypto;
 mod dhtrunner;
@@ -20,11 +48,3 @@ pub use dhtrunner::{
 pub use infohash::InfoHash;
 pub use pkid::PkId;
 pub use value::{DataView, Value};
-
-pub(crate) unsafe fn checked_box<T>(raw: *mut T) -> std::io::Result<Box<T>> {
-    if raw.is_null() {
-        Err(std::io::Error::other("native operation failed"))
-    } else {
-        Ok(Box::from_raw(raw))
-    }
-}

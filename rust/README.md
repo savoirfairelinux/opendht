@@ -39,7 +39,9 @@ embedded NULs. Passwords and other C strings reject embedded NULs.
 Callbacks are owned `Send + 'static` closures, not borrowed `&mut` closures.
 Use `move` captures and channels or `Arc` for shared application state. Native
 handles are thread-bound; send copied data through channels rather than moving
-a runner or value handle between threads. Callback panics are contained at the
+a runner or value handle between threads. Handles own stable native pointers
+and can be moved out of or back into their Rust boxes on the same thread.
+Callback panics are contained at the
 FFI boundary; a panicking value callback stops its operation.
 
 `Value::boxed()` creates an independent copy, including payload and metadata,

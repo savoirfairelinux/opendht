@@ -1,23 +1,25 @@
 // Copyright (c) 2014-2026 Savoir-faire Linux Inc.
 // SPDX-License-Identifier: MIT
 
-pub use crate::ffi::{DhtCertificate, PrivateKey, PublicKey};
-use crate::{checked_box, ffi};
-use crate::{Blob, InfoHash, PkId};
+use crate::{ffi, Blob, InfoHash, PkId};
 use std::ffi::CString;
 use std::fs;
 use std::io;
 use std::ptr;
 
+native_handle!(PublicKey, dht_publickey_delete);
+native_handle!(PrivateKey, dht_privatekey_delete);
+native_handle!(DhtCertificate, dht_certificate_delete);
+
 impl PublicKey {
     pub fn new(data: impl AsRef<[u8]>) -> io::Result<Box<PublicKey>> {
         let data = data.as_ref();
-        unsafe { checked_box(ffi::dht_publickey_import(data.as_ptr(), data.len())) }
+        unsafe { Self::from_raw(ffi::dht_publickey_import(data.as_ptr(), data.len())) }
     }
 
     pub fn unpack(&mut self, data: impl AsRef<[u8]>) -> io::Result<()> {
         let data = data.as_ref();
-        let result = unsafe { ffi::dht_publickey_unpack(self, data.as_ptr(), data.len()) };
+        let result = unsafe { ffi::dht_publickey_unpack(self.as_ptr(), data.as_ptr(), data.len()) };
         if result == 0 {
             Ok(())
         } else {
@@ -26,15 +28,15 @@ impl PublicKey {
     }
 
     pub fn pack(&self) -> io::Result<Vec<u8>> {
-        unsafe { Ok(checked_box(ffi::dht_publickey_export_blob(self))?.as_bytes()) }
+        unsafe { Ok(Blob::from_raw(ffi::dht_publickey_export_blob(self.as_ptr()))?.as_bytes()) }
     }
 
     pub fn id(&self) -> InfoHash {
-        unsafe { ffi::dht_publickey_get_id(self) }
+        unsafe { ffi::dht_publickey_get_id(self.as_ptr()) }
     }
 
     pub fn long_id(&self) -> PkId {
-        unsafe { ffi::dht_publickey_get_long_id(self) }
+        unsafe { ffi::dht_publickey_get_long_id(self.as_ptr()) }
     }
 
     pub fn check_signature(&self, data: impl AsRef<[u8]>, signature: impl AsRef<[u8]>) -> bool {
@@ -42,7 +44,7 @@ impl PublicKey {
         let signature = signature.as_ref();
         unsafe {
             ffi::dht_publickey_check_signature(
-                self,
+                self.as_ptr(),
                 data.as_ptr().cast(),
                 data.len(),
                 signature.as_ptr().cast(),
@@ -54,8 +56,8 @@ impl PublicKey {
     pub fn encrypt(&self, data: impl AsRef<[u8]>) -> io::Result<Box<Blob>> {
         let data = data.as_ref();
         unsafe {
-            checked_box(ffi::dht_publickey_encrypt(
-                self,
+            Blob::from_raw(ffi::dht_publickey_encrypt(
+                self.as_ptr(),
                 data.as_ptr().cast(),
                 data.len(),
             ))
@@ -63,19 +65,13 @@ impl PublicKey {
     }
 }
 
-impl Drop for PublicKey {
-    fn drop(&mut self) {
-        unsafe { ffi::dht_publickey_delete(self) }
-    }
-}
-
 impl PrivateKey {
     pub fn new(key_length_bits: u32) -> io::Result<Box<PrivateKey>> {
-        unsafe { checked_box(ffi::dht_privatekey_generate(key_length_bits)) }
+        unsafe { Self::from_raw(ffi::dht_privatekey_generate(key_length_bits)) }
     }
 
     pub fn new_ec() -> io::Result<Box<PrivateKey>> {
-        unsafe { checked_box(ffi::dht_privatekey_generate_ec()) }
+        unsafe { Self::from_raw(ffi::dht_privatekey_generate_ec()) }
     }
 
     pub fn import(file: &str, password: &str) -> io::Result<Box<PrivateKey>> {
@@ -85,7 +81,7 @@ impl PrivateKey {
     pub fn from_bytes(buffer: &[u8], password: &str) -> io::Result<Box<PrivateKey>> {
         let password = CString::new(password)?;
         unsafe {
-            checked_box(ffi::dht_privatekey_import(
+            Self::from_raw(ffi::dht_privatekey_import(
                 buffer.as_ptr(),
                 buffer.len(),
                 password.as_ptr(),
@@ -95,7 +91,7 @@ impl PrivateKey {
 
     pub fn public_key(&self) -> Box<PublicKey> {
         unsafe {
-            checked_box(ffi::dht_privatekey_get_publickey(self))
+            PublicKey::from_raw(ffi::dht_privatekey_get_publickey(self.as_ptr()))
                 .expect("private key has a public key")
         }
     }
@@ -103,31 +99,34 @@ impl PrivateKey {
     pub fn serialize(&self, password: &str) -> io::Result<Vec<u8>> {
         let password = CString::new(password)?;
         unsafe {
-            Ok(checked_box(ffi::dht_privatekey_export_blob(self, password.as_ptr()))?.as_bytes())
+            Ok(Blob::from_raw(ffi::dht_privatekey_export_blob(
+                self.as_ptr(),
+                password.as_ptr(),
+            ))?
+            .as_bytes())
         }
     }
 
     pub fn sign(&self, data: impl AsRef<[u8]>) -> io::Result<Vec<u8>> {
         let data = data.as_ref();
         unsafe {
-            Ok(checked_box(ffi::dht_privatekey_sign(self, data.as_ptr(), data.len()))?.as_bytes())
+            Ok(Blob::from_raw(ffi::dht_privatekey_sign(
+                self.as_ptr(),
+                data.as_ptr(),
+                data.len(),
+            ))?
+            .as_bytes())
         }
     }
 
     pub fn decrypt(&self, data: &[u8]) -> io::Result<Box<Blob>> {
         unsafe {
-            checked_box(ffi::dht_privatekey_decrypt(
-                self,
+            Blob::from_raw(ffi::dht_privatekey_decrypt(
+                self.as_ptr(),
                 data.as_ptr().cast(),
                 data.len(),
             ))
         }
-    }
-}
-
-impl Drop for PrivateKey {
-    fn drop(&mut self) {
-        unsafe { ffi::dht_privatekey_delete(self) }
     }
 }
 
@@ -137,7 +136,7 @@ impl DhtCertificate {
     }
 
     pub fn from_bytes(buffer: &[u8]) -> io::Result<Box<DhtCertificate>> {
-        unsafe { checked_box(ffi::dht_certificate_import(buffer.as_ptr(), buffer.len())) }
+        unsafe { Self::from_raw(ffi::dht_certificate_import(buffer.as_ptr(), buffer.len())) }
     }
 
     pub fn from_slice(buffer: &str) -> io::Result<Box<DhtCertificate>> {
@@ -145,28 +144,22 @@ impl DhtCertificate {
     }
 
     pub fn serialize(&self) -> io::Result<Vec<u8>> {
-        unsafe { Ok(checked_box(ffi::dht_certificate_export(self))?.as_bytes()) }
+        unsafe { Ok(Blob::from_raw(ffi::dht_certificate_export(self.as_ptr()))?.as_bytes()) }
     }
 
     pub fn id(&self) -> InfoHash {
-        unsafe { ffi::dht_certificate_get_id(self) }
+        unsafe { ffi::dht_certificate_get_id(self.as_ptr()) }
     }
 
     pub fn long_id(&self) -> PkId {
-        unsafe { ffi::dht_certificate_get_long_id(self) }
+        unsafe { ffi::dht_certificate_get_long_id(self.as_ptr()) }
     }
 
     pub fn publickey(&self) -> Box<PublicKey> {
         unsafe {
-            checked_box(ffi::dht_certificate_get_publickey(self))
+            PublicKey::from_raw(ffi::dht_certificate_get_publickey(self.as_ptr()))
                 .expect("certificate has a public key")
         }
-    }
-}
-
-impl Drop for DhtCertificate {
-    fn drop(&mut self) {
-        unsafe { ffi::dht_certificate_delete(self) }
     }
 }
 
@@ -190,8 +183,8 @@ impl DhtIdentity {
 
     pub(crate) fn raw(&self) -> ffi::DhtIdentity {
         ffi::DhtIdentity {
-            privatekey: (&*self.privatekey as *const PrivateKey).cast_mut(),
-            certificate: (&*self.certificate as *const DhtCertificate).cast_mut(),
+            privatekey: self.privatekey.as_ptr(),
+            certificate: self.certificate.as_ptr(),
         }
     }
 
@@ -212,8 +205,8 @@ impl DhtIdentity {
                 return Err(io::Error::other("identity generation failed"));
             }
             Ok(Self {
-                privatekey: checked_box(raw.privatekey)?,
-                certificate: checked_box(raw.certificate)?,
+                privatekey: PrivateKey::from_raw(raw.privatekey)?,
+                certificate: DhtCertificate::from_raw(raw.certificate)?,
             })
         }
     }
