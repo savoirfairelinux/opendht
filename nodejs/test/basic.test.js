@@ -1,9 +1,11 @@
 'use strict';
 
 const assert = require('node:assert/strict');
+const { execFile } = require('node:child_process');
 const { once } = require('node:events');
 const { EventEmitter } = require('node:events');
 const { test } = require('node:test');
+const { promisify } = require('node:util');
 const { Worker } = require('node:worker_threads');
 const { DhtRunner, hash, version } = require('..');
 
@@ -127,5 +129,65 @@ test('worker termination cleans up native runners', { timeout: 10000 }, async ()
         await once(worker, 'message');
     } finally {
         await worker.terminate();
+    }
+});
+
+test('listener callbacks may cancel themselves and close the runner', { timeout: 10000 }, async () => {
+    const runner = startNode();
+    const key = hash('reentrant listener');
+    let deliveries = 0;
+    let finish;
+    const received = new Promise(resolve => { finish = resolve; });
+    const subscription = runner.listen(key, () => {
+        deliveries++;
+        subscription.cancel();
+        finish(runner.close());
+    });
+    const put = runner.put(key, Buffer.from('value')).catch(error => {
+        assert.equal(error.code, 'ERR_DHT_CLOSED');
+    });
+    try {
+        await received;
+        await put;
+        assert.equal(deliveries, 1);
+    } finally {
+        await runner.close();
+    }
+});
+
+test('unref and garbage collection do not strand native threads', { timeout: 20000 }, async () => {
+    const modulePath = JSON.stringify(require.resolve('..'));
+    for (const finish of ['runner.unref();', 'runner = null; global.gc();']) {
+        await promisify(execFile)(process.execPath, ['--expose-gc', '-e', `
+            const { DhtRunner } = require(${modulePath});
+            let runner = new DhtRunner();
+            runner.run({ port: 0, ipv4: '127.0.0.1', ipv6: '::1' });
+            ${finish}
+        `], { timeout: 8000 });
+    }
+});
+
+test('queue overflow reports an error and rejects close', { timeout: 15000 }, async () => {
+    const runner = startNode();
+    const key = hash('bounded listener queue');
+    const reported = once(runner, 'error');
+    const subscription = runner.listen(key, () => {});
+    const puts = [];
+    try {
+        for (let index = 0; index < 3000; index++) {
+            puts.push(runner.put(key, Buffer.from('value'), { id: BigInt(index + 1) }).catch(error => {
+                assert.equal(error.code, 'ERR_DHT_OVERFLOW');
+            }));
+        }
+        const deadline = performance.now() + 5000;
+        while (runner.isRunning() && performance.now() < deadline) {}
+        assert.equal(runner.isRunning(), false);
+        const [error] = await reported;
+        assert.equal(error.code, 'ERR_DHT_OVERFLOW');
+        await Promise.all(puts);
+        await assert.rejects(runner.close(), { code: 'ERR_DHT_OVERFLOW' });
+    } finally {
+        subscription.cancel();
+        await runner.close().catch(() => {});
     }
 });
