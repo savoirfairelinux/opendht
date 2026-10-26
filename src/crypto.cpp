@@ -598,7 +598,9 @@ PublicKey::checkSignature(const uint8_t* data, size_t data_len, const uint8_t* s
         return false;
     const gnutls_datum_t sig {(uint8_t*) signature, (unsigned) signature_len};
     const gnutls_datum_t dat {(uint8_t*) data, (unsigned) data_len};
-    int rc = gnutls_pubkey_verify_data2(pk, GNUTLS_SIGN_RSA_SHA512, 0, &dat, &sig);
+    auto algorithm = gnutls_pk_to_sign(static_cast<gnutls_pk_algorithm_t>(gnutls_pubkey_get_pk_algorithm(pk, nullptr)),
+                                       GNUTLS_DIG_SHA512);
+    int rc = gnutls_pubkey_verify_data2(pk, algorithm, 0, &dat, &sig);
     return rc >= 0;
 }
 
