@@ -11,6 +11,11 @@ from . import _core as _dht
 from ._core import InfoHash, Value, ValueType, Where, SockAddr, PublicKey, PkId, DhtConfig, Identity
 
 
+def _set_result_if_pending(future: asyncio.Future[Any], result: Any) -> None:
+    if not future.done():
+        future.set_result(result)
+
+
 class _Listener:
     """Async iterator around DHT listen callback.
 
@@ -170,7 +175,7 @@ class DhtRunner:
 
     async def ping(self, addr: SockAddr) -> bool:
         fut: asyncio.Future[bool] = self._loop.create_future()
-        self._dht.ping(addr, lambda ok: self._loop.call_soon_threadsafe(fut.set_result, bool(ok)))
+        self._dht.ping(addr, lambda ok: self._loop.call_soon_threadsafe(_set_result_if_pending, fut, bool(ok)))
         return await fut
 
     def get(
@@ -220,7 +225,7 @@ class DhtRunner:
         fut: asyncio.Future[bool] = self._loop.create_future()
 
         def _done(ok: bool, _nodes: Iterable[Any]) -> None:
-            self._loop.call_soon_threadsafe(fut.set_result, bool(ok))
+            self._loop.call_soon_threadsafe(_set_result_if_pending, fut, bool(ok))
 
         self._dht.put(key, val, _done, permanent)
         return await fut
@@ -229,7 +234,7 @@ class DhtRunner:
         fut: asyncio.Future[bool] = self._loop.create_future()
 
         def _done(ok: bool, _nodes: Iterable[Any]) -> None:
-            self._loop.call_soon_threadsafe(fut.set_result, bool(ok))
+            self._loop.call_soon_threadsafe(_set_result_if_pending, fut, bool(ok))
 
         self._dht.putSigned(key, val, _done, permanent)
         return await fut
@@ -245,7 +250,7 @@ class DhtRunner:
         fut: asyncio.Future[bool] = self._loop.create_future()
 
         def _done(ok: bool, _nodes: Iterable[Any]) -> None:
-            self._loop.call_soon_threadsafe(fut.set_result, bool(ok))
+            self._loop.call_soon_threadsafe(_set_result_if_pending, fut, bool(ok))
 
         self._dht.putEncrypted(key, val, to, _done, permanent)
         return await fut
@@ -254,11 +259,11 @@ class DhtRunner:
         return _Listener(self, key)
 
     async def cancelListen(self, listener: _Listener) -> None:
-        await listener.cancel()
+        listener.cancel()
 
     async def shutdown(self) -> None:
         fut: asyncio.Future[None] = self._loop.create_future()
-        self._dht.shutdown(lambda: self._loop.call_soon_threadsafe(fut.set_result, None))
+        self._dht.shutdown(lambda: self._loop.call_soon_threadsafe(_set_result_if_pending, fut, None))
         await fut
     
     async def join(self) -> None:
