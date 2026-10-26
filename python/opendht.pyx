@@ -17,6 +17,7 @@ from libcpp.memory cimport shared_ptr, unique_ptr
 from cython.operator cimport dereference as deref, preincrement as inc, predecrement as dec
 from cpython cimport ref
 from datetime import timedelta
+from enum import IntEnum as _IntEnum
 from operator import index as _index
 
 cimport opendht_cpp as cpp
@@ -24,6 +25,8 @@ cimport opendht_cpp as cpp
 ctypedef cpp.Pht* _PhtPtr
 
 import threading
+import socket as _socket
+import weakref as _weakref
 
 cdef inline void _initialize_gnutls():
     cdef int err = cpp.gnutls_global_init()
@@ -41,6 +44,58 @@ _initialize_gnutls()
 
 def version() -> str:
     return cpp.version().decode()
+
+class NodeStatus(_IntEnum):
+    Disconnected = 0
+    Connecting = 1
+    Connected = 2
+
+class ValueField(_IntEnum):
+    Id = 1
+    ValueType = 2
+    OwnerPk = 3
+    SeqNum = 4
+    UserType = 5
+
+class _StatusCallbackState:
+    __slots__ = ("callback", "__weakref__")
+    def __init__(self):
+        self.callback = None
+
+cdef inline void status_callback(int ipv4, int ipv6, void* user_data) noexcept with gil:
+    state = (<object>user_data)()
+    if state is None:
+        return
+    callback = state.callback
+    if callback is not None:
+        callback(NodeStatus(ipv4), NodeStatus(ipv6))
+
+cdef inline bool query_callback(shared_ptr[cpp.FieldValueIndex] value, void* user_data) noexcept with gil:
+    cdef cpp.Blob blob
+    row = {}
+    for entry in value.get().index:
+        field = ValueField(<int>entry.first)
+        if field == ValueField.OwnerPk:
+            owner = InfoHash()
+            owner._infohash = entry.second.getHash()
+            row[field] = owner
+        elif field == ValueField.UserType:
+            blob = entry.second.getBlob()
+            row[field] = (<char*>blob.data())[:blob.size()].decode()
+        else:
+            row[field] = entry.second.getInt()
+    return (<object>user_data)['query'](row)
+
+cdef inline void query_done_callback(bool done, cpp.vector[shared_ptr[cpp.Node]]* nodes, void* user_data) noexcept with gil:
+    callback = (<object>user_data)['done']
+    if callback is not None:
+        entries = []
+        for node in deref(nodes):
+            entry = NodeEntry()
+            entry._v.first = node.get().getId()
+            entry._v.second = node
+            entries.append(entry)
+        callback(done, entries)
 
 cdef inline void lookup_callback(cpp.vector[cpp.shared_ptr[cpp.IndexValue]]* values, cpp.Prefix* p, void *user_data) noexcept with gil:
     cbs = <object>user_data
@@ -241,6 +296,78 @@ cdef class Node(_WithID):
             raise ValueError("Node is not initialized")
         return self._node.get().isExpired()
 
+cdef class NodeStats(object):
+    cdef cpp.NodeStats _stats
+    @property
+    def good_nodes(self):
+        return self._stats.good_nodes
+    @property
+    def dubious_nodes(self):
+        return self._stats.dubious_nodes
+    @property
+    def cached_nodes(self):
+        return self._stats.cached_nodes
+    @property
+    def incoming_nodes(self):
+        return self._stats.incoming_nodes
+    @property
+    def table_depth(self):
+        return self._stats.table_depth
+    @property
+    def searches(self):
+        return self._stats.searches
+    @property
+    def node_cache_size(self):
+        return self._stats.node_cache_size
+    def getKnownNodes(self):
+        return self._stats.getKnownNodes()
+    def getNetworkSizeEstimation(self):
+        return self._stats.getNetworkSizeEstimation()
+
+cdef class NodeInfo(object):
+    cdef cpp.NodeInfo _info
+    @property
+    def id(self):
+        result = InfoHash()
+        result._infohash = self._info.id
+        return result
+    @property
+    def node_id(self):
+        result = InfoHash()
+        result._infohash = self._info.node_id
+        return result
+    @property
+    def ipv4(self):
+        result = NodeStats()
+        result._stats = self._info.ipv4
+        return result
+    @property
+    def ipv6(self):
+        result = NodeStats()
+        result._stats = self._info.ipv6
+        return result
+    @property
+    def ongoing_ops(self):
+        return self._info.ongoing_ops
+    @property
+    def storage_values(self):
+        return self._info.storage_values
+    @property
+    def storage_size(self):
+        return self._info.storage_size
+    @property
+    def local_storage_values(self):
+        return self._info.local_storage_values
+    @property
+    def local_storage_size(self):
+        return self._info.local_storage_size
+    @property
+    def bound4(self):
+        return self._info.bound4
+    @property
+    def bound6(self):
+        return self._info.bound6
+
 cdef class NodeEntry(_WithID):
     cdef cpp.pair[cpp.InfoHash, shared_ptr[cpp.Node]] _v
     def getId(self):
@@ -274,8 +401,11 @@ cdef class Select(object):
         return self._select.toString().decode()
     def isSatisfiedBy(self, Select os):
         return self._select.isSatisfiedBy(os._select)
-    def field(self, int field):
-        self._select.field(<cpp.Field> field)
+    def field(self, field):
+        cdef int field_id = ValueField(_index(field))
+        if field_id == ValueField.SeqNum:
+            raise ValueError("The native wire format does not support sequence-number projections")
+        self._select.field(<cpp.Field>field_id)
         return self
 
 cdef class Where(object):
@@ -750,8 +880,10 @@ cdef class DhtConfig(object):
 cdef class DhtRunner(_WithID):
     cdef cpp.shared_ptr[cpp.DhtRunner] thisptr
     cdef map[_PhtPtr, shared_ptr[cpp.Pht]] _indexes
+    cdef object _status_callback
     def __cinit__(self):
         self.thisptr.reset(new cpp.DhtRunner())
+        self._status_callback = _StatusCallbackState()
     def __dealloc__(self):
         with nogil:
             if self.thisptr:
@@ -761,19 +893,51 @@ cdef class DhtRunner(_WithID):
     def getId(self) -> InfoHash:
         h = InfoHash()
         if self.thisptr:
-            h._infohash = self.thisptr.get().getId()
+            with nogil:
+                h._infohash = self.thisptr.get().getId()
         return h
     def getPublicKey(self) -> PublicKey:
         if not self.thisptr:
             raise ValueError("DhtRunner is not initialized")
         pk = PublicKey()
-        pk._key = self.thisptr.get().getPublicKey()
+        with nogil:
+            pk._key = self.thisptr.get().getPublicKey()
         return pk
     def getNodeId(self) -> InfoHash:
         h = InfoHash()
         if self.thisptr:
-            h._infohash = self.thisptr.get().getNodeId()
+            with nogil:
+                h._infohash = self.thisptr.get().getNodeId()
         return h
+    def getNodeInfo(self) -> NodeInfo:
+        result = NodeInfo()
+        with nogil:
+            result._info = self.thisptr.get().getNodeInfo()
+        return result
+    def getNodesStats(self, af=_socket.AF_INET) -> NodeStats:
+        if af not in (_socket.AF_INET, _socket.AF_INET6):
+            raise ValueError("af must be AF_INET or AF_INET6")
+        info = self.getNodeInfo()
+        return info.ipv4 if af == _socket.AF_INET else info.ipv6
+    def getPublicAddress(self, cpp.sa_family_t af=0):
+        if af not in (0, _socket.AF_INET, _socket.AF_INET6):
+            raise ValueError("af must be AF_UNSPEC, AF_INET or AF_INET6")
+        cdef cpp.vector[cpp.SockAddr] addresses
+        with nogil:
+            addresses = self.thisptr.get().getPublicAddress(af)
+        result = []
+        for address in addresses:
+            value = SockAddr()
+            value._addr = address
+            result.append(value)
+        return result
+    def getPublicAddressStr(self, cpp.sa_family_t af=0):
+        return [str(address) for address in self.getPublicAddress(af)]
+    def setOnStatusChanged(self, callback=None):
+        """Replace the DHT-thread status callback, or disable it with None."""
+        if callback is not None and not callable(callback):
+            raise TypeError("callback must be callable or None")
+        self._status_callback.callback = callback
     def ping(self, SockAddr addr, done_cb=None):
         if done_cb:
             cb_obj = {'done':done_cb}
@@ -808,9 +972,12 @@ cdef class DhtRunner(_WithID):
         if ipv4 or ipv6:
             bind4 = ipv4.encode() if ipv4 else b''
             bind6 = ipv6.encode() if ipv6 else b''
-            self.thisptr.get().run(bind4, bind6, str(port).encode(), run_config)
+            cpp.runPythonRunnerAddress(deref(self.thisptr.get()), bind4, bind6,
+                                       str(port).encode(), run_config,
+                                       status_callback, _weakref.ref(self._status_callback))
         else:
-            self.thisptr.get().run(port, run_config)
+            cpp.runPythonRunner(deref(self.thisptr.get()), port, run_config,
+                                status_callback, _weakref.ref(self._status_callback))
     def join(self):
         with nogil:
             self.thisptr.get().join()
@@ -831,17 +998,29 @@ cdef class DhtRunner(_WithID):
         return self.thisptr.get().isRunning()
     def getBound(self, cpp.sa_family_t af = 0):
         s = SockAddr()
-        s._addr = self.thisptr.get().getBound(af)
+        with nogil:
+            s._addr = self.thisptr.get().getBound(af)
         return s
     def getStorageLog(self):
-        return self.thisptr.get().getStorageLog().decode()
+        cdef cpp.string result
+        with nogil:
+            result = self.thisptr.get().getStorageLog()
+        return result.decode()
     def getRoutingTablesLog(self, cpp.sa_family_t af):
-        return self.thisptr.get().getRoutingTablesLog(af).decode()
+        cdef cpp.string result
+        with nogil:
+            result = self.thisptr.get().getRoutingTablesLog(af)
+        return result.decode()
     def getSearchesLog(self, cpp.sa_family_t af):
-        return self.thisptr.get().getSearchesLog(af).decode()
-    def getNodeMessageStats(self):
+        cdef cpp.string result
+        with nogil:
+            result = self.thisptr.get().getSearchesLog(af)
+        return result.decode()
+    def getNodeMessageStats(self, bool incoming=False):
         stats = []
-        cdef cpp.vector[unsigned] res = self.thisptr.get().getNodeMessageStats(False)
+        cdef cpp.vector[unsigned] res
+        with nogil:
+            res = self.thisptr.get().getNodeMessageStats(incoming)
         for n in res:
             stats.append(n)
         return stats
@@ -883,6 +1062,25 @@ cdef class DhtRunner(_WithID):
                 while pending > 0:
                     lock.wait()
             return res
+
+    def query(self, InfoHash key not None, query_cb=None, done_cb=None, Query query=None):
+        """Return projected metadata rows, or stream them through query_cb."""
+        if query is None:
+            query = Query("SELECT id,value_type,owner_pk,user_type")
+        if query_cb is None:
+            completed = threading.Event()
+            rows = []
+            def on_row(row):
+                rows.append(row)
+                return True
+            self.query(key, on_row, lambda ok, nodes: completed.set(), query)
+            completed.wait()
+            return rows
+        if not callable(query_cb) or (done_cb is not None and not callable(done_cb)):
+            raise TypeError("query callbacks must be callable")
+        callbacks = {'query': query_cb, 'done': done_cb}
+        cpp.queryPython(deref(self.thisptr.get()), key._infohash, query_callback,
+                        query_done_callback, callbacks, query._query)
 
     def put(self, InfoHash key, Value val, done_cb=None, permanent=False):
         """Publish a new value on the DHT at key.
@@ -976,11 +1174,16 @@ cdef class DhtRunner(_WithID):
     def cancelPut(self, InfoHash key, Value val):
         self.thisptr.get().cancelPut(key._infohash, val._value)
 
-    def listen(self, InfoHash key, value_cb):
+    def listen(self, InfoHash key not None, value_cb, filter=None, Where where=None):
+        if not callable(value_cb) or (filter is not None and not callable(filter)):
+            raise TypeError("listener callbacks must be callable")
+        if where is None:
+            where = Where()
         t = ListenToken()
         t._h = key._infohash
-        cb_obj = {'valcb':value_cb}
-        t._t = self.thisptr.get().listen(t._h, cpp.bindPythonValueCb(value_callback, cb_obj)).share()
+        cb_obj = {'valcb':value_cb, 'filter':filter}
+        t._t = self.thisptr.get().listen(t._h, cpp.bindPythonValueCb(value_callback, cb_obj),
+                                       cpp.nullptr, where._where).share()
         return t
     def cancelListen(self, ListenToken token):
         if token is None:

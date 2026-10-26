@@ -155,6 +155,7 @@ cdef extern from "opendht/value.h" namespace "dht::Value":
 cdef extern from "opendht/value.h" namespace "dht::Value::Field":
     cdef Field None
     cdef Field Id
+    cdef Field ValueTypeField "dht::Value::Field::ValueType"
     cdef Field OwnerPk
     cdef Field SeqNum
     cdef Field UserType
@@ -208,6 +209,14 @@ cdef extern from "opendht/value.h" namespace "dht":
         Where& userType(string user_type)
         string toString() const
 
+    cdef cppclass FieldValue:
+        uint64_t getInt() const
+        InfoHash getHash() const
+        Blob getBlob() const
+
+    cdef cppclass FieldValueIndex:
+        map[Field, FieldValue] index
+
 cdef extern from "opendht/node.h" namespace "dht":
     cdef cppclass Node:
         Node() except +
@@ -216,6 +225,30 @@ cdef extern from "opendht/node.h" namespace "dht":
         bool isExpired() const
 
 cdef extern from "opendht/callbacks.h" namespace "dht":
+    cdef cppclass NodeStats:
+        unsigned good_nodes
+        unsigned dubious_nodes
+        unsigned cached_nodes
+        unsigned incoming_nodes
+        unsigned table_depth
+        unsigned searches
+        unsigned node_cache_size
+        unsigned getKnownNodes() const
+        unsigned long getNetworkSizeEstimation() const
+
+    cdef cppclass NodeInfo:
+        InfoHash id
+        InfoHash node_id
+        NodeStats ipv4
+        NodeStats ipv6
+        size_t ongoing_ops
+        size_t storage_values
+        size_t storage_size
+        size_t local_storage_values
+        size_t local_storage_size
+        in_port_t bound4
+        in_port_t bound6
+
     ctypedef void (*ShutdownCallbackRaw)(void *user_data)
     ctypedef bool (*GetCallbackRaw)(shared_ptr[Value] values, void *user_data)
     ctypedef bool (*ValueCallbackRaw)(shared_ptr[Value] values, bool expired, void *user_data)
@@ -254,17 +287,22 @@ cdef extern from "opendht/callbacks.h" namespace "dht":
 cdef extern from *:
     """
     #include <Python.h>
-    #include <opendht/callbacks.h>
+    #include <opendht/dhtrunner.h>
 
-    static dht::ValueCallback opendht_bind_python_value_cb(
-        dht::ValueCallbackRaw callback, PyObject* data)
+    static std::shared_ptr<PyObject> opendht_python_owner(PyObject* data)
     {
         Py_INCREF(data);
-        auto owner = std::shared_ptr<PyObject>(data, [](PyObject* object) {
+        return std::shared_ptr<PyObject>(data, [](PyObject* object) {
             auto state = PyGILState_Ensure();
             Py_DECREF(object);
             PyGILState_Release(state);
         });
+    }
+
+    static dht::ValueCallback opendht_bind_python_value_cb(
+        dht::ValueCallbackRaw callback, PyObject* data)
+    {
+        auto owner = opendht_python_owner(data);
         return [callback, owner = std::move(owner)](
                    const std::vector<std::shared_ptr<dht::Value>>& values, bool expired) {
             for (const auto& value : values)
@@ -272,6 +310,48 @@ cdef extern from *:
                     return false;
             return true;
         };
+    }
+
+    static dht::DhtRunner::Context opendht_python_context(
+        void (*callback)(int, int, void*), PyObject* data)
+    {
+        dht::DhtRunner::Context context;
+        auto owner = opendht_python_owner(data);
+        context.statusChangedCallback = [callback, owner = std::move(owner)](
+            dht::NodeStatus ipv4, dht::NodeStatus ipv6) {
+            callback(static_cast<int>(ipv4), static_cast<int>(ipv6), owner.get());
+        };
+        return context;
+    }
+
+    static void opendht_python_run(dht::DhtRunner& runner, in_port_t port,
+        dht::DhtRunner::Config& config, void (*callback)(int, int, void*), PyObject* data)
+    {
+        runner.run(port, config, opendht_python_context(callback, data));
+    }
+
+    static void opendht_python_run(dht::DhtRunner& runner,
+        const char* ipv4, const char* ipv6, const char* port,
+        dht::DhtRunner::Config& config, void (*callback)(int, int, void*), PyObject* data)
+    {
+        runner.run(ipv4, ipv6, port, config, opendht_python_context(callback, data));
+    }
+
+    static void opendht_python_query(dht::DhtRunner& runner, const dht::InfoHash& key,
+        bool (*callback)(std::shared_ptr<dht::FieldValueIndex>, void*),
+        dht::DoneCallbackRaw done, PyObject* data, dht::Query query)
+    {
+        auto owner = opendht_python_owner(data);
+        runner.query(key,
+            [callback, owner](const std::vector<std::shared_ptr<dht::FieldValueIndex>>& rows) {
+                for (const auto& row : rows)
+                    if (!callback(row, owner.get()))
+                        return false;
+                return true;
+            },
+            [done, owner](bool ok, const std::vector<std::shared_ptr<dht::Node>>& nodes) {
+                done(ok, const_cast<std::vector<std::shared_ptr<dht::Node>>*>(&nodes), owner.get());
+            }, std::move(query));
     }
     """
     ValueCallback bindPythonValueCb "opendht_bind_python_value_cb"(ValueCallbackRaw callback, object data) except +
@@ -298,9 +378,11 @@ cdef extern from "opendht/dhtrunner.h" namespace "dht":
             SockAddr bind4
             SockAddr bind6
 
-        InfoHash getId() const
-        shared_ptr[PublicKey] getPublicKey() const
-        InfoHash getNodeId() const
+        InfoHash getId() except + nogil
+        shared_ptr[PublicKey] getPublicKey() except + nogil
+        InfoHash getNodeId() except + nogil
+        NodeInfo getNodeInfo() except + nogil
+        vector[SockAddr] getPublicAddress(sa_family_t af) except + nogil
         void bootstrap(const_char*, const_char*)
         void bootstrap(const SockAddr&, DoneCallbackSimple done_cb)
         void run(in_port_t, Config config) except +
@@ -309,21 +391,28 @@ cdef extern from "opendht/dhtrunner.h" namespace "dht":
         void shutdown(ShutdownCallback)
         void registerType(ValueType& value);
         bool isRunning()
-        SockAddr getBound(sa_family_t af) const
-        string getStorageLog() const
-        string getRoutingTablesLog(sa_family_t af) const
-        string getSearchesLog(sa_family_t af) const
+        SockAddr getBound(sa_family_t af) except + nogil
+        string getStorageLog() except + nogil
+        string getRoutingTablesLog(sa_family_t af) except + nogil
+        string getSearchesLog(sa_family_t af) except + nogil
         void get(InfoHash key, GetCallback get_cb, DoneCallback done_cb, nullptr_t f, Where w)
         void put(InfoHash key, shared_ptr[Value] val, DoneCallback done_cb, time_point created, bool permanent)
         void putSigned(InfoHash key, shared_ptr[Value] val, DoneCallback done_cb, bool permanent) 
         void putEncrypted(InfoHash key, PkId to, shared_ptr[Value] val, DoneCallback done_cb, bool permanent)
         void putEncrypted(InfoHash key, shared_ptr[PublicKey] to, shared_ptr[Value] val, DoneCallback done_cb, bool permanent)
         void cancelPut(InfoHash key, shared_ptr[Value] val)
-        ListenToken listen(InfoHash key, ValueCallback get_cb) except +
+        ListenToken listen(InfoHash key, ValueCallback get_cb, nullptr_t f, Where w) except +
         void cancelListen(InfoHash key, SharedListenToken token) except +
-        vector[unsigned] getNodeMessageStats(bool i)
+        vector[unsigned] getNodeMessageStats(bool i) except + nogil
 
 ctypedef DhtRunner.Config DhtRunnerConfig
+
+cdef extern from *:
+    ctypedef void (*StatusCallbackRaw)(int ipv4, int ipv6, void* data)
+    ctypedef bool (*QueryCallbackRaw)(shared_ptr[FieldValueIndex] row, void* data)
+    void runPythonRunner "opendht_python_run"(DhtRunner& runner, in_port_t port, DhtRunnerConfig& config, StatusCallbackRaw callback, object data) except +
+    void runPythonRunnerAddress "opendht_python_run"(DhtRunner& runner, const_char* ipv4, const_char* ipv6, const_char* port, DhtRunnerConfig& config, StatusCallbackRaw callback, object data) except +
+    void queryPython "opendht_python_query"(DhtRunner& runner, InfoHash key, QueryCallbackRaw callback, DoneCallbackRaw done, object data, Query query) except +
 
 cdef extern from "opendht/log.h" namespace "dht::log":
     void enableLogging(DhtRunner& dht)

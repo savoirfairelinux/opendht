@@ -161,6 +161,76 @@ value.pushType = "audioCall"
 Set metadata before publishing the value. Numeric values outside the native
 integer range raise `OverflowError`.
 
+## Observability
+
+`getNodeInfo()` returns a read-only `NodeInfo` snapshot with node identifiers,
+IPv4/IPv6 routing statistics, bound ports, pending-operation count, and local
+and remote storage counters. `getNodesStats(socket.AF_INET)` and
+`getNodesStats(socket.AF_INET6)` return `NodeStats` snapshots. Snapshots remain
+valid after the runner stops. `getPublicAddress()` returns known public
+`SockAddr` objects; pass an address family to restrict the results, or use
+`getPublicAddressStr()` for strings. These lists may be empty before discovery.
+`getNodeMessageStats(incoming=True)` selects incoming message counters.
+
+```python
+info = node.getNodeInfo()
+print(info.node_id, info.bound4, info.ipv4.good_nodes, info.storage_size)
+print(node.getPublicAddressStr())
+
+node.setOnStatusChanged(lambda ipv4, ipv6: print(ipv4.name, ipv6.name))
+node.setOnStatusChanged(None)
+```
+
+The status callback receives two `NodeStatus` values: `Disconnected`,
+`Connecting`, or `Connected`. Registration replaces the previous callback and
+persists across restarts; `None` disables it. Core callbacks run on the DHT
+thread while native locks are held: do not call snapshot getters, blocking
+operations, or `join()` from them. The asyncio wrapper schedules status
+callbacks on its event-loop thread, where snapshot getters are safe to use.
+
+## Queries And Filtered Listeners
+
+`query()` retrieves metadata rather than complete value payloads. Each row is
+a dictionary keyed by `ValueField`. Network projections support `Id`,
+`ValueType`, `OwnerPk`, and `UserType`; values are integers, an `InfoHash` owner
+fingerprint, or a UTF-8 string respectively. Explicit sequence-number
+projections are not supported by the native wire format.
+
+```python
+selection = dht.Select().field(dht.ValueField.Id).field(dht.ValueField.UserType)
+query = dht.Query()
+query.buildFrom(selection, dht.Where().userType("record"))
+rows = node.query(key, query=query)
+
+query = dht.Query("SELECT id,user_type WHERE user_type=record")
+node.query(key, query_cb=lambda row: print(row) or True,
+           done_cb=lambda ok, nodes: print(ok), query=query)
+```
+
+Without an explicit query, all four supported metadata fields are selected.
+Supplying `query_cb` makes the core call nonblocking; returning `False` stops
+delivery. The blocking core API returns the collected rows, as `get()` does.
+The asyncio API offers `query()` as a context-managed async iterator and
+`await queryAll()` as a collector; these raise `RuntimeError` on failure.
+
+```python
+rows = await node.queryAll(key, query=query)
+with node.query(key, query=query) as results:
+    async for row in results:
+        print(row[dht.ValueField.Id])
+```
+
+Both core and asyncio `listen()` accept optional `where` and `filter` arguments.
+`Where` is sent to the DHT to narrow the subscription; the Python predicate
+runs locally. Existing two-argument core listeners are unchanged.
+
+```python
+token = node.listen(key, lambda value, expired: True,
+                    where=dht.Where().userType("record"),
+                    filter=lambda value: len(value.data) < 1024)
+node.cancelListen(token)
+```
+
 ## Documentation
 
 For more information, examples and documentation, or to repport issues, visit: https://opendht.net
