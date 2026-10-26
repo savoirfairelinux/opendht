@@ -24,6 +24,9 @@ class NetworkEngineTester : public CppUnit::TestFixture
     CPPUNIT_TEST(testListenConfirmationUpdatesSearchNodeToken);
     CPPUNIT_TEST(testListenReopensSocketAfterNodeExpiration);
     CPPUNIT_TEST(testUnauthorizedListenFlushClearsListenState);
+    CPPUNIT_TEST(testGetRequestReuse);
+    CPPUNIT_TEST(testFilteredProjectionDoesNotWaitForUnrelatedPeer);
+    CPPUNIT_TEST(testFindNodeRequestReuse);
 #endif
     CPPUNIT_TEST_SUITE_END();
 
@@ -45,6 +48,9 @@ public:
     void testListenConfirmationUpdatesSearchNodeToken();
     void testListenReopensSocketAfterNodeExpiration();
     void testUnauthorizedListenFlushClearsListenState();
+    void testGetRequestReuse();
+    void testFilteredProjectionDoesNotWaitForUnrelatedPeer();
+    void testFindNodeRequestReuse();
 #endif
 };
 

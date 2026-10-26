@@ -667,6 +667,194 @@ NetworkEngineTester::testUnauthorizedListenFlushClearsListenState()
     CPPUNIT_ASSERT(!listenStatusIt->second.refresh);
 }
 
+void
+NetworkEngineTester::testGetRequestReuse()
+{
+    struct ReuseCase
+    {
+        const char* name;
+        bool projected;
+        Query requested;
+        Query answered;
+        bool shouldSend;
+    };
+    const Select ids = Select {}.field(Value::Field::Id);
+    const Select idTypes = Select {}.field(Value::Field::Id).field(Value::Field::ValueType);
+    const std::vector<ReuseCase> cases {
+        {"different projection filters",    true,  Query {ids, Where {}.valueType(1)},       Query {ids},                        true },
+        {"matching projection filters",
+         true,                                     Query {ids, Where {}.valueType(1)},
+         Query {ids, Where {}.valueType(1)},
+         false                                                                                                                        },
+        {"wider matching projection",
+         true,                                     Query {ids, Where {}.valueType(1)},
+         Query {idTypes, Where {}.valueType(1)},
+         false                                                                                                                        },
+        {"narrower projection",             true,  Query {idTypes, Where {}.valueType(1)},   Query {ids, Where {}.valueType(1)}, true },
+        {"filtered answer is incomplete",   true,  Query {ids},                              Query {ids, Where {}.valueType(1)}, true },
+        {"ordinary get can filter locally", false, Query {Select {}, Where {}.valueType(1)}, Query {},                           false},
+    };
+
+    for (auto state : {net::Request::State::PENDING, net::Request::State::COMPLETED}) {
+        for (const auto& testCase : cases) {
+            Config config {};
+            config.max_req_per_sec = -1;
+            config.max_peer_req_per_sec = -1;
+            Dht localDht(std::make_unique<TestDatagramSocket>(), config, {}, std::make_unique<std::mt19937_64>(42));
+            const auto now = localDht.scheduler.time();
+            auto search = std::make_shared<Dht::Search>();
+            search->id = InfoHash::getRandom(localDht.rd);
+            search->af = AF_INET;
+            auto requested = std::make_shared<Query>(testCase.requested);
+            auto answered = std::make_shared<Query>(testCase.answered);
+            Dht::Get operation {};
+            operation.start = now - std::chrono::seconds {1};
+            operation.query = requested;
+            if (testCase.projected)
+                operation.query_cb = [](const std::vector<Sp<FieldValueIndex>>&) {
+                    return true;
+                };
+            else
+                operation.get_cb = [](const std::vector<Sp<Value>>&) {
+                    return true;
+                };
+            operation.done_cb = [](bool, const std::vector<Sp<Node>>&) {
+            };
+            search->callbacks.emplace(operation.start, operation);
+            auto peer = std::make_shared<Node>(InfoHash::getRandom(localDht.rd),
+                                               makeIPv4("127.0.0.2", 5005),
+                                               localDht.rd,
+                                               false);
+            auto searchNode = std::make_unique<Dht::SearchNode>(peer);
+            searchNode->last_get_reply = now;
+            auto reply = std::make_shared<net::Request>(state);
+            reply->node = peer;
+            reply->reply_time = now;
+            searchNode->getStatus[answered] = reply;
+            auto searchNodePtr = search->nodes.emplace_back(std::move(searchNode)).get();
+
+            auto sent = localDht.searchSendGetValues(search, searchNodePtr, true);
+
+            CPPUNIT_ASSERT_EQUAL_MESSAGE(testCase.name, testCase.shouldSend, sent != nullptr);
+            CPPUNIT_ASSERT_EQUAL_MESSAGE(testCase.name,
+                                         testCase.shouldSend,
+                                         searchNodePtr->getStatus.count(requested) != 0);
+        }
+    }
+}
+
+void
+NetworkEngineTester::testFilteredProjectionDoesNotWaitForUnrelatedPeer()
+{
+    Config config {};
+    config.max_req_per_sec = -1;
+    config.max_peer_req_per_sec = -1;
+    auto socket = std::make_unique<TestDatagramSocket>();
+    auto socketPtr = socket.get();
+    auto random = std::make_unique<std::mt19937_64>(43);
+    Dht localDht(std::move(socket), config, {}, std::move(random));
+    const auto now = localDht.scheduler.time();
+    auto search = std::make_shared<Dht::Search>();
+    search->id = InfoHash::getRandom(localDht.rd);
+    search->af = AF_INET;
+    search->refill_time = now;
+    search->nextSearchStep = localDht.scheduler.add(time_point::max(), [] {});
+    auto broad = std::make_shared<Query>(Select {}.field(Value::Field::Id));
+    auto filtered = std::make_shared<Query>(Select {}.field(Value::Field::Id), Where {}.valueType(1));
+    Dht::Get broadOperation {};
+    broadOperation.start = now - std::chrono::seconds {2};
+    broadOperation.query = broad;
+    broadOperation.query_cb = [](const std::vector<Sp<FieldValueIndex>>&) {
+        return true;
+    };
+    broadOperation.done_cb = [](bool, const std::vector<Sp<Node>>&) {
+    };
+    search->callbacks.emplace(broadOperation.start, broadOperation);
+    size_t filteredCallbacks = 0;
+    Dht::Get filteredOperation {};
+    filteredOperation.start = now - std::chrono::seconds {1};
+    filteredOperation.query = filtered;
+    filteredOperation.query_cb = [&](const std::vector<Sp<FieldValueIndex>>&) {
+        ++filteredCallbacks;
+        return true;
+    };
+    filteredOperation.done_cb = [](bool, const std::vector<Sp<Node>>&) {
+    };
+    search->callbacks.emplace(filteredOperation.start, filteredOperation);
+    for (unsigned peerIndex = 0; peerIndex < 2; ++peerIndex) {
+        auto peer = std::make_shared<Node>(InfoHash::getRandom(localDht.rd),
+                                           makeIPv4(peerIndex == 0 ? "127.0.0.2" : "127.0.0.3", 5005),
+                                           localDht.rd,
+                                           false);
+        auto searchNode = std::make_unique<Dht::SearchNode>(peer);
+        searchNode->last_get_reply = now;
+        searchNode->token = Blob {1};
+        auto state = peerIndex == 0 ? net::Request::State::COMPLETED : net::Request::State::PENDING;
+        auto request = std::make_shared<net::Request>(state);
+        request->node = peer;
+        request->reply_time = now;
+        searchNode->getStatus[broad] = request;
+        search->nodes.emplace_back(std::move(searchNode));
+    }
+    auto& readyPeer = *search->nodes.front();
+    auto reply = readyPeer.getStatus.at(broad);
+    net::RequestAnswer answer {};
+    answer.ntoken = Blob {1};
+    Value value {(const uint8_t*) "a", 1};
+    value.id = 42;
+    answer.fields.emplace_back(std::make_shared<FieldValueIndex>(value, broad->select));
+
+    socketPtr->sends.clear();
+    localDht.searchNodeGetDone(*reply, std::move(answer), search, broad);
+    localDht.searchStep(search);
+
+    CPPUNIT_ASSERT_EQUAL(size_t {0}, filteredCallbacks);
+    CPPUNIT_ASSERT(not socketPtr->sends.empty());
+    CPPUNIT_ASSERT(readyPeer.getStatus.count(filtered) != 0);
+
+    auto filteredReply = std::make_shared<net::Request>(net::Request::State::COMPLETED);
+    filteredReply->node = readyPeer.node;
+    filteredReply->reply_time = now;
+    readyPeer.getStatus[filtered] = filteredReply;
+    net::RequestAnswer filteredAnswer {};
+    filteredAnswer.ntoken = Blob {1};
+    filteredAnswer.fields.emplace_back(std::make_shared<FieldValueIndex>(value, filtered->select));
+    localDht.searchNodeGetDone(*filteredReply, std::move(filteredAnswer), search, filtered);
+
+    CPPUNIT_ASSERT_EQUAL(size_t {1}, filteredCallbacks);
+}
+
+void
+NetworkEngineTester::testFindNodeRequestReuse()
+{
+    Config config {};
+    config.max_req_per_sec = -1;
+    config.max_peer_req_per_sec = -1;
+    Dht localDht(std::make_unique<TestDatagramSocket>(), config, {}, std::make_unique<std::mt19937_64>(44));
+    const auto now = localDht.scheduler.time();
+    auto search = std::make_shared<Dht::Search>();
+    search->id = InfoHash::getRandom(localDht.rd);
+    search->af = AF_INET;
+    auto peer = std::make_shared<Node>(InfoHash::getRandom(localDht.rd),
+                                       makeIPv4("127.0.0.2", 5005),
+                                       localDht.rd,
+                                       false);
+    auto searchNode = std::make_unique<Dht::SearchNode>(peer);
+    searchNode->last_get_reply = now;
+    auto searchNodePtr = search->nodes.emplace_back(std::move(searchNode)).get();
+
+    CPPUNIT_ASSERT(localDht.searchSendGetValues(search) == searchNodePtr);
+    CPPUNIT_ASSERT_EQUAL(size_t {1}, searchNodePtr->getStatus.size());
+    CPPUNIT_ASSERT(searchNodePtr->getStatus.begin()->second->getType() == MessageType::FindNode);
+    CPPUNIT_ASSERT(not localDht.searchSendGetValues(search));
+
+    auto reply = std::make_shared<net::Request>(net::Request::State::COMPLETED);
+    reply->reply_time = now;
+    searchNodePtr->getStatus.begin()->second = reply;
+
+    CPPUNIT_ASSERT(not localDht.searchSendGetValues(search));
+}
+
 } // namespace test
 
 #endif
