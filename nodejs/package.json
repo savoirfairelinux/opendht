@@ -1,36 +1,42 @@
 {
-  "name": "@opendht/node",
-  "version": "0.1.0",
-  "private": true,
-  "description": "Node-API bindings for OpenDHT",
-  "license": "MIT",
-  "main": "index.js",
-  "types": "index.d.ts",
-  "files": [
-    "index.js",
-    "index.d.ts",
-    "crypto.js",
-    "README.md",
-    "prebuilds/"
-  ],
-  "engines": {
-    "node": ">=22.9.0"
-  },
-  "scripts": {
-    "build": "cmake-js compile",
-    "bundle": "node scripts/bundle.js",
-    "package": "npm run bundle && npm pack --pack-destination dist",
-    "test:package": "node scripts/test-package.js",
-    "test": "node --test test/*.test.js",
-    "typecheck": "tsc --noEmit --strict --target ES2022 --module Node16 --moduleResolution Node16 test/types.ts"
-  },
-  "dependencies": {
-    "node-gyp-build": "^4.8.4"
-  },
-  "devDependencies": {
-    "@types/node": "^22.0.0",
-    "cmake-js": "^8.0.0",
-    "node-addon-api": "^8.5.0",
-    "typescript": "^5.9.3"
-  }
+    "name": "@opendht/node",
+    "version": "0.1.0",
+    "private": true,
+    "description": "Node-API bindings for OpenDHT",
+    "license": "MIT",
+    "main": "index.js",
+    "types": "index.d.ts",
+    "files": [
+        "index.js",
+        "index.d.ts",
+        "crypto.js",
+        "README.md",
+        "examples/dhtnode.js",
+        "examples/dhtnode.ts",
+        "prebuilds/"
+    ],
+    "engines": {
+        "node": ">=22.9.0"
+    },
+    "scripts": {
+        "build": "cmake-js compile",
+        "postbuild": "npm run build:examples",
+        "build:examples": "tsc --strict --target ES2022 --module Node16 --moduleResolution Node16 --rootDir examples --outDir examples examples/dhtnode.ts",
+        "dhtnode": "node examples/dhtnode.js",
+        "prepack": "npm run build:examples",
+        "bundle": "node scripts/bundle.js",
+        "package": "npm run bundle && npm pack --pack-destination dist",
+        "test:package": "node scripts/test-package.js",
+        "test": "node --test test/*.test.js",
+        "typecheck": "tsc --noEmit --strict --target ES2022 --module Node16 --moduleResolution Node16 test/types.ts examples/dhtnode.ts"
+    },
+    "dependencies": {
+        "node-gyp-build": "^4.8.4"
+    },
+    "devDependencies": {
+        "@types/node": "^22.0.0",
+        "cmake-js": "^8.0.0",
+        "node-addon-api": "^8.5.0",
+        "typescript": "^5.9.3"
+    }
 }

@@ -142,6 +142,7 @@ jobs:
       - name: Pack all platforms
         working-directory: nodejs
         run: |
+          npm ci --ignore-scripts
           mkdir -p dist
           npm pack --pack-destination dist
       - uses: actions/upload-artifact@v7

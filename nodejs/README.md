@@ -31,6 +31,38 @@ Set `OPENDHT_NODE_BINDING` to an absolute addon path to select an explicit build
 Packaged binaries include OpenDHT and non-system native dependencies, so archive
 installation does not require a compiler or a system OpenDHT installation.
 
+## Example Tool
+
+After building, start the TypeScript example from the repository root:
+
+```sh
+npm --prefix nodejs run dhtnode -- --port 4222 --bootstrap bootstrap.jami.net
+```
+
+The source is [examples/dhtnode.ts](examples/dhtnode.ts). `npm run build` compiles
+it to JavaScript; run `npm run build:examples` after editing just the example.
+Bootstrap is optional;
+`--bootstrap-port` selects its UDP port. Use `--port 0` for a free local port.
+
+```text
+listen greeting
+put greeting hello world
+get greeting
+sign greeting signed hello
+cancel greeting
+quit
+```
+
+Keys are text labels, hashed automatically; values are UTF-8 text. The tool
+generates a fresh EC identity on each run and prints IPv4/IPv6 connectivity
+changes. Operations run concurrently, leaving the prompt responsive; dependent
+commands should be entered after their preceding operation completes. EOF waits
+for pending operations, then cancels listeners and closes the runner. Ctrl-C,
+SIGTERM, and `quit` close immediately, rejecting pending operations without
+printing cancellation errors. `--help` lists all options. Archives include both
+the TypeScript source and compiled `examples/dhtnode.js`, runnable without
+TypeScript or development dependencies, including from inside `node_modules`.
+
 ## Usage
 
 ```js
@@ -67,6 +99,11 @@ main().catch(console.error);
   selects a free port. The defaults bind both IP families on all interfaces.
   `persistPath` is optional; use an empty string to disable persistence.
 - `getBoundPort(4 | 6)` defaults to IPv4; `getNodeId()` returns the node's hex ID.
+- `getStatus()` returns the latest JS-dispatched `{ipv4, ipv6}` connectivity
+  snapshot. Each family is `'disconnected'`, `'connecting'`, or `'connected'`.
+  `runner.on('statusChanged', status => {})` receives changes on the JS thread.
+  New and closing/closed runners report both families as disconnected. No status
+  events are delivered after close begins; close does not emit a final event.
 - `bootstrap(host, port)` queues bootstrap discovery. Returning does not mean the
   peer is connected; subsequent DHT operations report their own completion.
 - `put(key, Uint8Array, {id, type, userType, permanent})` copies the input and
@@ -87,7 +124,7 @@ main().catch(console.error);
 Callbacks run only on their owning JS thread. There is no polling timer or worker
 thread waiting on each get/put. Explicitly close runners; GC cleanup and Node
 environment cleanup hooks are fallbacks, including forced worker termination.
-Pending operations, active listeners, and registered error handlers keep their
+Pending operations, active listeners, and registered error/status handlers keep their
 runner alive until completion, cancellation, handler removal, or explicit close.
 Graceful persistence cannot be guaranteed if the process is killed.
 
@@ -163,7 +200,9 @@ Bundling replaces only the current platform's generated prebuild directory.
 install scripts disabled and no dev dependencies, forces prebuild-only loading,
 and runs the full runtime suite. Pass an archive file or a directory containing
 one archive to test it directly, for example `npm run test:package -- dist`.
-Only JS, declarations, documentation, and prebuilds are included in the archive.
+Only runtime JS, declarations, the example's TypeScript source, documentation,
+and prebuilds are included in the archive. `prepack` compiles the example, so
+archive creation needs the development dependencies; archive installation does not.
 
 The [Node.js package workflow](../.github/workflows/nodejs-package.yml) builds:
 

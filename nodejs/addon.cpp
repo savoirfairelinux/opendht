@@ -303,8 +303,12 @@ struct RunnerState
     Napi::Object status() const
     {
         auto result = Napi::Object::New(env);
-        result.Set("ipv4", Napi::String::New(env, std::string(dht::statusToStr(closing ? dht::NodeStatus::Disconnected : status4))));
-        result.Set("ipv6", Napi::String::New(env, std::string(dht::statusToStr(closing ? dht::NodeStatus::Disconnected : status6))));
+        result.Set("ipv4",
+                   Napi::String::New(env,
+                                     std::string(dht::statusToStr(closing ? dht::NodeStatus::Disconnected : status4))));
+        result.Set("ipv6",
+                   Napi::String::New(env,
+                                     std::string(dht::statusToStr(closing ? dht::NodeStatus::Disconnected : status6))));
         return result;
     }
 

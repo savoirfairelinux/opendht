@@ -171,7 +171,7 @@ test('queue overflow reports an error and rejects close', { timeout: 15000 }, as
     const runner = startNode();
     const key = hash('bounded listener queue');
     const reported = once(runner, 'error');
-    const subscription = runner.listen(key, () => {});
+    const subscription = runner.listen(key, () => { });
     const puts = [];
     try {
         for (let index = 0; index < 3000; index++) {
@@ -180,7 +180,7 @@ test('queue overflow reports an error and rejects close', { timeout: 15000 }, as
             }));
         }
         const deadline = performance.now() + 5000;
-        while (runner.isRunning() && performance.now() < deadline) {}
+        while (runner.isRunning() && performance.now() < deadline) { }
         assert.equal(runner.isRunning(), false);
         const [error] = await reported;
         assert.equal(error.code, 'ERR_DHT_OVERFLOW');
@@ -188,7 +188,7 @@ test('queue overflow reports an error and rejects close', { timeout: 15000 }, as
         await assert.rejects(runner.close(), { code: 'ERR_DHT_OVERFLOW' });
     } finally {
         subscription.cancel();
-        await runner.close().catch(() => {});
+        await runner.close().catch(() => { });
     }
 });
 
