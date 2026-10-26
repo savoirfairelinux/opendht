@@ -78,6 +78,36 @@ async def dht_async_demo(key_str: str):
 asyncio.run(dht_async_demo("unique_key"))
 ```
 
+## Node State Persistence
+
+Set the state file path before starting a node:
+
+```python
+import threading
+import opendht as dht
+
+config = dht.DhtConfig()
+config.setPersistPath("dht-state.msgpack")
+node = dht.DhtRunner()
+node.run(config=config)
+stopped = threading.Event()
+node.shutdown(stopped.set)
+stopped.wait()
+node.join()
+```
+
+The node loads its saved DHT node ID, known peers, and stored values on startup,
+and saves state during `shutdown()`. Wait for the shutdown callback before
+calling `join()` or reusing the state path; `join()` alone does not save state.
+Port hints are
+stored in a sibling file named `<path>_port.txt`; saved ports are reused when
+available. The parent directory must already exist and be writable. Use a
+different state path for each node.
+
+Persistence is disabled by default. `config.setPersistPath("")` disables it
+explicitly. This state does not include private keys or certificates; persist
+cryptographic identities separately as described below.
+
 ## Identity Persistence
 
 Keys can be imported from PEM or DER bytes. Private keys export PKCS#8 PEM;

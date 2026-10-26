@@ -697,6 +697,13 @@ cdef class DhtConfig(object):
         self._config.dht_config.node_config.network = netid
     def setMaintainStorage(self, bool maintain_storage):
         self._config.dht_config.node_config.maintain_storage = maintain_storage
+    def setPersistPath(self, str path):
+        """Set the native state file path; an empty string disables persistence."""
+        if path is None:
+            raise TypeError("path must be a string")
+        if '\0' in path:
+            raise ValueError("path must not contain NUL characters")
+        self._config.dht_config.node_config.persist_path = path.encode()
     def setRateLimit(self, ssize_t max_req_per_sec, ssize_t max_peer_req_per_sec):
         self._config.dht_config.node_config.max_req_per_sec = max_req_per_sec
         self._config.dht_config.node_config.max_peer_req_per_sec = max_peer_req_per_sec
