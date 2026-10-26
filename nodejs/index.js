@@ -1,7 +1,10 @@
 'use strict';
 
-const native = require(process.env.OPENDHT_NODE_BINDING || './build/Release/opendht.node');
+const native = process.env.OPENDHT_NODE_BINDING
+	? require(process.env.OPENDHT_NODE_BINDING)
+	: require('node-gyp-build')(__dirname);
 const { EventEmitter } = require('node:events');
+const { PublicKey, PrivateKey, Certificate, Identity, handle } = require('./crypto')(native);
 
 function errorReporter(owner) {
 	return error => { owner.deref()?.emit('error', error); };
@@ -38,13 +41,20 @@ class DhtRunner extends EventEmitter {
 	off(event, listener) { return this.removeListener(event, listener); }
 	removeAllListeners(...args) { super.removeAllListeners(...args); this.#updateOwner(); return this; }
 
-	run(options) { this.#native.run(options); }
+	run(options) {
+		if (options?.identity !== undefined) options = { ...options, identity: handle(options.identity, Identity) };
+		this.#native.run(options);
+	}
 	isRunning() { return this.#native.isRunning(); }
 	getBoundPort(family = 4) { return this.#native.getBoundPort(family); }
 	getNodeId() { return this.#native.getNodeId(); }
 	bootstrap(host, port) { this.#native.bootstrap(host, port); }
 	get(key) { return this.#track(this.#native.get(key)); }
 	put(key, data, options) { return this.#track(this.#native.put(key, data, options)); }
+	putSigned(key, data, options) { return this.#track(this.#native.putSigned(key, data, options)); }
+	putEncrypted(key, data, recipient, options) {
+		return this.#track(this.#native.putEncrypted(key, data, options, handle(recipient, PublicKey)));
+	}
 
 	listen(key, callback) {
 		const token = this.#native.listen(key, callback);
@@ -68,4 +78,4 @@ class DhtRunner extends EventEmitter {
 	[Symbol.asyncDispose]() { return this.close(); }
 }
 
-module.exports = { DhtRunner, hash: native.hash, version: native.version };
+module.exports = { DhtRunner, PublicKey, PrivateKey, Certificate, Identity, hash: native.hash, version: native.version };

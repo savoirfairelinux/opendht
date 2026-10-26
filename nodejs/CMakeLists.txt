@@ -20,7 +20,7 @@ execute_process(
     COMMAND_ERROR_IS_FATAL ANY
 )
 
-add_library(opendht_node MODULE addon.cpp ${CMAKE_JS_SRC})
+add_library(opendht_node MODULE addon.cpp crypto.cpp ${CMAKE_JS_SRC})
 target_compile_definitions(opendht_node PRIVATE NAPI_VERSION=8 NAPI_CPP_EXCEPTIONS)
 target_include_directories(opendht_node PRIVATE
     ${CMAKE_JS_INC}

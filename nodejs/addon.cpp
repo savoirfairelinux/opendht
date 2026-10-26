@@ -1,5 +1,6 @@
 #include <napi.h>
 #include <opendht.h>
+#include "crypto.h"
 #include <algorithm>
 #include <atomic>
 #include <chrono>
@@ -14,18 +15,7 @@ namespace {
 constexpr size_t maxQueuedEvents = 1024;
 constexpr size_t maxResultBytes = 16 * 1024 * 1024;
 
-template<typename Callback>
-Napi::Value
-guarded(const Napi::CallbackInfo& info, Callback&& callback)
-{
-    try {
-        return callback();
-    } catch (const Napi::Error&) {
-        throw;
-    } catch (const std::exception& error) {
-        throw Napi::Error::New(info.Env(), error.what());
-    }
-}
+using opendht_node::guarded;
 
 uint32_t
 unsignedNumber(Napi::Value value, uint32_t maximum, const char* name)
@@ -88,6 +78,9 @@ struct ValueData
         , seq(value.seq)
         , data(value.data)
         , userType(value.user_type)
+        , owner(value.owner ? value.owner->getLongId().toString() : "")
+        , isSigned(value.isSigned())
+        , isEncrypted(value.isEncrypted())
     {}
 
     Napi::Object toJS(Napi::Env env) const
@@ -98,16 +91,22 @@ struct ValueData
         result.Set("seq", Napi::Number::New(env, seq));
         result.Set("data", Napi::Buffer<uint8_t>::Copy(env, data.data(), data.size()));
         result.Set("userType", Napi::String::New(env, userType));
+        result.Set("owner", owner.empty() ? Napi::Value(env.Null()) : Napi::Value(Napi::String::New(env, owner)));
+        result.Set("isSigned", Napi::Boolean::New(env, isSigned));
+        result.Set("isEncrypted", Napi::Boolean::New(env, isEncrypted));
         return result;
     }
 
-    size_t size() const { return sizeof(ValueData) + data.size() + userType.size(); }
+    size_t size() const { return sizeof(ValueData) + data.size() + userType.size() + owner.size(); }
 
     uint64_t id;
     uint16_t type;
     uint16_t seq;
     dht::Blob data;
     std::string userType;
+    std::string owner;
+    bool isSigned;
+    bool isEncrypted;
 };
 
 struct Event
@@ -399,6 +398,7 @@ struct RunnerState
     std::atomic_size_t queuedBytes {0};
     bool envClosing = false;
     bool started = false;
+    bool hasIdentity = false;
     bool finished = false;
     uint64_t nextOperation = 1;
     std::string closeError;
@@ -436,6 +436,8 @@ public:
                                InstanceMethod("bootstrap", &Runner::bootstrap),
                                InstanceMethod("get", &Runner::get),
                                InstanceMethod("put", &Runner::put),
+                               InstanceMethod("putSigned", &Runner::putSigned),
+                               InstanceMethod("putEncrypted", &Runner::putEncrypted),
                                InstanceMethod("listen", &Runner::listen),
                                InstanceMethod("cancelListen", &Runner::cancelListen),
                                InstanceMethod("ref", &Runner::ref),
@@ -462,9 +464,12 @@ private:
                 config.dht_config.node_config.network = unsignedNumber(options.Get("network"), UINT32_MAX, "network");
             if (options.Has("persistPath"))
                 config.dht_config.node_config.persist_path = text(options.Get("persistPath"), "persistPath");
+            if (options.Has("identity"))
+                config.dht_config.id = opendht_node::readIdentity(options.Get("identity"));
             const auto service = std::to_string(port);
             state_->runner.run(ipv4.c_str(), ipv6.c_str(), service.c_str(), config);
             state_->started = true;
+            state_->hasIdentity = bool(config.dht_config.id.first);
             state_->dispatcher.Ref(info.Env());
             return info.Env().Undefined();
         });
@@ -560,10 +565,24 @@ private:
         });
     }
 
-    Napi::Value put(const Napi::CallbackInfo& info)
+    Napi::Value put(const Napi::CallbackInfo& info) { return putValue(info, PutMode::Plain); }
+
+    Napi::Value putSigned(const Napi::CallbackInfo& info) { return putValue(info, PutMode::Signed); }
+
+    Napi::Value putEncrypted(const Napi::CallbackInfo& info) { return putValue(info, PutMode::Encrypted); }
+
+    enum class PutMode { Plain, Signed, Encrypted };
+
+    Napi::Value putValue(const Napi::CallbackInfo& info, PutMode mode)
     {
         return guarded(info, [&]() -> Napi::Value {
             state_->requireRunning();
+            if (mode != PutMode::Plain && !state_->hasIdentity)
+                throw Napi::Error::New(info.Env(), "Signed and encrypted puts require an identity");
+            std::shared_ptr<dht::crypto::PublicKey> recipient;
+            if (mode == PutMode::Encrypted) {
+                recipient = opendht_node::readEncryptionKey(info[3]);
+            }
             const auto key = infoHash(info[0]);
             if (!info[1].IsTypedArray() || info[1].As<Napi::TypedArray>().TypedArrayType() != napi_uint8_array)
                 throw Napi::TypeError::New(info.Env(), "data must be a Uint8Array");
@@ -594,15 +613,16 @@ private:
             state_->operations.emplace(operation, PendingOperation {deferred, false, {}});
             const std::weak_ptr<RunnerState> state = state_;
             try {
-                state_->runner.put(key,
-                                   value,
-                                   dht::DoneCallbackSimple([state, operation](bool ok) {
-                                       if (const auto owner = state.lock())
-                                           owner->send(
-                                               std::make_unique<Event>(Event {Event::Kind::Done, operation, ok, {}}));
-                                   }),
-                                   dht::time_point::max(),
-                                   permanent);
+                dht::DoneCallbackSimple done = [state, operation](bool ok) {
+                    if (const auto owner = state.lock())
+                        owner->send(std::make_unique<Event>(Event {Event::Kind::Done, operation, ok, {}}));
+                };
+                if (mode == PutMode::Signed)
+                    state_->runner.putSigned(key, value, std::move(done), permanent);
+                else if (mode == PutMode::Encrypted)
+                    state_->runner.putEncrypted(key, recipient, value, std::move(done), permanent);
+                else
+                    state_->runner.put(key, value, std::move(done), dht::time_point::max(), permanent);
             } catch (...) {
                 state_->operations.erase(operation);
                 throw;
@@ -706,6 +726,7 @@ hash(const Napi::CallbackInfo& info)
 Napi::Object
 initialize(Napi::Env env, Napi::Object exports)
 {
+    opendht_node::initializeCrypto(env, exports);
     exports.Set("NativeRunner", Runner::define(env));
     exports.Set("hash", Napi::Function::New(env, hash));
     exports.Set("version", Napi::String::New(env, dht::version()));
