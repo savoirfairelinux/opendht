@@ -335,11 +335,9 @@ class OpenDhtTester(unittest.TestCase):
 
     # test that bootstraping works (raw address)
     def test_bootstrap(self):
-        a = dht.DhtRunner()
-        a.run()
-        b = dht.DhtRunner()
-        b.run()
-        self.assertTrue(b.ping(a.getBound()))
+        bootstrap_node = self._run_node(ipv4="127.0.0.1")
+        client_node = self._run_node(ipv4="127.0.0.1")
+        self.assertTrue(client_node.ping(bootstrap_node.getBound(socket.AF_INET)))
 
     def test_crypto(self):
         i = dht.Identity.generate("id")
