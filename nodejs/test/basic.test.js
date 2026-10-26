@@ -157,7 +157,7 @@ test('listener callbacks may cancel themselves and close the runner', { timeout:
 
 test('unref and garbage collection do not strand native threads', { timeout: 20000 }, async () => {
     const modulePath = JSON.stringify(require.resolve('..'));
-    for (const finish of ['runner.unref();', 'runner = null; global.gc();']) {
+    for (const finish of ['runner.unref();', 'runner = null; setImmediate(() => global.gc());']) {
         await promisify(execFile)(process.execPath, ['--expose-gc', '-e', `
             const { DhtRunner } = require(${modulePath});
             let runner = new DhtRunner();
