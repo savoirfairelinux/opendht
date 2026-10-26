@@ -742,6 +742,7 @@ struct OPENDHT_PUBLIC FieldValue
         switch (field) {
         case Value::Field::Id:
         case Value::Field::ValueType:
+        case Value::Field::SeqNum:
             p.pack(intValue);
             break;
         case Value::Field::OwnerPk:
@@ -773,6 +774,7 @@ struct OPENDHT_PUBLIC FieldValue
             switch (field) {
             case Value::Field::Id:
             case Value::Field::ValueType:
+            case Value::Field::SeqNum:
                 intValue = v->as<decltype(intValue)>();
                 break;
             case Value::Field::OwnerPk:
@@ -1015,7 +1017,7 @@ struct OPENDHT_PUBLIC Query
      *
      *  where
      *
-     *  - $field$ = *|id|value_type|owner_pk|user_type
+     *  - $field$ = *|id|value_type|seq|owner_pk|user_type
      *  - $value$ = $string$|$integer$
      *  - $string$: a simple string WITHOUT SPACES.
      *  - $integer$: a simple integer.

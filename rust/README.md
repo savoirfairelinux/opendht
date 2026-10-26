@@ -84,7 +84,8 @@ For non-threaded operation set `config.threaded = false` and repeatedly call
 - Keys and certificates support persistence; identities support RSA and EC
 	generation. Private keys support binary signing and RSA decryption.
 - `get_filtered`, `listen_filtered`, and `query` accept native SQL-like filters,
-	such as `WHERE value_type=17` and `SELECT id,user_type WHERE value_type=17`.
+	such as `WHERE value_type=17`, `WHERE seq=7`, and
+	`SELECT id,user_type WHERE value_type=17`.
 	Projected fields are optional owned values in `QueryResult`.
 - `register_type` installs native type policy and expiration settings.
 - Configuration accepts owned status and certificate-store callbacks.
