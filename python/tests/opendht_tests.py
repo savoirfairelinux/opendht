@@ -28,7 +28,7 @@ class OpenDhtTester(unittest.TestCase):
             node_id = first.getNodeId()
             port = first.getBound(socket.AF_INET).getPort()
             self.assertNotEqual(port, 0)
-            first.join()
+            self._shutdown_node(first)
             self.assertTrue(state_path.is_file())
             self.assertTrue(Path(str(state_path) + "_port.txt").is_file())
 
@@ -37,7 +37,7 @@ class OpenDhtTester(unittest.TestCase):
             second = self._run_node(config=restored_config)
             self.assertEqual(second.getNodeId(), node_id)
             self.assertEqual(second.getBound(socket.AF_INET).getPort(), port)
-            second.join()
+            self._shutdown_node(second)
 
     def test_disable_persistence(self):
         with TemporaryDirectory() as directory:
@@ -45,7 +45,7 @@ class OpenDhtTester(unittest.TestCase):
             config.setPersistPath(str(Path(directory) / "state"))
             config.setPersistPath("")
             node = self._run_node(config=config)
-            node.join()
+            self._shutdown_node(node)
             self.assertEqual(list(Path(directory).iterdir()), [])
 
     def test_persistence_path_validation(self):
@@ -227,6 +227,12 @@ class OpenDhtTester(unittest.TestCase):
                     timer = threading.Timer(0.1, release.set)
                     timer.start()
                 """) + f"\n{close}\nassert finished.is_set()\ntimer.join()\n", timeout=8)
+
+    def _shutdown_node(self, node):
+        stopped = threading.Event()
+        node.shutdown(stopped.set)
+        self.assertTrue(stopped.wait(5))
+        node.join()
 
     def _run_node(self, **kwargs):
         node = dht.DhtRunner()
