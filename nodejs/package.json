@@ -1,0 +1,25 @@
+{
+  "name": "@opendht/node",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Node-API bindings for OpenDHT",
+  "license": "MIT",
+  "main": "index.js",
+  "types": "index.d.ts",
+  "engines": {
+    "node": ">=22.9.0"
+  },
+  "scripts": {
+    "build": "cmake-js compile",
+    "test": "node --test test/*.test.js",
+    "typecheck": "tsc --noEmit --strict --target ES2022 --module Node16 --moduleResolution Node16 test/types.ts"
+  },
+  "dependencies": {
+    "node-addon-api": "^8.5.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "cmake-js": "^8.0.0",
+    "typescript": "^5.9.3"
+  }
+}

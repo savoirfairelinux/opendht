@@ -115,6 +115,14 @@ cmake -DOPENDHT_PYTHON=ON \
 | `OPENDHT_PUSH_NOTIFICATIONS` | OFF | Push notification support |
 | `OPENDHT_SANITIZE` | OFF | AddressSanitizer + stack protector |
 
+## Node.js Bindings
+
+Initial Node-API bindings wrap the C++ API directly with `node-addon-api`.
+With the native dependencies above, Node.js 22.9+, and CMake installed, run
+`npm ci`, `npm run build`, `npm test`, and `npm run typecheck` from `nodejs/`.
+This creates a separate native build without changing the existing build tree.
+See [the Node.js binding guide](nodejs/README.md) for the API and current limits.
+
 ## C and Rust Bindings
 
 Enable `OPENDHT_C=ON` to build the C ABI. With `BUILD_TESTING=ON`, CTest runs

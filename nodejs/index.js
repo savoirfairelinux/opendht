@@ -1,0 +1,71 @@
+'use strict';
+
+const native = require(process.env.OPENDHT_NODE_BINDING || './build/Release/opendht.node');
+const { EventEmitter } = require('node:events');
+
+function errorReporter(owner) {
+	return error => { owner.deref()?.emit('error', error); };
+}
+
+class DhtRunner extends EventEmitter {
+	#native;
+	#closing;
+	#listeners = 0;
+	#pending = 0;
+
+	constructor() {
+		super();
+		this.#native = new native.NativeRunner(errorReporter(new WeakRef(this)));
+	}
+
+	#updateOwner() {
+		this.#native.setOwner(this.#listeners || this.#pending || this.listenerCount('error') ? this : null);
+	}
+
+	#track(operation) {
+		this.#pending++;
+		this.#updateOwner();
+		return operation.finally(() => {
+			this.#pending--;
+			this.#updateOwner();
+		});
+	}
+
+	on(event, listener) { super.on(event, listener); this.#updateOwner(); return this; }
+	addListener(event, listener) { return this.on(event, listener); }
+	prependListener(event, listener) { super.prependListener(event, listener); this.#updateOwner(); return this; }
+	removeListener(event, listener) { super.removeListener(event, listener); this.#updateOwner(); return this; }
+	off(event, listener) { return this.removeListener(event, listener); }
+	removeAllListeners(...args) { super.removeAllListeners(...args); this.#updateOwner(); return this; }
+
+	run(options) { this.#native.run(options); }
+	isRunning() { return this.#native.isRunning(); }
+	getBoundPort(family = 4) { return this.#native.getBoundPort(family); }
+	getNodeId() { return this.#native.getNodeId(); }
+	bootstrap(host, port) { this.#native.bootstrap(host, port); }
+	get(key) { return this.#track(this.#native.get(key)); }
+	put(key, data, options) { return this.#track(this.#native.put(key, data, options)); }
+
+	listen(key, callback) {
+		const token = this.#native.listen(key, callback);
+		this.#listeners++;
+		this.#updateOwner();
+		let cancelled = false;
+		return {
+			cancel: () => {
+				if (cancelled) return;
+				this.#native.cancelListen(token);
+				cancelled = true;
+				this.#listeners--;
+				this.#updateOwner();
+			},
+		};
+	}
+
+	close() { return this.#closing ??= this.#native.close(); }
+	ref() { this.#native.ref(); return this; }
+	unref() { this.#native.unref(); return this; }
+	[Symbol.asyncDispose]() { return this.close(); }
+}
+
+module.exports = { DhtRunner, hash: native.hash, version: native.version };
