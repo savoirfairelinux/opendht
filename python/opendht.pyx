@@ -652,6 +652,9 @@ cdef class DhtRunner(_WithID):
     cdef cpp.shared_ptr[cpp.DhtRunner] thisptr
     def __cinit__(self):
         self.thisptr.reset(new cpp.DhtRunner())
+    def __dealloc__(self):
+        with nogil:
+            self.thisptr.reset()
     def getId(self) -> InfoHash:
         h = InfoHash()
         if self.thisptr:
@@ -706,7 +709,8 @@ cdef class DhtRunner(_WithID):
         else:
             self.thisptr.get().run(port, run_config)
     def join(self):
-        self.thisptr.get().join()
+        with nogil:
+            self.thisptr.get().join()
     def shutdown(self, shutdown_cb=None):
         cb_obj = {'shutdown':shutdown_cb}
         ref.Py_INCREF(cb_obj)

@@ -297,7 +297,7 @@ cdef extern from "opendht/dhtrunner.h" namespace "dht":
         void bootstrap(const SockAddr&, DoneCallbackSimple done_cb)
         void run(in_port_t, Config config)
         void run(const_char*, const_char*, const_char*, Config config)
-        void join()
+        void join() except + nogil
         void shutdown(ShutdownCallback)
         void registerType(ValueType& value);
         bool isRunning()
