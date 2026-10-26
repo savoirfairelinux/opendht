@@ -7,6 +7,17 @@ use std::sync::{
 use std::time::Duration;
 
 #[test]
+fn values_can_move_out_of_their_box() {
+    let mut value = *Value::with_id(b"moved value", 42);
+    value.set_seq(7);
+    assert_eq!(value.id(), 42);
+    assert_eq!(value.seq(), 7);
+    assert_eq!(value.as_bytes(), b"moved value");
+    let value = Box::new(value);
+    assert_eq!(value.as_bytes(), b"moved value");
+}
+
+#[test]
 fn value_metadata_and_borrowed_strings() {
     let mut value = Value::with_id(b"binary\0value", 42);
     value.set_user_type("application/octet-stream").unwrap();
