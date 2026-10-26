@@ -17,6 +17,7 @@ from libcpp.memory cimport shared_ptr
 from cython.operator cimport dereference as deref, preincrement as inc, predecrement as dec
 from cpython cimport ref
 from datetime import timedelta
+from operator import index as _index
 
 cimport opendht_cpp as cpp
 
@@ -101,6 +102,12 @@ cdef class _WithPk(object):
     def __str__(self):
         return self.getLongId().toString().decode()
 
+cdef inline unsigned _checked_bit_index(bit, unsigned bit_count) except *:
+    bit = _index(bit)
+    if bit < 0 or bit >= bit_count:
+        raise IndexError("bit index out of range")
+    return bit
+
 cdef class InfoHash(_WithID):
     cdef cpp.InfoHash _infohash
     def __cinit__(self, bytes str=b''):
@@ -116,9 +123,9 @@ cdef class InfoHash(_WithID):
             return self._infohash == other._infohash
         return NotImplemented
     def getBit(InfoHash self, bit):
-        return self._infohash.getBit(bit)
+        return self._infohash.getBit(_checked_bit_index(bit, 160))
     def setBit(InfoHash self, bit, b):
-        self._infohash.setBit(bit, b)
+        self._infohash.setBit(_checked_bit_index(bit, 160), b)
     def getId(InfoHash self):
         return self
     def toString(InfoHash self):
@@ -154,9 +161,9 @@ cdef class PkId(_WithPk):
             return self._pkid == other._pkid
         return NotImplemented
     def getBit(PkId self, bit):
-        return self._pkid.getBit(bit)
+        return self._pkid.getBit(_checked_bit_index(bit, 256))
     def setBit(PkId self, bit, b):
-        self._pkid.setBit(bit, b)
+        self._pkid.setBit(_checked_bit_index(bit, 256), b)
     def getLongId(PkId self):
         return self
     def toString(PkId self):
@@ -360,13 +367,15 @@ cdef class ValueType(object):
         self._value =  new cpp.ValueType(id, name.encode(), duration)
 
 cdef class NodeSetIter(object):
-    cdef map[cpp.InfoHash, shared_ptr[cpp.Node]]* _nodes
+    cdef NodeSet _owner
     cdef map[cpp.InfoHash, shared_ptr[cpp.Node]].iterator _curIter
-    def __init__(self, NodeSet s):
-        self._nodes = &s._nodes
-        self._curIter = self._nodes.begin()
+    def __init__(self, NodeSet s not None):
+        self._owner = s
+        self._curIter = self._owner._nodes.begin()
+    def __iter__(self):
+        return self
     def __next__(self):
-        if self._curIter == self._nodes.end():
+        if self._curIter == self._owner._nodes.end():
             raise StopIteration
         h = NodeEntry()
         h._v = deref(self._curIter)
@@ -992,16 +1001,20 @@ cdef class Pht(object):
                      representation of the prefix where the value was indexed in
                      the PHT.
         """
-        cb_obj = {'lookup':lookup_cb, 'done':done_cb} # TODO: donecallback is to be removed
-        ref.Py_INCREF(cb_obj)
         cdef cpp.IndexKey cppk
         for kk, v in key.items():
             cppk[bytes(kk, 'utf-8')] = bytes(v)
-        self.thisptr.lookup(
-                cppk,
-                cpp.Pht.bindLookupCb(lookup_callback, <void*>cb_obj),
-                cpp.bindDoneCbSimple(done_callback_simple, <void*>cb_obj)
-        )
+        cb_obj = {'lookup':lookup_cb, 'done':done_cb} # TODO: donecallback is to be removed
+        ref.Py_INCREF(cb_obj)
+        try:
+            self.thisptr.lookup(
+                    cppk,
+                    cpp.Pht.bindLookupCb(lookup_callback, <void*>cb_obj),
+                    cpp.bindDoneCbSimple(done_callback_simple, <void*>cb_obj)
+            )
+        except:
+            ref.Py_DECREF(cb_obj)
+            raise
     def insert(self, key, IndexValue value, done_cb=None):
         """Add an index entry to the Index.
 
@@ -1009,16 +1022,20 @@ cdef class Pht(object):
         value   -- an IndexValue object describing the indexed value.
         done_cb -- Called when the operation is completed.
         """
-        cb_obj = {'done':done_cb}
-        ref.Py_INCREF(cb_obj)
         cdef cpp.IndexKey cppk
         for kk, v in key.items():
             cppk[bytes(kk, 'utf-8')] = bytes(v)
         cdef cpp.IndexValue val
         val.first = (<InfoHash>value.getKey())._infohash
         val.second = value.getValueId()
-        self.thisptr.insert(
-                cppk,
-                val,
-                cpp.bindDoneCbSimple(done_callback_simple, <void*>cb_obj)
-        )
+        cb_obj = {'done':done_cb}
+        ref.Py_INCREF(cb_obj)
+        try:
+            self.thisptr.insert(
+                    cppk,
+                    val,
+                    cpp.bindDoneCbSimple(done_callback_simple, <void*>cb_obj)
+            )
+        except:
+            ref.Py_DECREF(cb_obj)
+            raise

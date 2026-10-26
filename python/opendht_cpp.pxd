@@ -303,8 +303,8 @@ cdef extern from "opendht/dhtrunner.h" namespace "dht":
         InfoHash getNodeId() const
         void bootstrap(const_char*, const_char*)
         void bootstrap(const SockAddr&, DoneCallbackSimple done_cb)
-        void run(in_port_t, Config config)
-        void run(const_char*, const_char*, const_char*, Config config)
+        void run(in_port_t, Config config) except +
+        void run(const_char*, const_char*, const_char*, Config config) except +
         void join() except + nogil
         void shutdown(ShutdownCallback)
         void registerType(ValueType& value);
@@ -344,8 +344,8 @@ cdef extern from "opendht/indexation/pht.h" namespace "dht::indexation":
         cppclass LookupCallback:
             LookupCallback() except +
         Pht(string, IndexKeySpec, shared_ptr[DhtRunner]) except +
-        void lookup(IndexKey k, LookupCallback cb, DoneCallbackSimple doneCb);
-        void insert(IndexKey k, IndexValue v, DoneCallbackSimple cb)
+        void lookup(IndexKey k, LookupCallback cb, DoneCallbackSimple doneCb) except +
+        void insert(IndexKey k, IndexValue v, DoneCallbackSimple cb) except +
         @staticmethod
         LookupCallback bindLookupCb(LookupCallbackRaw cb, void *user_data)
 
