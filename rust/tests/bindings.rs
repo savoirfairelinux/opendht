@@ -134,3 +134,47 @@ fn startup_errors_reach_rust() {
     let _socket6 = std::net::UdpSocket::bind((std::net::Ipv6Addr::UNSPECIFIED, port)).unwrap();
     assert!(DhtRunner::new().run(port).is_err());
 }
+
+#[test]
+fn bound_filtered_queries_and_extension_hooks() {
+    let mut runner = DhtRunner::new();
+    let mut config = DhtRunnerConfig::new();
+    config.threaded = false;
+    config.set_status_callback(|_, _| {});
+    config.set_certificate_store(|_| Vec::new());
+    runner.run_bind("127.0.0.1", "::1", 0, config).unwrap();
+    runner.register_type(17, "regression", 60, false).unwrap();
+    runner.connectivity_changed().unwrap();
+    runner.set_push_notification_token("token").unwrap();
+    runner.set_push_notification_topic("topic").unwrap();
+    runner.set_push_notification_platform("android").unwrap();
+    let hash = InfoHash::get("filtered query");
+    let seen = Arc::new(AtomicUsize::new(0));
+    let callback_seen = seen.clone();
+    let token = runner.listen_filtered(&hash, "WHERE value_type=17", move |value, expired| {
+        if !expired {
+            assert_eq!(value.id(), 42);
+            callback_seen.fetch_add(1, Ordering::SeqCst);
+        }
+        true
+    }).unwrap();
+    let mut value = Value::with_id(b"query result", 42);
+    value.set_value_type(17);
+    value.set_user_type("regression").unwrap();
+    runner.put(&hash, value, |_| {}, false);
+    runner.loop_once().unwrap();
+    assert_eq!(seen.load(Ordering::SeqCst), 1);
+    let (sent, received) = mpsc::channel();
+    runner.query(&hash, "SELECT id,user_type WHERE value_type=17", move |fields| {
+        sent.send((fields.id, fields.user_type)).unwrap();
+        true
+    }, |_| {}).unwrap();
+    runner.loop_once().unwrap();
+    let (id, user_type) = received.recv_timeout(Duration::from_secs(5)).unwrap();
+    assert_eq!(id, Some(42));
+    assert_eq!(user_type, Some(b"regression".to_vec()));
+    let mut push = runner.push_notification_received(&[("session", "regression")]).unwrap();
+    assert!(push.poll().unwrap().is_some());
+    runner.cancel_listen(&hash, token);
+    runner.join().unwrap();
+}
