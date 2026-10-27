@@ -159,7 +159,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-26.04, macos-15, macos-15-intel, windows-2022]
+        os: [ubuntu-24.04, ubuntu-26.04, macos-15, macos-15-intel, windows-2022]
         node: ['22', '24', '26']
     steps:
       - uses: actions/checkout@v7
