@@ -60,6 +60,39 @@ test('closing an idle runner is supported', async () => {
     assert.equal(runner.isRunning(), false);
 });
 
+test('runner reports per-family connectivity changes and snapshots', { timeout: 15000 }, async () => {
+    const runner = new DhtRunner();
+    const peer = startNode();
+    const changes = [];
+    runner.on('statusChanged', status => changes.push(status));
+    try {
+        assert.deepEqual(runner.getStatus(), { ipv4: 'disconnected', ipv6: 'disconnected' });
+        runner.run({ port: 0, ipv4: '127.0.0.1', ipv6: '::1' });
+        const connected = new Promise((resolve, reject) => {
+            const signal = AbortSignal.timeout(10000);
+            signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+            runner.on('statusChanged', status => {
+                if (status.ipv4 === 'connected') resolve(status);
+            });
+        });
+        runner.bootstrap('127.0.0.1', peer.getBoundPort());
+        peer.bootstrap('127.0.0.1', runner.getBoundPort());
+        const status = await connected;
+        assert.equal(status.ipv4, 'connected');
+        assert.ok(['disconnected', 'connecting', 'connected'].includes(status.ipv6));
+        assert.deepEqual(runner.getStatus(), status);
+        status.ipv4 = 'changed by consumer';
+        assert.equal(runner.getStatus().ipv4, 'connected');
+        await runner.close();
+        const count = changes.length;
+        await new Promise(resolve => setImmediate(resolve));
+        assert.equal(changes.length, count);
+        assert.deepEqual(runner.getStatus(), { ipv4: 'disconnected', ipv6: 'disconnected' });
+    } finally {
+        await Promise.all([runner.close(), peer.close()]);
+    }
+});
+
 test('invalid bind addresses produce JS exceptions', async () => {
     const runner = new DhtRunner();
     try {
@@ -195,7 +228,7 @@ test('queue overflow reports an error and rejects close', { timeout: 15000 }, as
 test('dhtnode example prints help and validates its port', async () => {
     const example = require('node:path').resolve(__dirname, '../examples/dhtnode.js');
     const { stdout } = await promisify(execFile)(process.execPath, [example, '--help']);
-    assert.match(stdout, /Usage:.*dhtnode\.js/);
+    assert.match(stdout, /Usage:.*dhtnode/);
     assert.match(stdout, /bootstrap/);
     await assert.rejects(promisify(execFile)(process.execPath, [example, '--port', '65536']), error => {
         assert.equal(error.code, 1);
@@ -212,16 +245,56 @@ test('dhtnode example accepts piped commands and shuts down on EOF', { timeout: 
             '--port', '0', '--ipv4', '127.0.0.1',
             '--bootstrap', '127.0.0.1', '--bootstrap-port', String(peer.getBoundPort()),
         ], { timeout: 15000 });
-        execution.child.stdin.end('listen example\nput example hello world\nsign signed signed message\nget example\nget signed\ncancel example\n');
+        let output = '';
+        let sentReads = false;
+        execution.child.stdout.on('data', data => {
+            output += data;
+            if (!sentReads && /Stored example/.test(output) && /Stored signed/.test(output)) {
+                sentReads = true;
+                execution.child.stdin.end('get example\nget signed\ncancel example\n');
+            }
+        });
+        execution.child.stdin.write('listen example\nput example hello world\nsign signed signed message\n');
         const { stdout, stderr } = await execution;
         assert.equal(stderr, '');
         assert.match(stdout, /Node [0-9a-f]{40}/);
         assert.match(stdout, /hello world/);
         assert.match(stdout, /signed message.*\[signed\]/);
         assert.match(stdout, /Cancelled example/);
+        assert.match(stdout, /Connectivity: IPv4 connected, IPv6 (disconnected|connecting|connected)/);
     } finally {
         await peer.close();
     }
+});
+
+test('dhtnode example handles commands and quit while a get is pending', { timeout: 10000 }, async () => {
+    const example = require('node:path').resolve(__dirname, '../examples/dhtnode.js');
+    const execution = promisify(execFile)(process.execPath, ['-e', `
+        const { DhtRunner } = require(${JSON.stringify(require.resolve('..'))});
+        const close = DhtRunner.prototype.close;
+        let rejectGet;
+        DhtRunner.prototype.get = function () {
+            console.log('Get pending');
+            return new Promise((resolve, reject) => { rejectGet = reject; });
+        };
+        DhtRunner.prototype.close = function () {
+            rejectGet?.(new Error('DHT runner is closed'));
+            return close.call(this);
+        };
+        require(${JSON.stringify(example)});
+    `, '--',
+        '--port', '0', '--ipv4', '127.0.0.1', '--ipv6', '::1',
+    ], { timeout: 8000 });
+    let output = '';
+    execution.child.stdout.on('data', data => {
+        output += data;
+        if (/get KEY \| put KEY TEXT/.test(output)) execution.child.stdin.end('quit\n');
+    });
+    execution.child.stdin.write('get waiting\nhelp\n');
+    const { stdout, stderr } = await execution;
+    assert.match(stdout, /Get pending/);
+    assert.match(stdout, /get KEY \| put KEY TEXT/);
+    assert.equal(stderr, '');
 });
 
 test('dhtnode example shuts down on SIGTERM', { timeout: 10000 }, async () => {
