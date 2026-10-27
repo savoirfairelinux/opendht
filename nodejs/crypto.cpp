@@ -51,8 +51,6 @@ bytes(Napi::Value value)
     if (!value.IsTypedArray() || value.As<Napi::TypedArray>().TypedArrayType() != napi_uint8_array)
         throw Napi::TypeError::New(value.Env(), "Expected a Uint8Array");
     auto array = value.As<Napi::Uint8Array>();
-    if (array.ElementLength() > 16 * 1024 * 1024)
-        throw Napi::RangeError::New(value.Env(), "Crypto input exceeds 16 MiB");
     dht::Blob result(array.ElementLength());
     if (!result.empty())
         std::copy_n(array.Data(), result.size(), result.data());

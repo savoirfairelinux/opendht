@@ -7,14 +7,12 @@
 #include <chrono>
 #include <cmath>
 #include <condition_variable>
+#include <functional>
 #include <mutex>
 #include <optional>
 #include <unordered_map>
 
 namespace {
-
-constexpr size_t maxQueuedEvents = 1024;
-constexpr size_t maxResultBytes = 16 * 1024 * 1024;
 
 struct GnuTlsContext
 {
@@ -82,64 +80,28 @@ optionsObject(Napi::Value value)
     return value.As<Napi::Object>();
 }
 
-struct ValueData
+Napi::Object
+valueToJS(Napi::Env env, const dht::Value& value)
 {
-    explicit ValueData(const dht::Value& value)
-        : id(value.id)
-        , type(value.type)
-        , seq(value.seq)
-        , data(value.data)
-        , userType(value.user_type)
-        , owner(value.owner ? value.owner->getLongId().toString() : "")
-        , isSigned(value.isSigned())
-        , isEncrypted(value.isEncrypted())
-    {}
-
-    Napi::Object toJS(Napi::Env env) const
-    {
-        auto result = Napi::Object::New(env);
-        result.Set("id", Napi::BigInt::New(env, id));
-        result.Set("type", Napi::Number::New(env, type));
-        result.Set("seq", Napi::Number::New(env, seq));
-        result.Set("data", Napi::Buffer<uint8_t>::Copy(env, data.data(), data.size()));
-        result.Set("userType", Napi::String::New(env, userType));
-        result.Set("owner", owner.empty() ? Napi::Value(env.Null()) : Napi::Value(Napi::String::New(env, owner)));
-        result.Set("isSigned", Napi::Boolean::New(env, isSigned));
-        result.Set("isEncrypted", Napi::Boolean::New(env, isEncrypted));
-        return result;
-    }
-
-    size_t size() const { return sizeof(ValueData) + data.size() + userType.size() + owner.size(); }
-
-    uint64_t id;
-    uint16_t type;
-    uint16_t seq;
-    dht::Blob data;
-    std::string userType;
-    std::string owner;
-    bool isSigned;
-    bool isEncrypted;
-};
-
-struct Event
-{
-    enum class Kind { Value, Done, Overflow, Status };
-    Kind kind;
-    uint64_t operation;
-    bool flag;
-    std::optional<ValueData> value;
-    dht::NodeStatus ipv4 = dht::NodeStatus::Disconnected;
-    dht::NodeStatus ipv6 = dht::NodeStatus::Disconnected;
-
-    size_t size() const { return sizeof(Event) + (value ? value->size() : 0); }
-};
+    auto result = Napi::Object::New(env);
+    result.Set("id", Napi::BigInt::New(env, value.id));
+    result.Set("type", Napi::Number::New(env, value.type));
+    result.Set("seq", Napi::Number::New(env, value.seq));
+    result.Set("data", Napi::Buffer<uint8_t>::Copy(env, value.data.data(), value.data.size()));
+    result.Set("userType", Napi::String::New(env, value.user_type));
+    result.Set("owner",
+               value.owner ? Napi::Value(Napi::String::New(env, value.owner->getLongId().toString()))
+                           : Napi::Value(env.Null()));
+    result.Set("isSigned", Napi::Boolean::New(env, value.isSigned()));
+    result.Set("isEncrypted", Napi::Boolean::New(env, value.isEncrypted()));
+    return result;
+}
 
 struct PendingOperation
 {
     Napi::Promise::Deferred deferred;
     bool get;
-    std::vector<ValueData> values;
-    size_t bytes = 0;
+    std::vector<std::shared_ptr<const dht::Value>> values;
 };
 
 struct Subscription
@@ -151,6 +113,8 @@ struct Subscription
 
 struct RunnerState
 {
+    using Callback = std::function<void(RunnerState&)>;
+
     explicit RunnerState(Napi::Env environment)
         : env(environment)
     {}
@@ -215,99 +179,44 @@ struct RunnerState
         }
     }
 
-    void send(std::unique_ptr<Event> event)
-    {
-        if (closing || overflowed)
-            return;
-        const auto eventSize = event->size();
-        const auto previousCount = queuedEvents.fetch_add(1);
-        const auto previousBytes = queuedBytes.fetch_add(eventSize);
-        if (previousCount >= maxQueuedEvents || eventSize > maxResultBytes
-            || previousBytes > maxResultBytes - eventSize) {
-            queuedEvents--;
-            queuedBytes -= eventSize;
-            signalOverflow();
-            return;
-        }
-        if (dispatcher.NonBlockingCall(static_cast<void*>(event.get())) == napi_ok) {
-            event.release();
-        } else {
-            queuedEvents--;
-            queuedBytes -= eventSize;
-        }
-    }
-
-    void sendValue(uint64_t operation, const dht::Value& value, bool expired = false)
-    {
-        if (closing || overflowed)
-            return;
-        if (value.data.size() > maxResultBytes || value.user_type.size() > maxResultBytes) {
-            signalOverflow();
-            return;
-        }
-        send(std::make_unique<Event>(Event {Event::Kind::Value, operation, expired, ValueData(value)}));
-    }
-
-    void signalOverflow()
-    {
-        if (overflowed.exchange(true))
-            return;
-        auto event = std::make_unique<Event>(Event {Event::Kind::Overflow, 0, false, {}});
-        if (dispatcher.NonBlockingCall(static_cast<void*>(event.get())) == napi_ok)
-            event.release();
-    }
-
-    void handle(Event& event)
+    void send(Callback callback)
     {
         if (closing)
             return;
-        if (event.kind == Event::Kind::Status) {
-            status4 = event.ipv4;
-            status6 = event.ipv6;
-            if (!onStatus.IsEmpty())
-                onStatus.Call({status()});
-            return;
-        }
-        if (event.kind == Event::Kind::Overflow) {
-            overflowed = true;
-            startClose();
-            if (!onError.IsEmpty())
-                onError.Call({makeCloseError().Value()});
-            return;
-        }
-        if (event.kind == Event::Kind::Value) {
-            const auto listener = listeners.find(event.operation);
-            if (listener != listeners.end()) {
-                listener->second.callback.Call({event.value->toJS(env), Napi::Boolean::New(env, event.flag)});
-            } else if (const auto pending = operations.find(event.operation); pending != operations.end()) {
-                auto& operation = pending->second;
-                operation.bytes += event.value->size();
-                if (operation.bytes > maxResultBytes || operation.values.size() >= 65536) {
-                    overflowed = true;
-                    startClose();
-                    if (!onError.IsEmpty())
-                        onError.Call({makeCloseError().Value()});
-                    return;
-                }
-                operation.values.emplace_back(std::move(*event.value));
+        auto task = std::make_unique<Callback>(std::move(callback));
+        if (dispatcher.NonBlockingCall(static_cast<void*>(task.get())) == napi_ok)
+            task.release();
+    }
+
+    void sendValue(uint64_t operation, std::shared_ptr<const dht::Value> value, bool expired = false)
+    {
+        send([operation, value = std::move(value), expired](RunnerState& state) mutable {
+            const auto listener = state.listeners.find(operation);
+            if (listener != state.listeners.end()) {
+                listener->second.callback.Call({valueToJS(state.env, *value), Napi::Boolean::New(state.env, expired)});
+            } else if (const auto pending = state.operations.find(operation); pending != state.operations.end()) {
+                pending->second.values.emplace_back(std::move(value));
             }
-            return;
-        }
-        const auto pending = operations.find(event.operation);
+        });
+    }
+
+    void completeOperation(uint64_t identifier, bool ok)
+    {
+        const auto pending = operations.find(identifier);
         if (pending == operations.end())
             return;
         auto operation = std::move(pending->second);
         operations.erase(pending);
         if (!operation.get) {
-            operation.deferred.Resolve(Napi::Boolean::New(env, event.flag));
-        } else if (!event.flag) {
+            operation.deferred.Resolve(Napi::Boolean::New(env, ok));
+        } else if (!ok) {
             auto error = Napi::Error::New(env, "DHT get failed");
             error.Set("code", "ERR_DHT_GET_FAILED");
             operation.deferred.Reject(error.Value());
         } else {
             auto values = Napi::Array::New(env, operation.values.size());
             for (size_t index = 0; index < operation.values.size(); ++index)
-                values.Set(static_cast<uint32_t>(index), operation.values[index].toJS(env));
+                values.Set(static_cast<uint32_t>(index), valueToJS(env, *operation.values[index]));
             operation.deferred.Resolve(values);
         }
     }
@@ -327,15 +236,11 @@ struct RunnerState
     static void dispatch(napi_env environment, napi_value, void* context, void* data)
     {
         auto state = static_cast<RunnerState*>(context);
-        std::unique_ptr<Event> event(static_cast<Event*>(data));
-        if (event->kind != Event::Kind::Overflow) {
-            state->queuedEvents--;
-            state->queuedBytes -= event->size();
-        }
-        if (!environment || state->envClosing)
+        std::unique_ptr<Callback> callback(static_cast<Callback*>(data));
+        if (!environment || state->envClosing || state->closing)
             return;
         try {
-            state->handle(*event);
+            (*callback)(*state);
         } catch (const Napi::Error& error) {
             napi_fatal_exception(environment, error.Value());
         } catch (const std::exception& error) {
@@ -383,11 +288,8 @@ struct RunnerState
 
     Napi::Error makeCloseError() const
     {
-        auto error = Napi::Error::New(env,
-                                      overflowed           ? "OpenDHT result queue exceeded its limit"
-                                      : closeError.empty() ? "DHT runner is closed"
-                                                           : closeError);
-        error.Set("code", overflowed ? "ERR_DHT_OVERFLOW" : "ERR_DHT_CLOSED");
+        auto error = Napi::Error::New(env, closeError.empty() ? "DHT runner is closed" : closeError);
+        error.Set("code", "ERR_DHT_CLOSED");
         return error;
     }
 
@@ -402,7 +304,7 @@ struct RunnerState
             for (auto& pending : state->operations)
                 pending.second.deferred.Reject(error.Value());
             if (state->closeDeferred) {
-                if (!state->overflowed && state->closeError.empty())
+                if (state->closeError.empty())
                     state->closeDeferred->Resolve(Napi::Env(environment).Undefined());
                 else
                     state->closeDeferred->Reject(error.Value());
@@ -412,7 +314,6 @@ struct RunnerState
         state->listeners.clear();
         state->closeDeferred.reset();
         state->closePromise.Reset();
-        state->onError.Reset();
         state->onStatus.Reset();
         state->owner.Reset();
         napi_delete_async_work(environment, state->closeWork);
@@ -427,9 +328,6 @@ struct RunnerState
     napi_async_cleanup_hook_handle cleanupHook {};
     std::shared_ptr<RunnerState>* closeOwner {};
     std::atomic_bool closing {false};
-    std::atomic_bool overflowed {false};
-    std::atomic_size_t queuedEvents {0};
-    std::atomic_size_t queuedBytes {0};
     bool envClosing = false;
     bool started = false;
     bool hasIdentity = false;
@@ -440,7 +338,6 @@ struct RunnerState
     std::unordered_map<uint64_t, Subscription> listeners;
     std::optional<Napi::Promise::Deferred> closeDeferred;
     Napi::Reference<Napi::Promise> closePromise;
-    Napi::FunctionReference onError;
     Napi::FunctionReference onStatus;
     Napi::ObjectReference owner;
     dht::NodeStatus status4 = dht::NodeStatus::Disconnected;
@@ -455,9 +352,7 @@ public:
         , state_(RunnerState::create(info.Env()))
     {
         if (info.Length() && info[0].IsFunction())
-            state_->onError = Napi::Persistent(info[0].As<Napi::Function>());
-        if (info.Length() > 1 && info[1].IsFunction())
-            state_->onStatus = Napi::Persistent(info[1].As<Napi::Function>());
+            state_->onStatus = Napi::Persistent(info[0].As<Napi::Function>());
     }
 
     ~Runner() override { state_->startClose(); }
@@ -510,7 +405,12 @@ private:
             const std::weak_ptr<RunnerState> state = state_;
             context.statusChangedCallback = [state](dht::NodeStatus ipv4, dht::NodeStatus ipv6) {
                 if (auto owner = state.lock())
-                    owner->send(std::make_unique<Event>(Event {Event::Kind::Status, 0, false, {}, ipv4, ipv6}));
+                    owner->send([ipv4, ipv6](RunnerState& state) {
+                        state.status4 = ipv4;
+                        state.status6 = ipv6;
+                        if (!state.onStatus.IsEmpty())
+                            state.onStatus.Call({state.status()});
+                    });
             };
             const auto service = std::to_string(port);
             state_->runner.run(ipv4.c_str(), ipv6.c_str(), service.c_str(), config, std::move(context));
@@ -528,7 +428,7 @@ private:
                 return state_->closePromise.Value();
             auto deferred = Napi::Promise::Deferred::New(info.Env());
             if (state_->finished) {
-                if (state_->overflowed || !state_->closeError.empty())
+                if (!state_->closeError.empty())
                     deferred.Reject(state_->makeCloseError().Value());
                 else
                     deferred.Resolve(info.Env().Undefined());
@@ -543,7 +443,7 @@ private:
 
     Napi::Value isRunning(const Napi::CallbackInfo& info)
     {
-        return Napi::Boolean::New(info.Env(), !state_->closing && !state_->overflowed && state_->runner.isRunning());
+        return Napi::Boolean::New(info.Env(), !state_->closing && state_->runner.isRunning());
     }
 
     Napi::Value getStatus(const Napi::CallbackInfo& info)
@@ -597,16 +497,17 @@ private:
                                    dht::GetCallback(
                                        [state, operation](const std::vector<std::shared_ptr<dht::Value>>& values) {
                                            const auto owner = state.lock();
-                                           if (!owner || owner->closing || owner->overflowed)
+                                           if (!owner || owner->closing)
                                                return false;
                                            for (const auto& value : values)
-                                               owner->sendValue(operation, *value);
-                                           return !owner->closing && !owner->overflowed;
+                                               owner->sendValue(operation, value);
+                                           return !owner->closing;
                                        }),
                                    dht::DoneCallbackSimple([state, operation](bool ok) {
                                        if (const auto owner = state.lock())
-                                           owner->send(
-                                               std::make_unique<Event>(Event {Event::Kind::Done, operation, ok, {}}));
+                                           owner->send([operation, ok](RunnerState& state) {
+                                               state.completeOperation(operation, ok);
+                                           });
                                    }));
             } catch (...) {
                 state_->operations.erase(operation);
@@ -666,7 +567,7 @@ private:
             try {
                 dht::DoneCallbackSimple done = [state, operation](bool ok) {
                     if (const auto owner = state.lock())
-                        owner->send(std::make_unique<Event>(Event {Event::Kind::Done, operation, ok, {}}));
+                        owner->send([operation, ok](RunnerState& state) { state.completeOperation(operation, ok); });
                 };
                 if (mode == PutMode::Signed)
                     state_->runner.putSigned(key, value, std::move(done), permanent);
@@ -697,11 +598,11 @@ private:
                                          [state, operation](const std::vector<std::shared_ptr<dht::Value>>& values,
                                                             bool expired) {
                                              const auto owner = state.lock();
-                                             if (!owner || owner->closing || owner->overflowed)
+                                             if (!owner || owner->closing)
                                                  return false;
                                              for (const auto& value : values)
-                                                 owner->sendValue(operation, *value, expired);
-                                             return !owner->closing && !owner->overflowed;
+                                                 owner->sendValue(operation, value, expired);
+                                             return !owner->closing;
                                          }))
                              .share();
             state_->listeners.emplace(operation,

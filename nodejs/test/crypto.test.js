@@ -27,6 +27,8 @@ test('EC keys sign and invalid crypto inputs raise JS errors', async () => {
     const key = await PrivateKey.generate();
     const restored = new PrivateKey(key.serialize());
     assert.equal(restored.getPublicKey().checkSignature(payload, key.sign(payload)), true);
+    const largePayload = Buffer.alloc(16 * 1024 * 1024 + 1, 42);
+    assert.equal(restored.getPublicKey().checkSignature(largePayload, key.sign(largePayload)), true);
     assert.throws(() => key.getPublicKey().encrypt(payload));
     for (const Type of [PrivateKey, PublicKey, Certificate]) {
         assert.throws(() => new Type(Buffer.alloc(0)));

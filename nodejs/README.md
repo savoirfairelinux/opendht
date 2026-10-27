@@ -124,16 +124,12 @@ main().catch(console.error);
 Callbacks run only on their owning JS thread. There is no polling timer or worker
 thread waiting on each get/put. Explicitly close runners; GC cleanup and Node
 environment cleanup hooks are fallbacks, including forced worker termination.
-Pending operations, active listeners, and registered error/status handlers keep their
+Pending operations, active listeners, and registered status handlers keep their
 runner alive until completion, cancellation, handler removal, or explicit close.
 Graceful persistence cannot be guaranteed if the process is killed.
 
-The cross-thread queue is limited to 1,024 events and 16 MiB, and each accumulated
-get result is limited to 16 MiB and 65,536 values. Exceeding a limit closes the
-runner, emits an `error` event with code `ERR_DHT_OVERFLOW`, and rejects pending
-operations and `close()`. Install an `error` handler on long-lived runners. As
-with other Node EventEmitters, an unhandled `error` event is fatal. There is no
-silent dropping of events while continuing an apparently healthy listener.
+The binding does not cap the callback queue or accumulated get results. Queued
+callbacks retain their native values until delivery or cleanup.
 
 ## Crypto
 
@@ -173,7 +169,7 @@ async function createAuthenticatedNode() {
 ```
 
 Crypto methods take Uint8Array/Buffer inputs, not implicit text encodings. Imports
-must be nonempty and crypto inputs are limited to 16 MiB. Malformed handles/data,
+must be nonempty. Malformed handles/data,
 mismatched identities, and unsupported encryption keys raise JS exceptions.
 Only generation is asynchronous; import/export/sign/encrypt/decrypt are
 synchronous and should be used from worker threads for large workloads.

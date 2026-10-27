@@ -111,6 +111,7 @@ test('two loopback nodes exchange binary values and cancel listeners', { timeout
     const key = hash('node-addon-api integration');
     const payload = Buffer.from([0, 1, 255, 0, 42]);
     let subscription;
+    let retainedValue;
     try {
         writer.bootstrap('127.0.0.1', reader.getBoundPort());
         reader.bootstrap('127.0.0.1', writer.getBoundPort());
@@ -126,17 +127,26 @@ test('two loopback nodes exchange binary values and cancel listeners', { timeout
         }), true);
         const [value] = await received;
         assert.equal(value.id, 18446744073709551614n);
+        assert.equal(value.type, 0);
+        assert.ok(Buffer.isBuffer(value.data));
         assert.deepEqual(value.data, payload);
         assert.equal(value.userType, 'nodejs-test');
         assert.equal(typeof value.seq, 'number');
+        assert.equal(value.owner, null);
+        assert.equal(value.isSigned, false);
+        assert.equal(value.isEncrypted, false);
+        value.data.fill(7);
         const values = await reader.get(key);
-        assert.ok(values.some(candidate => candidate.id === value.id && candidate.data.equals(payload)));
+        retainedValue = values.find(candidate => candidate.id === value.id);
+        assert.ok(retainedValue);
+        assert.deepEqual(retainedValue.data, payload);
         subscription.cancel();
         subscription.cancel();
     } finally {
         subscription?.cancel();
         await Promise.all([writer.close(), reader.close()]);
     }
+    assert.deepEqual(retainedValue.data, payload);
 });
 
 test('close settles pending operations and suppresses queued listener deliveries', { timeout: 10000 }, async () => {
@@ -179,12 +189,15 @@ test('listener callbacks may cancel themselves and close the runner', { timeout:
         subscription.cancel();
         finish(runner.close());
     });
-    const put = runner.put(key, Buffer.from('value')).catch(error => {
-        assert.equal(error.code, 'ERR_DHT_CLOSED');
-    });
+    const puts = [];
+    for (let index = 0; index < 3000; index++) {
+        puts.push(runner.put(key, Buffer.from('value'), { id: BigInt(index + 1) }).catch(error => {
+            assert.equal(error.code, 'ERR_DHT_CLOSED');
+        }));
+    }
     try {
         await received;
-        await put;
+        await Promise.all(puts);
         assert.equal(deliveries, 1);
     } finally {
         await runner.close();
@@ -202,28 +215,23 @@ test('unref and garbage collection do not strand native threads', { timeout: 200
     }
 });
 
-test('queue overflow reports an error and rejects close', { timeout: 15000 }, async () => {
+test('callback queue completes bursts beyond the former event limit', { timeout: 15000 }, async () => {
     const runner = startNode();
-    const key = hash('bounded listener queue');
-    const reported = once(runner, 'error');
-    const subscription = runner.listen(key, () => { });
+    const key = hash('unbounded callback queue');
+    const errors = [];
+    const count = 3000;
+    runner.on('error', error => errors.push(error));
     const puts = [];
     try {
-        for (let index = 0; index < 3000; index++) {
-            puts.push(runner.put(key, Buffer.from('value'), { id: BigInt(index + 1) }).catch(error => {
-                assert.equal(error.code, 'ERR_DHT_OVERFLOW');
-            }));
-        }
-        const deadline = performance.now() + 5000;
-        while (runner.isRunning() && performance.now() < deadline) { }
-        assert.equal(runner.isRunning(), false);
-        const [error] = await reported;
-        assert.equal(error.code, 'ERR_DHT_OVERFLOW');
-        await Promise.all(puts);
-        await assert.rejects(runner.close(), { code: 'ERR_DHT_OVERFLOW' });
+        for (let index = 0; index < count; index++)
+            puts.push(runner.put(key, Buffer.from('value'), { id: BigInt(index + 1) }));
+        const results = await Promise.all(puts);
+        assert.equal(results.length, count);
+        assert.ok(results.every(result => typeof result === 'boolean'));
+        assert.equal(runner.isRunning(), true);
+        assert.deepEqual(errors, []);
     } finally {
-        subscription.cancel();
-        await runner.close().catch(() => { });
+        await runner.close();
     }
 });
 

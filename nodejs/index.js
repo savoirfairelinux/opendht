@@ -21,12 +21,11 @@ class DhtRunner extends EventEmitter {
     constructor() {
         super();
         const owner = new WeakRef(this);
-        this.#native = new native.NativeRunner(eventReporter(owner, 'error'), eventReporter(owner, 'statusChanged'));
+        this.#native = new native.NativeRunner(eventReporter(owner, 'statusChanged'));
     }
 
     #updateOwner() {
-        this.#native.setOwner(this.#listeners || this.#pending || this.listenerCount('error')
-            || this.listenerCount('statusChanged') ? this : null);
+        this.#native.setOwner(this.#listeners || this.#pending || this.listenerCount('statusChanged') ? this : null);
     }
 
     #track(operation) {
