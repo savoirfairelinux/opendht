@@ -1,5 +1,6 @@
 #include <napi.h>
 #include <opendht.h>
+#include <gnutls/gnutls.h>
 #include "crypto.h"
 #include <algorithm>
 #include <atomic>
@@ -14,6 +15,17 @@ namespace {
 
 constexpr size_t maxQueuedEvents = 1024;
 constexpr size_t maxResultBytes = 16 * 1024 * 1024;
+
+struct GnuTlsContext
+{
+    const int result = gnutls_global_init();
+
+    ~GnuTlsContext()
+    {
+        if (result == GNUTLS_E_SUCCESS)
+            gnutls_global_deinit();
+    }
+};
 
 using opendht_node::guarded;
 
@@ -765,6 +777,9 @@ hash(const Napi::CallbackInfo& info)
 Napi::Object
 initialize(Napi::Env env, Napi::Object exports)
 {
+    static const GnuTlsContext crypto;
+    if (crypto.result != GNUTLS_E_SUCCESS)
+        throw Napi::Error::New(env, std::string("Unable to initialize GnuTLS: ") + gnutls_strerror(crypto.result));
     opendht_node::initializeCrypto(env, exports);
     exports.Set("NativeRunner", Runner::define(env));
     exports.Set("hash", Napi::Function::New(env, hash));
