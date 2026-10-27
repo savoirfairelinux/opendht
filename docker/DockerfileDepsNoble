@@ -1,0 +1,56 @@
+FROM ubuntu:24.04
+LABEL maintainer="Adrien Béraud <adrien.beraud@savoirfairelinux.com>"
+LABEL org.opencontainers.image.source=https://github.com/savoirfairelinux/opendht
+
+RUN apt-get update && apt-get install -y \
+    dialog apt-utils \
+    && apt-get clean \
+    && echo 'debconf debconf/frontend select Noninteractive' | debconf-set-selections
+
+RUN apt-get update && apt-get install -y \
+    build-essential pkg-config cmake git wget meson ninja-build patchelf \
+    libtool \
+    python3-dev python3-setuptools python3-build python3-virtualenv cython3 \
+    libncurses5-dev libreadline-dev nettle-dev libcppunit-dev \
+    libgnutls28-dev libuv1-dev libjsoncpp-dev libargon2-dev \
+    libssl-dev libfmt-dev libasio-dev libmsgpack-cxx-dev \
+    && apt-get clean && rm -rf /var/lib/apt/lists/* /var/cache/apt/*
+
+ARG LLHTTP_VERSION=9.2.1
+RUN mkdir llhttp \
+    && wget -q "https://github.com/nodejs/llhttp/archive/refs/tags/release/v${LLHTTP_VERSION}.tar.gz" -O llhttp.tar.gz \
+    && tar -xzf llhttp.tar.gz -C llhttp --strip-components=1 \
+    && cmake -S llhttp -B llhttp/build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr \
+    && cmake --build llhttp/build --parallel 2 \
+    && cmake --install llhttp/build \
+    && rm -rf llhttp llhttp.tar.gz
+
+ARG SIMDUTF_VERSION=8.0.0
+RUN mkdir simdutf \
+    && wget -q "https://github.com/simdutf/simdutf/archive/refs/tags/v${SIMDUTF_VERSION}.tar.gz" -O simdutf.tar.gz \
+    && tar -xzf simdutf.tar.gz -C simdutf --strip-components=1 \
+    && cmake -S simdutf -B simdutf/build -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
+        -DBUILD_SHARED_LIBS=OFF -DSIMDUTF_TESTS=OFF -DSIMDUTF_TOOLS=OFF \
+    && cmake --build simdutf/build --parallel 2 \
+    && cmake --install simdutf/build \
+    && install -D simdutf/LICENSE-MIT /usr/share/doc/simdutf/LICENSE-MIT \
+    && install -D simdutf/LICENSE-APACHE /usr/share/doc/simdutf/LICENSE-APACHE \
+    && rm -rf simdutf simdutf.tar.gz
+
+RUN mkdir /usr/include/nonstd \
+    && wget https://raw.githubusercontent.com/martinmoene/expected-lite/master/include/nonstd/expected.hpp \
+    -O /usr/include/nonstd/expected.hpp
+
+ARG RESTINIO_VERSION=0.7.10
+RUN echo "*** Downloading RESTinio ***" \
+    && mkdir restinio && cd restinio \
+    && wget "https://github.com/Stiffstream/restinio/releases/download/v${RESTINIO_VERSION}/restinio-${RESTINIO_VERSION}.tar.bz2" \
+    && ls -l && tar -xjf "restinio-${RESTINIO_VERSION}.tar.bz2" \
+    && cd "restinio-${RESTINIO_VERSION}/dev" \
+    && cmake -DCMAKE_INSTALL_PREFIX=/usr -DRESTINIO_TEST=Off -DRESTINIO_SAMPLE=Off -DRESTINIO_BENCHMARK=Off \
+    -DRESTINIO_WITH_SOBJECTIZER=Off -DRESTINIO_DEP_STANDALONE_ASIO=system -DRESTINIO_DEP_LLHTTP=system \
+    -DRESTINIO_DEP_FMT=system -DRESTINIO_DEP_EXPECTED_LITE=system . \
+    && make -j2 && make install \
+    && cd ../../ && rm -rf restinio* \
+    && ldconfig

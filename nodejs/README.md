@@ -208,13 +208,21 @@ The [Node.js package workflow](../.github/workflows/nodejs-package.yml) builds:
 
 | Target | Build Baseline |
 | --- | --- |
-| Linux x64 | Ubuntu 26.04 |
+| Linux x64 | Ubuntu 24.04 / glibc 2.39 (Noble dependency image) |
 | macOS ARM64 and x64 | macOS 15 |
 | Windows x64 | Windows Server 2022 / MSVC |
 
+The Linux build uses `ghcr.io/savoirfairelinux/opendht/opendht-deps-noble`,
+built from [the Noble Dockerfile](../docker/DockerfileDepsNoble), restored from
+the Ubuntu 24.04 recipe in git history. The release workflow publishes this
+multi-architecture image alongside the other Docker images. Node builds use its
+published `latest` tag. simdutf is linked statically because Ubuntu 24.04 does not
+provide its development package.
+
 CI combines platform prebuilds into one npm archive and verifies that archive on
-Node 22, 24, and 26 on each platform. Published GitHub releases receive the
-verified archive only after all install tests pass. The package remains private;
+Node 22, 24, and 26 on each platform, including Ubuntu 24.04 and 26.04. Published
+GitHub releases receive the verified archive only after all install tests pass.
+The package remains private;
 the workflow does not publish to the npm registry or require an npm token.
 musl/Alpine and other architectures are not currently built. Node-API stability
 does not remove OS/libc or native dependency compatibility requirements. Review

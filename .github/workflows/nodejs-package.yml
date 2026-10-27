@@ -29,11 +29,17 @@ on:
 
 permissions:
   contents: read
+  packages: read
 
 jobs:
   build:
     name: Build ${{ matrix.target }}
     runs-on: ${{ matrix.os }}
+    container:
+      image: ${{ matrix.container }}
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
     timeout-minutes: 45
     defaults:
       run:
@@ -44,6 +50,7 @@ jobs:
         include:
           - os: ubuntu-26.04
             target: linux-x64
+            container: ghcr.io/${{ github.repository }}/opendht-deps-noble:latest
           - os: macos-15
             target: darwin-arm64
           - os: macos-15-intel
@@ -62,13 +69,6 @@ jobs:
           node-version: '22'
           cache: npm
           cache-dependency-path: nodejs/package-lock.json
-      - name: Install Linux dependencies
-        if: runner.os == 'Linux'
-        run: |
-          sudo -n apt-get update
-          sudo -n apt-get install -y cmake ninja-build pkg-config patchelf \
-            libgnutls28-dev nettle-dev libargon2-dev libmsgpack-cxx-dev \
-            libfmt-dev libjsoncpp-dev libsimdutf-dev
       - name: Install macOS dependencies
         if: runner.os == 'macOS'
         run: brew install cmake ninja pkg-config dylibbundler gnutls nettle argon2 msgpack-cxx fmt jsoncpp simdutf
@@ -118,6 +118,11 @@ jobs:
       - run: npm test
       - run: npm run typecheck
       - run: npm run bundle
+      - name: Include static simdutf licenses
+        if: runner.os == 'Linux'
+        run: |
+          mkdir -p prebuilds/linux-x64/licenses/simdutf
+          cp /usr/share/doc/simdutf/LICENSE-* prebuilds/linux-x64/licenses/simdutf/
       - run: npm run test:package
       - uses: actions/upload-artifact@v7
         with:
