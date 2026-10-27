@@ -1,8 +1,6 @@
-'use strict';
-
-const assert = require('node:assert/strict');
-const { test } = require('node:test');
-const { Certificate, DhtRunner, Identity, PrivateKey, PublicKey, hash } = require('..');
+import assert from 'node:assert/strict';
+import { test } from 'node:test';
+import { Certificate, DhtRunner, Identity, PrivateKey, PublicKey, hash } from '../index.js';
 
 const payload = Buffer.from([0, 255, 1, 0, 42]);
 

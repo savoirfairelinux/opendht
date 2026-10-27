@@ -1,4 +1,5 @@
-import { Certificate, ConnectivityStatus, DhtRunner, Identity, NodeStatus, PrivateKey, PublicKey, hash, Value, version } from '..';
+import { Certificate, DhtRunner, Identity, PrivateKey, PublicKey, hash, version } from '../index.js';
+import type { ConnectivityStatus, NodeStatus, Value } from '../index.js';
 
 async function exercise(): Promise<void> {
     const privateKey: PrivateKey = await PrivateKey.generate({ algorithm: 'rsa', bits: 2048 });

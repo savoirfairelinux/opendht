@@ -1,13 +1,15 @@
-'use strict';
+import assert from 'node:assert/strict';
+import { execFile } from 'node:child_process';
+import { EventEmitter, once } from 'node:events';
+import { test } from 'node:test';
+import { fileURLToPath } from 'node:url';
+import { promisify } from 'node:util';
+import { Worker } from 'node:worker_threads';
+import { DhtRunner, hash, version } from '../index.js';
 
-const assert = require('node:assert/strict');
-const { execFile } = require('node:child_process');
-const { once } = require('node:events');
-const { EventEmitter } = require('node:events');
-const { test } = require('node:test');
-const { promisify } = require('node:util');
-const { Worker } = require('node:worker_threads');
-const { DhtRunner, hash, version } = require('..');
+const moduleURL = new URL('../index.js', import.meta.url).href;
+const exampleURL = new URL('../examples/dhtnode.js', import.meta.url);
+const example = fileURLToPath(exampleURL);
 
 function startNode() {
     const runner = new DhtRunner();
@@ -150,14 +152,15 @@ test('close settles pending operations and suppresses queued listener deliveries
 });
 
 test('worker termination cleans up native runners', { timeout: 10000 }, async () => {
-    const worker = new Worker(`
-        const { parentPort } = require('node:worker_threads');
-        const { DhtRunner, hash } = require(${JSON.stringify(require.resolve('..'))});
+    const source = `
+        import { parentPort } from 'node:worker_threads';
+        import { DhtRunner, hash } from ${JSON.stringify(moduleURL)};
         const runner = new DhtRunner();
         runner.run({ port: 0, ipv4: '127.0.0.1', ipv6: '::1' });
         runner.listen(hash('worker'), () => {});
         parentPort.postMessage('ready');
-    `, { eval: true });
+    `;
+    const worker = new Worker(new URL(`data:text/javascript,${encodeURIComponent(source)}`));
     try {
         await once(worker, 'message');
     } finally {
@@ -189,10 +192,9 @@ test('listener callbacks may cancel themselves and close the runner', { timeout:
 });
 
 test('unref and garbage collection do not strand native threads', { timeout: 20000 }, async () => {
-    const modulePath = JSON.stringify(require.resolve('..'));
     for (const finish of ['runner.unref();', 'runner = null; setImmediate(() => global.gc());']) {
-        await promisify(execFile)(process.execPath, ['--expose-gc', '-e', `
-            const { DhtRunner } = require(${modulePath});
+        await promisify(execFile)(process.execPath, ['--input-type=module', '--expose-gc', '-e', `
+            import { DhtRunner } from ${JSON.stringify(moduleURL)};
             let runner = new DhtRunner();
             runner.run({ port: 0, ipv4: '127.0.0.1', ipv6: '::1' });
             ${finish}
@@ -226,7 +228,6 @@ test('queue overflow reports an error and rejects close', { timeout: 15000 }, as
 });
 
 test('dhtnode example prints help and validates its port', async () => {
-    const example = require('node:path').resolve(__dirname, '../examples/dhtnode.js');
     const { stdout } = await promisify(execFile)(process.execPath, [example, '--help']);
     assert.match(stdout, /Usage:.*dhtnode/);
     assert.match(stdout, /bootstrap/);
@@ -239,7 +240,6 @@ test('dhtnode example prints help and validates its port', async () => {
 
 test('dhtnode example accepts piped commands and shuts down on EOF', { timeout: 20000 }, async () => {
     const peer = startNode();
-    const example = require('node:path').resolve(__dirname, '../examples/dhtnode.js');
     try {
         const execution = promisify(execFile)(process.execPath, [example,
             '--port', '0', '--ipv4', '127.0.0.1',
@@ -268,9 +268,8 @@ test('dhtnode example accepts piped commands and shuts down on EOF', { timeout: 
 });
 
 test('dhtnode example handles commands and quit while a get is pending', { timeout: 10000 }, async () => {
-    const example = require('node:path').resolve(__dirname, '../examples/dhtnode.js');
-    const execution = promisify(execFile)(process.execPath, ['-e', `
-        const { DhtRunner } = require(${JSON.stringify(require.resolve('..'))});
+    const execution = promisify(execFile)(process.execPath, ['--input-type=module', '-e', `
+        import { DhtRunner } from ${JSON.stringify(moduleURL)};
         const close = DhtRunner.prototype.close;
         let rejectGet;
         DhtRunner.prototype.get = function () {
@@ -281,7 +280,7 @@ test('dhtnode example handles commands and quit while a get is pending', { timeo
             rejectGet?.(new Error('DHT runner is closed'));
             return close.call(this);
         };
-        require(${JSON.stringify(example)});
+        await import(${JSON.stringify(exampleURL.href)});
     `, '--',
         '--port', '0', '--ipv4', '127.0.0.1', '--ipv6', '::1',
     ], { timeout: 8000 });
@@ -299,7 +298,6 @@ test('dhtnode example handles commands and quit while a get is pending', { timeo
 
 test('dhtnode example shuts down on SIGTERM', { timeout: 10000 }, async () => {
     if (process.platform === 'win32') return;
-    const example = require('node:path').resolve(__dirname, '../examples/dhtnode.js');
     const execution = promisify(execFile)(process.execPath, [example, '--port', '0', '--ipv4', '127.0.0.1'], { timeout: 8000 });
     let output = '';
     execution.child.stdout.on('data', data => {
