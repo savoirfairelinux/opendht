@@ -367,7 +367,6 @@ struct RunnerState
             state->closeError = error.what();
         }
         state->runner.join();
-        state->dispatcher.Release();
     }
 
     Napi::Error makeCloseError() const
@@ -386,6 +385,7 @@ struct RunnerState
         auto state = *owner;
         state->finished = true;
         if (!state->envClosing) {
+            state->dispatcher.Release();
             auto error = state->makeCloseError();
             for (auto& pending : state->operations)
                 pending.second.deferred.Reject(error.Value());
