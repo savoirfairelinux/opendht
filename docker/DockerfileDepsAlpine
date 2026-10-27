@@ -7,7 +7,7 @@ RUN apk add --no-cache \
         cython python3-dev py3-setuptools \
         ncurses-dev readline-dev nettle-dev \
         cppunit-dev gnutls-dev jsoncpp-dev \
-        argon2-dev openssl-dev fmt-dev \
+        argon2-dev openssl-dev fmt-dev simdutf-dev \
         llhttp-dev asio-dev msgpack-cxx-dev \
     && rm -rf /var/cache/apk/*
 

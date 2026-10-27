@@ -18,6 +18,19 @@ RUN apt-get update && apt-get install -y \
 
 RUN pip3 install meson Cython
 
+ARG SIMDUTF_VERSION=8.0.0
+RUN mkdir simdutf \
+    && wget -q "https://github.com/simdutf/simdutf/archive/refs/tags/v${SIMDUTF_VERSION}.tar.gz" -O simdutf.tar.gz \
+    && tar -xzf simdutf.tar.gz -C simdutf --strip-components=1 \
+    && cmake -S simdutf -B simdutf/build -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
+        -DBUILD_SHARED_LIBS=OFF -DSIMDUTF_TESTS=OFF -DSIMDUTF_TOOLS=OFF \
+    && cmake --build simdutf/build --parallel 2 \
+    && cmake --install simdutf/build \
+    && install -D simdutf/LICENSE-MIT /usr/share/doc/simdutf/LICENSE-MIT \
+    && install -D simdutf/LICENSE-APACHE /usr/share/doc/simdutf/LICENSE-APACHE \
+    && rm -rf simdutf simdutf.tar.gz
+
 RUN mkdir /usr/include/nonstd \
     && wget https://raw.githubusercontent.com/martinmoene/expected-lite/master/include/nonstd/expected.hpp \
     -O /usr/include/nonstd/expected.hpp
