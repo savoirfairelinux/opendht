@@ -13,7 +13,7 @@ add_subdirectory(.. native EXCLUDE_FROM_ALL)
 
 find_program(NODE_EXECUTABLE node REQUIRED)
 execute_process(
-    COMMAND "${NODE_EXECUTABLE}" -p "require('node-addon-api').include_dir"
+    COMMAND "${NODE_EXECUTABLE}" --input-type=module -e "import addon from 'node-addon-api'; process.stdout.write(addon.include_dir)"
     WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
     OUTPUT_VARIABLE NODE_ADDON_API_DIR
     OUTPUT_STRIP_TRAILING_WHITESPACE

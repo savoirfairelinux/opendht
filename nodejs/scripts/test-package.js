@@ -1,11 +1,9 @@
-'use strict';
+import { execFileSync } from 'node:child_process';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 
-const { execFileSync } = require('node:child_process');
-const fs = require('node:fs');
-const os = require('node:os');
-const path = require('node:path');
-
-const root = path.resolve(__dirname, '..');
+const root = path.resolve(import.meta.dirname, '..');
 const npm = process.env.npm_execpath;
 if (!npm) throw new Error('Run this check with npm run test:package');
 fs.mkdirSync(path.join(root, 'dist'), { recursive: true });
@@ -28,8 +26,9 @@ if (pathKey) env[pathKey] = env[pathKey].split(path.delimiter)
 try {
     execFileSync(process.execPath, [npm, 'install', '--prefix', consumer, '--ignore-scripts', '--omit=dev', '--no-audit', '--no-fund', archive],
         { cwd: consumer, env, stdio: 'inherit' });
-    const installed = path.join(consumer, 'node_modules', '@opendht', 'node');
-    execFileSync(process.execPath, ['-e', 'console.log(require("node-gyp-build").path(process.cwd()))'],
+    const { name } = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
+    const installed = path.join(consumer, 'node_modules', ...name.split('/'));
+    execFileSync(process.execPath, ['--input-type=module', '-e', 'import load from "node-gyp-build"; console.log(load.path(process.cwd()))'],
         { cwd: installed, env, stdio: 'inherit' });
     fs.cpSync(path.join(root, 'test'), path.join(installed, 'test'), { recursive: true });
     execFileSync(process.execPath, [npm, 'test'], { cwd: installed, env, stdio: 'inherit' });

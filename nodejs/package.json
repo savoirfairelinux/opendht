@@ -1,11 +1,19 @@
 {
-    "name": "@opendht/node",
+    "name": "opendht",
     "version": "0.1.0",
     "private": true,
-    "description": "Node-API bindings for OpenDHT",
+    "description": "Distributed hash table for Node.js",
     "license": "MIT",
+    "type": "module",
     "main": "index.js",
     "types": "index.d.ts",
+    "exports": {
+        ".": {
+            "types": "./index.d.ts",
+            "import": "./index.js"
+        },
+        "./package.json": "./package.json"
+    },
     "files": [
         "index.js",
         "index.d.ts",
@@ -21,22 +29,22 @@
     "scripts": {
         "build": "cmake-js compile",
         "postbuild": "npm run build:examples",
-        "build:examples": "tsc --strict --target ES2022 --module Node16 --moduleResolution Node16 --rootDir examples --outDir examples examples/dhtnode.ts",
+        "build:examples": "tsc --strict --types node --target es2024 --module Node16 --moduleResolution Node16 --rootDir examples --outDir examples examples/dhtnode.ts",
         "dhtnode": "node examples/dhtnode.js",
         "prepack": "npm run build:examples",
         "bundle": "node scripts/bundle.js",
         "package": "npm run bundle && npm pack --pack-destination dist",
         "test:package": "node scripts/test-package.js",
         "test": "node --test test/*.test.js",
-        "typecheck": "tsc --noEmit --strict --target ES2022 --module Node16 --moduleResolution Node16 test/types.ts examples/dhtnode.ts"
+        "typecheck": "tsc --noEmit --strict --types node --target es2024 --module Node16 --moduleResolution Node16 test/types.ts examples/dhtnode.ts"
     },
     "dependencies": {
         "node-gyp-build": "^4.8.4"
     },
     "devDependencies": {
-        "@types/node": "^22.0.0",
+        "@types/node": "^22.20.5",
         "cmake-js": "^8.0.0",
         "node-addon-api": "^8.5.0",
-        "typescript": "^5.9.3"
+        "typescript": "^7.0.2"
     }
 }

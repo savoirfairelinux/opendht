@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-'use strict';
 
 import { clearLine, createInterface, cursorTo, type Interface } from 'node:readline';
 import { parseArgs } from 'node:util';
@@ -51,7 +50,7 @@ Keys are text labels hashed with SHA-1. Values are UTF-8 text.`);
     }
     const port = portNumber(values.port, 'port');
     const bootstrapPort = portNumber(values['bootstrap-port'], 'bootstrap-port', 1);
-    const { DhtRunner, Identity, hash }: typeof import('../index.js') = require('..');
+    const { DhtRunner, Identity, hash } = await import('../index.js');
     const identity = await Identity.generate('dhtnode.ts');
     const runner = new DhtRunner();
     const listeners = new Map<string, Listener>();

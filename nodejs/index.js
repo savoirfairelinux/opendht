@@ -1,10 +1,12 @@
-'use strict';
+import { EventEmitter } from 'node:events';
+import { dlopen } from 'node:process';
+import load from 'node-gyp-build';
+import createCrypto from './crypto.js';
 
-const native = process.env.OPENDHT_NODE_BINDING
-    ? require(process.env.OPENDHT_NODE_BINDING)
-    : require('node-gyp-build')(__dirname);
-const { EventEmitter } = require('node:events');
-const { PublicKey, PrivateKey, Certificate, Identity, handle } = require('./crypto')(native);
+const binding = { exports: {} };
+dlopen(binding, process.env.OPENDHT_NODE_BINDING || load.path(import.meta.dirname));
+const native = binding.exports;
+const { PublicKey, PrivateKey, Certificate, Identity, handle } = createCrypto(native);
 
 function eventReporter(owner, event) {
     return value => { owner.deref()?.emit(event, value); };
@@ -81,4 +83,6 @@ class DhtRunner extends EventEmitter {
     [Symbol.asyncDispose]() { return this.close(); }
 }
 
-module.exports = { DhtRunner, PublicKey, PrivateKey, Certificate, Identity, hash: native.hash, version: native.version };
+export { DhtRunner, PublicKey, PrivateKey, Certificate, Identity };
+export const hash = native.hash;
+export const version = native.version;

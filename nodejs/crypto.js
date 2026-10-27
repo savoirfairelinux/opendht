@@ -1,6 +1,4 @@
-'use strict';
-
-module.exports = native => {
+export default function createCrypto(native) {
     const handles = new WeakMap();
 
     function handle(value, Type) {
@@ -55,4 +53,4 @@ module.exports = native => {
     }
 
     return { PublicKey, PrivateKey, Certificate, Identity, handle };
-};
+}

@@ -1,11 +1,9 @@
-'use strict';
+import { execFileSync } from 'node:child_process';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 
-const { execFileSync } = require('node:child_process');
-const fs = require('node:fs');
-const os = require('node:os');
-const path = require('node:path');
-
-const root = path.resolve(__dirname, '..');
+const root = path.resolve(import.meta.dirname, '..');
 const repository = path.dirname(root);
 const input = path.resolve(process.argv[2] || path.join(root, 'build/Release/opendht.node'));
 const target = `${process.platform}-${process.arch}`;
@@ -75,7 +73,7 @@ try {
     const directories = [path.dirname(input), ...(process.env.OPENDHT_LIBRARY_PATH || '').split(path.delimiter).filter(Boolean)];
     const dependencyList = path.join(temporary, 'dependencies.json');
     run('cmake', [`-DADDON=${input}`, `-DOUTPUT=${dependencyList}`, `-DSEARCH_DIRECTORIES=${directories.join(';')}`,
-        '-P', path.join(__dirname, 'dependencies.cmake')]);
+        '-P', path.join(import.meta.dirname, 'dependencies.cmake')]);
     const dependencies = JSON.parse(fs.readFileSync(dependencyList, 'utf8'));
     fs.rmSync(output, { recursive: true, force: true });
     fs.mkdirSync(output, { recursive: true });

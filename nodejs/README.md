@@ -66,7 +66,7 @@ TypeScript or development dependencies, including from inside `node_modules`.
 ## Usage
 
 ```js
-const { DhtRunner, hash } = require('./nodejs');
+import { DhtRunner, hash } from './nodejs/index.js';
 
 async function main() {
     const writer = new DhtRunner();
@@ -162,7 +162,7 @@ integer between 2048 and 8192; the default is 2048.
   transparently decrypted for the recipient by OpenDHT's get/listen layer.
 
 ```js
-const { Identity, DhtRunner } = require('./nodejs');
+import { Identity, DhtRunner } from './nodejs/index.js';
 
 async function createAuthenticatedNode() {
     const identity = await Identity.generate('example', { algorithm: 'rsa', bits: 2048 });
