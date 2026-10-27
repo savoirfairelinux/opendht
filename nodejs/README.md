@@ -208,7 +208,7 @@ The [Node.js package workflow](../.github/workflows/nodejs-package.yml) builds:
 
 | Target | Build Baseline |
 | --- | --- |
-| Linux x64 | Ubuntu 24.04 / glibc 2.39 |
+| Linux x64 | Ubuntu 26.04 |
 | macOS ARM64 and x64 | macOS 15 |
 | Windows x64 | Windows Server 2022 / MSVC |
 

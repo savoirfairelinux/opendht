@@ -42,7 +42,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-24.04
+          - os: ubuntu-26.04
             target: linux-x64
           - os: macos-15
             target: darwin-arm64
@@ -128,7 +128,7 @@ jobs:
   package:
     name: Assemble npm archive
     needs: build
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v6
@@ -159,7 +159,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-24.04, macos-15, macos-15-intel, windows-2022]
+        os: [ubuntu-26.04, macos-15, macos-15-intel, windows-2022]
         node: ['22', '24', '26']
     steps:
       - uses: actions/checkout@v7
@@ -178,7 +178,7 @@ jobs:
     name: Attach npm archive to release
     if: github.event_name == 'release'
     needs: smoke
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     permissions:
       contents: write
     steps:
