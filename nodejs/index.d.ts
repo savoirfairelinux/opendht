@@ -73,11 +73,24 @@ export interface Listener {
     cancel(): void;
 }
 
-export class DhtRunner extends EventEmitter implements AsyncDisposable {
+export type NodeStatus = 'disconnected' | 'connecting' | 'connected';
+
+export interface ConnectivityStatus {
+    ipv4: NodeStatus;
+    ipv6: NodeStatus;
+}
+
+export interface RunnerEvents {
+    statusChanged: [status: ConnectivityStatus];
+    error: [error: Error];
+}
+
+export class DhtRunner extends EventEmitter<RunnerEvents> implements AsyncDisposable {
     run(options?: RunOptions): void;
     isRunning(): boolean;
     getBoundPort(family?: 4 | 6): number;
     getNodeId(): string;
+    getStatus(): ConnectivityStatus;
     bootstrap(host: string, port: number): void;
     get(key: string): Promise<Value[]>;
     put(key: string, data: Uint8Array, options?: PutOptions): Promise<boolean>;

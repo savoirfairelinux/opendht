@@ -6,8 +6,8 @@ const native = process.env.OPENDHT_NODE_BINDING
 const { EventEmitter } = require('node:events');
 const { PublicKey, PrivateKey, Certificate, Identity, handle } = require('./crypto')(native);
 
-function errorReporter(owner) {
-	return error => { owner.deref()?.emit('error', error); };
+function eventReporter(owner, event) {
+    return value => { owner.deref()?.emit(event, value); };
 }
 
 class DhtRunner extends EventEmitter {
@@ -18,11 +18,13 @@ class DhtRunner extends EventEmitter {
 
 	constructor() {
 		super();
-		this.#native = new native.NativeRunner(errorReporter(new WeakRef(this)));
+        const owner = new WeakRef(this);
+        this.#native = new native.NativeRunner(eventReporter(owner, 'error'), eventReporter(owner, 'statusChanged'));
 	}
 
 	#updateOwner() {
-		this.#native.setOwner(this.#listeners || this.#pending || this.listenerCount('error') ? this : null);
+        this.#native.setOwner(this.#listeners || this.#pending || this.listenerCount('error')
+            || this.listenerCount('statusChanged') ? this : null);
 	}
 
 	#track(operation) {
@@ -48,6 +50,7 @@ class DhtRunner extends EventEmitter {
 	isRunning() { return this.#native.isRunning(); }
 	getBoundPort(family = 4) { return this.#native.getBoundPort(family); }
 	getNodeId() { return this.#native.getNodeId(); }
+    getStatus() { return this.#native.getStatus(); }
 	bootstrap(host, port) { this.#native.bootstrap(host, port); }
 	get(key) { return this.#track(this.#native.get(key)); }
 	put(key, data, options) { return this.#track(this.#native.put(key, data, options)); }

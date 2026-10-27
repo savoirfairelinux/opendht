@@ -111,11 +111,13 @@ struct ValueData
 
 struct Event
 {
-    enum class Kind { Value, Done, Overflow };
+    enum class Kind { Value, Done, Overflow, Status };
     Kind kind;
     uint64_t operation;
     bool flag;
     std::optional<ValueData> value;
+    dht::NodeStatus ipv4 = dht::NodeStatus::Disconnected;
+    dht::NodeStatus ipv6 = dht::NodeStatus::Disconnected;
 
     size_t size() const { return sizeof(Event) + (value ? value->size() : 0); }
 };
@@ -247,6 +249,13 @@ struct RunnerState
     {
         if (closing)
             return;
+        if (event.kind == Event::Kind::Status) {
+            status4 = event.ipv4;
+            status6 = event.ipv6;
+            if (!onStatus.IsEmpty())
+                onStatus.Call({status()});
+            return;
+        }
         if (event.kind == Event::Kind::Overflow) {
             overflowed = true;
             startClose();
@@ -289,6 +298,14 @@ struct RunnerState
                 values.Set(static_cast<uint32_t>(index), operation.values[index].toJS(env));
             operation.deferred.Resolve(values);
         }
+    }
+
+    Napi::Object status() const
+    {
+        auto result = Napi::Object::New(env);
+        result.Set("ipv4", Napi::String::New(env, std::string(dht::statusToStr(closing ? dht::NodeStatus::Disconnected : status4))));
+        result.Set("ipv6", Napi::String::New(env, std::string(dht::statusToStr(closing ? dht::NodeStatus::Disconnected : status6))));
+        return result;
     }
 
     static void dispatch(napi_env environment, napi_value, void* context, void* data)
@@ -380,6 +397,7 @@ struct RunnerState
         state->closeDeferred.reset();
         state->closePromise.Reset();
         state->onError.Reset();
+        state->onStatus.Reset();
         state->owner.Reset();
         napi_delete_async_work(environment, state->closeWork);
         napi_remove_async_cleanup_hook(state->cleanupHook);
@@ -407,7 +425,10 @@ struct RunnerState
     std::optional<Napi::Promise::Deferred> closeDeferred;
     Napi::Reference<Napi::Promise> closePromise;
     Napi::FunctionReference onError;
+    Napi::FunctionReference onStatus;
     Napi::ObjectReference owner;
+    dht::NodeStatus status4 = dht::NodeStatus::Disconnected;
+    dht::NodeStatus status6 = dht::NodeStatus::Disconnected;
 };
 
 class Runner : public Napi::ObjectWrap<Runner>
@@ -419,6 +440,8 @@ public:
     {
         if (info.Length() && info[0].IsFunction())
             state_->onError = Napi::Persistent(info[0].As<Napi::Function>());
+        if (info.Length() > 1 && info[1].IsFunction())
+            state_->onStatus = Napi::Persistent(info[1].As<Napi::Function>());
     }
 
     ~Runner() override { state_->startClose(); }
@@ -433,6 +456,7 @@ public:
                                InstanceMethod("isRunning", &Runner::isRunning),
                                InstanceMethod("getBoundPort", &Runner::getBoundPort),
                                InstanceMethod("getNodeId", &Runner::getNodeId),
+                               InstanceMethod("getStatus", &Runner::getStatus),
                                InstanceMethod("bootstrap", &Runner::bootstrap),
                                InstanceMethod("get", &Runner::get),
                                InstanceMethod("put", &Runner::put),
@@ -466,8 +490,14 @@ private:
                 config.dht_config.node_config.persist_path = text(options.Get("persistPath"), "persistPath");
             if (options.Has("identity"))
                 config.dht_config.id = opendht_node::readIdentity(options.Get("identity"));
+            dht::DhtRunner::Context context;
+            const std::weak_ptr<RunnerState> state = state_;
+            context.statusChangedCallback = [state](dht::NodeStatus ipv4, dht::NodeStatus ipv6) {
+                if (auto owner = state.lock())
+                    owner->send(std::make_unique<Event>(Event {Event::Kind::Status, 0, false, {}, ipv4, ipv6}));
+            };
             const auto service = std::to_string(port);
-            state_->runner.run(ipv4.c_str(), ipv6.c_str(), service.c_str(), config);
+            state_->runner.run(ipv4.c_str(), ipv6.c_str(), service.c_str(), config, std::move(context));
             state_->started = true;
             state_->hasIdentity = bool(config.dht_config.id.first);
             state_->dispatcher.Ref(info.Env());
@@ -498,6 +528,11 @@ private:
     Napi::Value isRunning(const Napi::CallbackInfo& info)
     {
         return Napi::Boolean::New(info.Env(), !state_->closing && !state_->overflowed && state_->runner.isRunning());
+    }
+
+    Napi::Value getStatus(const Napi::CallbackInfo& info)
+    {
+        return guarded(info, [&]() -> Napi::Value { return state_->status(); });
     }
 
     Napi::Value getBoundPort(const Napi::CallbackInfo& info)
