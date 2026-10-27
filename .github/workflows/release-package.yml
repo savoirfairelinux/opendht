@@ -10,6 +10,7 @@ env:
   IMAGE_NAME_DEPS: ${{ github.repository }}/opendht-deps
   IMAGE_NAME_DEPS_NOBLE: ${{ github.repository }}/opendht-deps-noble
   IMAGE_NAME: ${{ github.repository }}/opendht
+  IMAGE_NAME_NOBLE: ${{ github.repository }}/opendht-noble
   IMAGE_NAME_DEPS_LLVM: ${{ github.repository }}/opendht-deps-llvm
   IMAGE_NAME_LLVM: ${{ github.repository }}/opendht-llvm
   IMAGE_NAME_DHTNODE: ${{ github.repository }}/dhtnode
@@ -134,6 +135,47 @@ jobs:
         with:
           context: .
           file: docker/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+
+  build-and-push-image-noble:
+    name: OpenDHT Docker image (Ubuntu 24.04)
+    runs-on: ubuntu-latest
+    needs: build-and-push-deps-image-noble
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Log in to the Container registry
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata (tags, labels) for Docker
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_NOBLE }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: docker/DockerfileNoble
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
