@@ -5,15 +5,15 @@ LABEL org.opencontainers.image.source=https://github.com/savoirfairelinux/opendh
 COPY . opendht
 
 RUN cd opendht && mkdir build && cd build \
-	&& cmake .. -DCMAKE_INSTALL_PREFIX=/usr \
-				-DBUILD_TESTING=Off \
-				-DCMAKE_INTERPROCEDURAL_OPTIMIZATION=On \
-				-DOPENDHT_C=On \
-				-DOPENDHT_PEER_DISCOVERY=On \
-				-DOPENDHT_PYTHON=On \
-				-DOPENDHT_TOOLS=On \
-				-DOPENDHT_PROXY_SERVER=On \
-				-DOPENDHT_PROXY_CLIENT=On \
-				-DOPENDHT_SYSTEMD=On \
-	&& make -j8 && make install \
+	&& cmake -GNinja .. -DCMAKE_INSTALL_PREFIX=/usr \
+	-DBUILD_TESTING=Off \
+	-DCMAKE_INTERPROCEDURAL_OPTIMIZATION=On \
+	-DOPENDHT_C=On \
+	-DOPENDHT_PEER_DISCOVERY=On \
+	-DOPENDHT_PYTHON=On \
+	-DOPENDHT_TOOLS=On \
+	-DOPENDHT_PROXY_SERVER=On \
+	-DOPENDHT_PROXY_CLIENT=On \
+	-DOPENDHT_SYSTEMD=On \
+	&& ninja && ninja install \
 	&& cd ../.. && rm -rf opendht
