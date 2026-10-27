@@ -1,264 +1,2107 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>OpenDHT web node</title>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/5.3.3/css/bootstrap.min.css" />
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" crossorigin="anonymous"></script>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="light dark">
+    <meta name="theme-color" content="#f4f6f5">
+    <title>OpenDHT</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;450;500;550;600;650;700&family=IBM+Plex+Mono:wght@400;500&display=swap"
+        rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    <style>
+        :root {
+            color-scheme: light;
+            --page: #f6f7f9;
+            --surface: #fff;
+            --subtle: #f0f2f5;
+            --ink: #20252b;
+            --muted: #737b87;
+            --line: #e3e6eb;
+            --accent: #11765c;
+            --accent-bg: #e8f5ee;
+            --danger: #bb3d46;
+            --danger-bg: #fff0f0;
+            --amber: #a56b13;
+            --shadow: 0 8px 32px #20252b0b;
+            --mono: 'IBM Plex Mono', monospace;
+            --sans: 'DM Sans', sans-serif;
+        }
+
+        [data-theme="dark"] {
+            color-scheme: dark;
+            --page: #17191c;
+            --surface: #202327;
+            --subtle: #2a2e33;
+            --ink: #edf0f3;
+            --muted: #a0a8b2;
+            --line: #353a41;
+            --accent: #72d6ae;
+            --accent-bg: #243d33;
+            --danger: #ff9299;
+            --danger-bg: #40272c;
+            --amber: #e3bc71;
+            --shadow: 0 8px 32px #0002;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            background: var(--page);
+            color: var(--ink);
+            font: 14px/1.5 var(--sans);
+            letter-spacing: 0;
+        }
+
+        button,
+        input,
+        select,
+        textarea {
+            font: inherit;
+            color: inherit;
+        }
+
+        button,
+        a,
+        input,
+        select,
+        textarea {
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        button {
+            cursor: pointer;
+            border: 1px solid var(--line);
+            background: var(--surface);
+            border-radius: 6px;
+        }
+
+        button:disabled {
+            opacity: .5;
+            cursor: wait;
+        }
+
+        button,
+        input,
+        select,
+        textarea,
+        summary {
+            outline-offset: 3px;
+        }
+
+        :focus-visible {
+            outline: 2px solid var(--accent);
+        }
+
+        button:hover:not(:disabled) {
+            background: var(--subtle);
+        }
+
+        a {
+            color: inherit;
+            text-decoration: none;
+        }
+
+        input,
+        select,
+        textarea {
+            min-width: 0;
+            max-width: 100%;
+            border: 1px solid var(--line);
+            border-radius: 6px;
+            background: var(--surface);
+            padding: 10px 12px;
+        }
+
+        input::placeholder,
+        textarea::placeholder {
+            color: var(--muted);
+            opacity: .8;
+        }
+
+        input:focus,
+        textarea:focus {
+            border-color: var(--accent);
+        }
+
+        input[type="checkbox"],
+        input[type="radio"] {
+            accent-color: var(--accent);
+        }
+
+        textarea {
+            resize: vertical;
+            font: 13px/1.7 var(--mono);
+        }
+
+        h1,
+        h2,
+        h3,
+        p {
+            margin: 0;
+        }
+
+        h1 {
+            font-size: 30px;
+            font-weight: 650;
+            line-height: 1.25;
+        }
+
+        h2 {
+            font-size: 16px;
+            font-weight: 650;
+        }
+
+        .bi {
+            display: inline-block;
+            flex-shrink: 0;
+            font-size: 16px;
+            line-height: 1;
+        }
+
+        .mono {
+            font-family: var(--mono);
+        }
+
+        .muted {
+            color: var(--muted);
+        }
+
+        .sr-only {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            padding: 0;
+            overflow: hidden;
+            clip: rect(0, 0, 0, 0);
+            white-space: nowrap;
+        }
+
+        [hidden] {
+            display: none !important;
+        }
+
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            padding: 10px 15px;
+            min-height: 40px;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+
+        .btn.primary {
+            color: #fff;
+            background: #14785c;
+            border-color: #14785c;
+        }
+
+        .btn.primary:hover:not(:disabled) {
+            background: #0c6048;
+        }
+
+        .icon-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 34px;
+            height: 34px;
+            padding: 0;
+            flex: 0 0 34px;
+            background: transparent;
+            border-color: transparent;
+            color: var(--muted);
+        }
+
+        .icon-btn:hover:not(:disabled) {
+            color: var(--ink);
+            border-color: var(--line);
+        }
+
+        .icon-btn.danger:hover {
+            color: var(--danger);
+            background: var(--danger-bg);
+        }
+
+        .icon-btn[aria-pressed="true"] {
+            background: var(--accent-bg);
+            color: var(--accent);
+        }
+
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex-shrink: 0;
+        }
+
+        .brand-name {
+            font-size: 23px;
+            font-weight: 700;
+        }
+
+        .connection-pill,
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 11px;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+
+        .connection-pill {
+            font-size: 12px;
+            color: var(--muted);
+        }
+
+        .dot {
+            display: inline-block;
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: currentColor;
+            flex-shrink: 0;
+        }
+
+        .connected {
+            color: var(--accent);
+        }
+
+        .section-label {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 0;
+            text-transform: uppercase;
+            color: var(--muted);
+            margin-bottom: 15px;
+        }
+
+        .server-label {
+            display: block;
+            color: var(--muted);
+            font-size: 11px;
+            margin-bottom: 7px;
+        }
+
+        .server-control {
+            display: flex;
+            gap: 6px;
+        }
+
+        .server-control input {
+            width: 100%;
+            padding: 9px;
+            font: 11px var(--mono);
+        }
+
+        .server-control button {
+            border-color: var(--line);
+            height: 36px;
+        }
+
+        .node-line {
+            display: flex;
+            align-items: center;
+            gap: 7px;
+            margin-top: 16px;
+            font-size: 12px;
+        }
+
+        .node-line .bi {
+            color: var(--accent);
+        }
+
+        .node-id {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            flex: 1;
+            font-size: 10px;
+            color: var(--muted);
+        }
+
+        .node-line .icon-btn {
+            width: 26px;
+            height: 26px;
+            flex-basis: 26px;
+        }
+
+        .network-pair {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            margin-top: 17px;
+            font-size: 11px;
+        }
+
+        .network-pair span {
+            display: block;
+            color: var(--muted);
+            margin-bottom: 4px;
+        }
+
+        .network-pair strong {
+            font-weight: 500;
+        }
+
+        .connection-error {
+            color: var(--danger);
+            font-size: 11px;
+            margin-top: 12px;
+            overflow-wrap: anywhere;
+        }
+
+        .directory {
+            padding: 22px 12px;
+            flex: 1;
+        }
+
+        .directory .section-label {
+            padding: 0 8px;
+            margin-bottom: 8px;
+        }
+
+        .directory-empty {
+            padding: 10px 8px;
+            font-size: 12px;
+            color: var(--muted);
+        }
+
+        .directory-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            width: 100%;
+            padding: 11px 9px;
+            border: 0;
+            text-align: left;
+            margin: 3px 0;
+        }
+
+        .directory-key {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            flex: 1;
+            font: 11px var(--mono);
+        }
+
+        .directory-count {
+            color: var(--muted);
+            font: 10px var(--mono);
+        }
+
+        .session-form {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 22px;
+        }
+
+        .key-field {
+            position: relative;
+            flex: 1;
+            min-width: 0;
+        }
+
+        .key-field>.bi {
+            position: absolute;
+            top: 14px;
+            left: 13px;
+            color: var(--muted);
+        }
+
+        .key-field input {
+            width: 100%;
+            padding-left: 38px;
+            min-height: 44px;
+            font-size: 13px;
+        }
+
+        .segments {
+            display: inline-flex;
+            padding: 3px;
+            border: 1px solid var(--line);
+            border-radius: 6px;
+            background: var(--subtle);
+            flex-shrink: 0;
+        }
+
+        .segments label {
+            position: relative;
+            cursor: pointer;
+        }
+
+        .segments input {
+            position: absolute;
+            opacity: 0;
+            width: 1px;
+            height: 1px;
+        }
+
+        .segments label>span {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            padding: 7px 11px;
+            font-size: 12px;
+            border: 1px solid transparent;
+            border-radius: 4px;
+            white-space: nowrap;
+        }
+
+        .segments input:checked+span {
+            background: var(--surface);
+            border-color: var(--line);
+            box-shadow: 0 1px 3px #00000006;
+        }
+
+        .segments input:focus-visible+span {
+            outline: 2px solid var(--accent);
+        }
+
+        .segments .bi {
+            font-size: 13px;
+        }
+
+        .session-form>.btn {
+            min-height: 44px;
+        }
+
+        .workspace-toolbar {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            justify-content: space-between;
+            margin-bottom: 17px;
+            flex-wrap: wrap;
+        }
+
+        .tabs {
+            display: flex;
+            gap: 19px;
+            align-self: stretch;
+        }
+
+        .tab {
+            color: var(--muted);
+            background: none;
+            border: 0;
+            border-radius: 0;
+            padding: 9px 0;
+            border-bottom: 2px solid transparent;
+            font-size: 12px;
+        }
+
+        .tab[aria-pressed="true"] {
+            color: var(--ink);
+            border-bottom-color: var(--accent);
+            font-weight: 600;
+        }
+
+        .tab-count {
+            display: inline-block;
+            min-width: 19px;
+            padding: 1px 5px;
+            background: var(--subtle);
+            font: 10px var(--mono);
+            border-radius: 4px;
+            margin-left: 5px;
+        }
+
+        .toolbar-right {
+            display: flex;
+            gap: 7px;
+            align-items: center;
+        }
+
+        .search {
+            position: relative;
+        }
+
+        .search .bi {
+            position: absolute;
+            left: 10px;
+            top: 11px;
+            color: var(--muted);
+            font-size: 13px;
+        }
+
+        .search input {
+            width: 184px;
+            padding: 8px 10px 8px 31px;
+            font-size: 11px;
+            background: transparent;
+        }
+
+        .sessions {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 18px;
+            align-items: start;
+        }
+
+        .sessions.list {
+            grid-template-columns: minmax(0, 1fr);
+        }
+
+        .session {
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            background: var(--surface);
+            min-width: 0;
+            box-shadow: var(--shadow);
+            overflow: hidden;
+            animation: enter .25s ease-out;
+            scroll-margin-top: 20px;
+        }
+
+        .session:focus {
+            outline: 2px solid var(--accent);
+        }
+
+        .session-header {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            padding: 17px 18px 12px;
+        }
+
+        .session-symbol {
+            display: grid;
+            place-items: center;
+            width: 32px;
+            height: 32px;
+            flex: 0 0 32px;
+            border-radius: 6px;
+            background: var(--accent-bg);
+            color: var(--accent);
+        }
+
+        .session[data-color="1"] .session-symbol {
+            color: #a16a18;
+            background: #fcf1da;
+        }
+
+        .session[data-color="2"] .session-symbol {
+            color: #4368b1;
+            background: #edf1fc;
+        }
+
+        .session[data-color="3"] .session-symbol {
+            color: #b65b7d;
+            background: #fbeef3;
+        }
+
+        .session-heading {
+            min-width: 0;
+            flex: 1;
+        }
+
+        .session-key {
+            font: 500 12px/1.5 var(--mono);
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .session-source {
+            color: var(--muted);
+            font-size: 10px;
+            margin-top: 2px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .session-header .icon-btn {
+            width: 27px;
+            flex-basis: 27px;
+            height: 30px;
+        }
+
+        .session-status-row {
+            display: flex;
+            justify-content: space-between;
+            gap: 10px;
+            align-items: center;
+            padding: 0 18px 12px;
+            color: var(--muted);
+            font-size: 10px;
+        }
+
+        .badge {
+            color: var(--muted);
+            font-size: 10px;
+        }
+
+        .badge[data-state="live"],
+        .badge[data-state="complete"] {
+            color: var(--accent);
+        }
+
+        .badge[data-state="connecting"],
+        .badge[data-state="retrying"] {
+            color: var(--amber);
+        }
+
+        .badge[data-state="error"] {
+            color: var(--danger);
+        }
+
+        .badge[data-state="live"] .dot {
+            box-shadow: 0 0 0 3px var(--accent-bg);
+        }
+
+        .session-controls {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            padding: 8px 14px;
+            border-block: 1px solid var(--line);
+            background: var(--page);
+        }
+
+        .view-select {
+            border: 0;
+            background: transparent;
+            font-size: 10px;
+            padding: 4px 16px 4px 2px;
+        }
+
+        .session-actions {
+            display: flex;
+            align-items: center;
+            gap: 1px;
+        }
+
+        .session-actions .icon-btn {
+            width: 29px;
+            height: 28px;
+            flex-basis: 29px;
+        }
+
+        .session-actions .bi {
+            font-size: 14px;
+        }
+
+        .values {
+            max-height: 365px;
+            overflow: auto;
+            overscroll-behavior: contain;
+            scrollbar-width: thin;
+            overflow-anchor: none;
+        }
+
+        .value-slot {
+            overflow: hidden;
+        }
+
+        .value-row {
+            padding: 15px 18px;
+            border-bottom: 1px solid var(--line);
+            position: relative;
+        }
+
+        .value-slot:last-child .value-row {
+            border-bottom: 0;
+        }
+
+        .value-meta {
+            display: flex;
+            align-items: center;
+            gap: 7px;
+            font: 9px var(--mono);
+            color: var(--muted);
+            margin-bottom: 9px;
+            min-width: 0;
+        }
+
+        .value-id {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .value-type {
+            margin-left: auto;
+            font: 9px var(--sans);
+            white-space: nowrap;
+        }
+
+        .value-row pre {
+            margin: 0;
+            font: 12px/1.75 var(--mono);
+            white-space: pre-wrap;
+            overflow-wrap: anywhere;
+            color: var(--ink);
+            max-height: 230px;
+            overflow: auto;
+        }
+
+        .value-actions {
+            display: flex;
+            align-items: center;
+            gap: 3px;
+            margin-left: auto;
+        }
+
+        .value-actions .icon-btn {
+            width: 23px;
+            height: 23px;
+            flex-basis: 23px;
+        }
+
+        .value-actions .bi {
+            font-size: 12px;
+        }
+
+        .session-empty {
+            min-height: 150px;
+            padding: 30px 18px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+            gap: 10px;
+            color: var(--muted);
+            text-align: center;
+            font-size: 11px;
+        }
+
+        .session-empty .bi {
+            font-size: 22px;
+            opacity: .5;
+        }
+
+        .session-error {
+            margin: 12px 18px;
+            padding: 10px 12px;
+            border-radius: 4px;
+            background: var(--danger-bg);
+            color: var(--danger);
+            font-size: 11px;
+            overflow-wrap: anywhere;
+        }
+
+        .session-footer {
+            display: flex;
+            justify-content: space-between;
+            gap: 10px;
+            padding: 10px 18px;
+            font-size: 9px;
+            color: var(--muted);
+            border-top: 1px solid var(--line);
+        }
+
+        .event-row {
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+            padding: 10px 18px;
+            border-bottom: 1px solid var(--line);
+            font-size: 10px;
+            overflow-wrap: anywhere;
+        }
+
+        .event-row time {
+            color: var(--muted);
+            flex-shrink: 0;
+            font: 9px/1.7 var(--mono);
+        }
+
+        .event-row .event-label {
+            color: var(--accent);
+            min-width: 43px;
+        }
+
+        .event-row.open .event-label,
+        .event-row.added .event-label {
+            color: var(--signal);
+        }
+
+        .event-row.expired .event-label {
+            color: var(--amber);
+        }
+
+        .empty-workspace {
+            min-height: 330px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            gap: 14px;
+            border-block: 1px dashed var(--line);
+            background-image: radial-gradient(var(--line) .6px, transparent .6px);
+            background-size: 18px 18px;
+        }
+
+        .empty-symbol {
+            color: var(--accent);
+            width: 58px;
+            height: 58px;
+            display: grid;
+            place-items: center;
+            background: var(--accent-bg);
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            margin-bottom: 3px;
+        }
+
+        .empty-symbol .bi {
+            font-size: 28px;
+        }
+
+        .empty-workspace h2 {
+            font-size: 17px;
+        }
+
+        .empty-workspace .muted {
+            font-size: 12px;
+        }
+
+        dialog {
+            width: min(580px, calc(100% - 32px));
+            max-height: calc(100dvh - 32px);
+            padding: 0;
+            background: var(--surface);
+            color: var(--ink);
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            box-shadow: 0 24px 100px #0003;
+        }
+
+        dialog::backdrop {
+            background: #17212b65;
+            backdrop-filter: blur(3px);
+        }
+
+        .dialog-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 22px 24px 16px;
+        }
+
+        .dialog-header h2 {
+            font-size: 20px;
+        }
+
+        .dialog-body {
+            padding: 4px 24px 24px;
+        }
+
+        .field {
+            display: flex;
+            flex-direction: column;
+            gap: 7px;
+            margin: 16px 0;
+            min-width: 0;
+            font-size: 12px;
+        }
+
+        .field>span,
+        .field>label {
+            font-weight: 600;
+        }
+
+        .field-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 14px;
+        }
+
+        .field-row .field {
+            margin-top: 0;
+        }
+
+        .payload-label {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 8px;
+            font-size: 12px;
+        }
+
+        .payload-label .segments span {
+            font-size: 10px;
+            padding: 4px 9px;
+        }
+
+        #putValue {
+            width: 100%;
+            min-height: 165px;
+        }
+
+        .payload-footer {
+            display: flex;
+            justify-content: space-between;
+            font: 10px var(--mono);
+            color: var(--muted);
+            margin-top: 7px;
+        }
+
+        details {
+            border-top: 1px solid var(--line);
+            margin-top: 20px;
+            padding-top: 15px;
+        }
+
+        summary {
+            cursor: pointer;
+            font-size: 12px;
+            color: var(--muted);
+        }
+
+        details .field-row {
+            margin-top: 15px;
+        }
+
+        .dialog-footer {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            padding-top: 22px;
+        }
+
+        .check-label {
+            display: inline-flex;
+            align-items: center;
+            gap: 7px;
+            font-size: 12px;
+            color: var(--muted);
+        }
+
+        .form-message {
+            font-size: 12px;
+            padding: 10px 12px;
+            margin-top: 15px;
+            background: var(--accent-bg);
+            color: var(--accent);
+            border-radius: 4px;
+            overflow-wrap: anywhere;
+        }
+
+        .form-message.error {
+            background: var(--danger-bg);
+            color: var(--danger);
+        }
+
+        .inspect-meta {
+            display: grid;
+            grid-template-columns: 80px minmax(0, 1fr);
+            gap: 9px 14px;
+            font-size: 11px;
+            margin: 14px 0 20px;
+        }
+
+        .inspect-meta dt {
+            color: var(--muted);
+        }
+
+        .inspect-meta dd {
+            margin: 0;
+            font-family: var(--mono);
+            overflow-wrap: anywhere;
+        }
+
+        #inspectPayload {
+            white-space: pre-wrap;
+            overflow-wrap: anywhere;
+            font: 12px/1.7 var(--mono);
+            max-height: 360px;
+            overflow: auto;
+            background: var(--page);
+            padding: 14px;
+            border: 1px solid var(--line);
+            border-radius: 4px;
+        }
+
+        .toast-stack {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            z-index: 20;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            max-width: min(360px, calc(100% - 32px));
+            pointer-events: none;
+        }
+
+        .toast {
+            background: var(--ink);
+            color: var(--surface);
+            border-radius: 6px;
+            padding: 12px 17px;
+            box-shadow: var(--shadow);
+            font-size: 12px;
+            animation: enter .2s ease-out;
+            overflow-wrap: anywhere;
+        }
+
+        .spin {
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        @keyframes enter {
+            from {
+                opacity: 0;
+                transform: translateY(6px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @media (max-width: 760px) {
+            .server-control input {
+                font-size: 12px;
+            }
+
+            .dialog-header {
+                padding: 18px 18px 12px;
+            }
+
+            .dialog-body {
+                padding: 4px 18px 18px;
+            }
+
+            .toast-stack {
+                right: 16px;
+                bottom: 16px;
+            }
+
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+
+            *,
+            *::before,
+            *::after {
+                animation: none !important;
+                transition: none !important;
+                scroll-behavior: auto !important;
+            }
+        }
+        :root {
+            --page: #f4f6f5;
+            --surface: #fff;
+            --subtle: #e9eeeb;
+            --ink: #242b29;
+            --muted: #65756e;
+            --line: #d7dfda;
+            --accent: #c7402b;
+            --accent-bg: #fce8e2;
+            --signal: #177d63;
+            --dock: #242b29;
+            --dock-ink: #f4f6f5;
+        }
+
+        [data-theme="dark"] {
+            --page: #181d1b;
+            --surface: #202723;
+            --subtle: #2c3530;
+            --ink: #e4ede7;
+            --muted: #9eafa5;
+            --line: #36443b;
+            --accent: #ff8e72;
+            --accent-bg: #4a2d24;
+            --signal: #79d8ad;
+            --dock: #e4ede7;
+            --dock-ink: #242b29;
+        }
+
+        body {
+            height: 100dvh;
+            overflow: hidden;
+            background-image: radial-gradient(var(--line) .65px, transparent .65px);
+            background-size: 20px 20px;
+        }
+
+        .identity {
+            position: fixed;
+            left: 28px;
+            bottom: 26px;
+            z-index: 3;
+            display: flex;
+            flex-direction: column;
+            gap: 7px;
+        }
+
+        .brand { gap: 8px; }
+        .brand img { width: 25px; height: 25px; }
+        .brand-name { font-size: 19px; font-weight: 650; }
+        .connection-trigger {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 7px;
+            border: 0;
+            min-height: 28px;
+            padding: 4px 8px;
+            background: transparent;
+            font: 10px/1 var(--mono);
+            color: var(--muted);
+        }
+        .connection-trigger .bi { font-size: 10px; }
+        .connected { color: var(--signal); }
+        .connection-pill { font: inherit; }
+
+        .instrument {
+            width: 100%;
+            height: 100%;
+            max-width: none;
+            padding: 0 0 136px;
+            margin: 0;
+        }
+
+        .sessions,
+        .sessions:not(.list) {
+            display: grid;
+            grid-auto-flow: column;
+            grid-auto-columns: minmax(min(360px, calc(100vw - 32px)), 1fr);
+            grid-template-columns: none;
+            align-items: stretch;
+            gap: 0;
+            height: 100%;
+            padding: 28px 16px 12px;
+            overflow: auto;
+            overscroll-behavior-x: contain;
+            scroll-snap-type: x proximity;
+            scrollbar-width: thin;
+            scrollbar-color: var(--line) transparent;
+        }
+
+        .session {
+            --channel: #177d63;
+            display: flex;
+            flex-direction: column;
+            min-height: 0;
+            background: transparent;
+            border: 0;
+            border-right: 1px solid var(--line);
+            border-radius: 0;
+            box-shadow: none;
+            overflow: hidden;
+            scroll-snap-align: start;
+            scroll-margin: 16px;
+            animation: channel-enter .45s cubic-bezier(.16, 1, .3, 1) both;
+        }
+        .session:last-child { border-right: 0; }
+        .session[data-color="1"] { --channel: #bd493b; }
+        .session[data-color="2"] { --channel: #3879b7; }
+        .session[data-color="3"] { --channel: #a56d24; }
+        [data-theme="dark"] .session { --channel: #79d8ad; }
+        [data-theme="dark"] .session[data-color="1"] { --channel: #ff9584; }
+        [data-theme="dark"] .session[data-color="2"] { --channel: #7ab8f0; }
+        [data-theme="dark"] .session[data-color="3"] { --channel: #eac57b; }
+        .session-header { padding: 12px 22px 10px; gap: 10px; align-items: flex-start; }
+        .session-symbol,
+        .session[data-color] .session-symbol {
+            width: 26px;
+            flex-basis: 26px;
+            height: 28px;
+            border-radius: 0;
+            background: transparent;
+            color: var(--channel);
+            border-top: 2px solid currentColor;
+            padding-top: 6px;
+            font: 11px var(--mono);
+        }
+        .session-key { font: 500 17px/1.5 var(--mono); }
+        .session-source { font: 10px/1.6 var(--mono); margin-top: 6px; }
+        .session-header .icon-btn { width: 26px; flex-basis: 26px; height: 28px; }
+        .session-status-row { padding: 5px 22px 18px 58px; font-size: 10px; }
+        .badge[data-state="live"], .badge[data-state="complete"] { color: var(--signal); }
+        .badge[data-state="live"] .dot { box-shadow: none; }
+        .session-controls {
+            margin: 0 22px;
+            padding: 7px 0;
+            background: transparent;
+        }
+        .view-select { font-family: var(--mono); }
+        .values { flex: 1; min-height: 0; max-height: none; padding: 8px 0 24px; }
+        .value-row { padding: 20px 22px 24px; border-bottom-style: dashed; }
+        .value-row pre { font-size: 14px; line-height: 1.85; max-height: 360px; }
+        .value-meta { margin-bottom: 12px; font-size: 10px; }
+        .value-type { font: 9px var(--mono); min-width: 0; max-width: 55%; overflow: hidden; text-overflow: ellipsis; }
+        .value-actions { gap: 6px; }
+        .session-footer { margin: 0 22px; padding: 12px 0; font: 9px var(--mono); flex-wrap: wrap; }
+        .session-empty { min-height: 180px; height: 100%; font: 11px var(--mono); }
+        .session-empty .bi { color: var(--channel); }
+        .session-error { margin: 12px 22px; }
+        .event-row { padding: 12px 22px; }
+
+        .sessions.list { grid-auto-flow: row; grid-auto-columns: auto; grid-template-columns: minmax(0, 1fr); align-content: start; }
+        .sessions.list .session { min-height: 320px; border-right: 0; border-bottom: 1px solid var(--line); }
+        .sessions.list .values { max-height: 480px; flex: auto; }
+
+        .empty-workspace {
+            position: absolute;
+            inset: 0 0 136px;
+            min-height: 0;
+            border: 0;
+            background: none;
+            gap: 12px;
+            padding-bottom: 110px;
+            pointer-events: none;
+        }
+        .empty-symbol { display: none; }
+        .empty-workspace h1 { font-size: 44px; font-weight: 500; }
+        .empty-workspace .muted { font: 11px var(--mono); }
+        .empty-workspace .icon-btn { display: none; }
+
+        .command-dock {
+            position: fixed;
+            bottom: 24px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: min(660px, calc(100% - 400px));
+            min-width: 400px;
+            padding: 8px;
+            border: 1px solid color-mix(in srgb, var(--dock-ink) 18%, transparent);
+            border-radius: 8px;
+            background: var(--dock);
+            color: var(--dock-ink);
+            box-shadow: 0 12px 36px #15251b20;
+            z-index: 4;
+            transition: bottom .5s cubic-bezier(.16, 1, .3, 1);
+        }
+        body:has(.empty-workspace:not([hidden])) .command-dock { bottom: calc(50% - 24px); }
+        .session-form { gap: 6px; margin: 0; }
+        .key-field input {
+            height: 46px;
+            min-height: 46px;
+            padding: 10px 8px 10px 32px;
+            background: transparent;
+            color: var(--dock-ink);
+            border-color: transparent;
+            border-radius: 3px;
+            font: 12px var(--mono);
+        }
+        .key-field input::placeholder { color: inherit; opacity: .6; }
+        .key-field > .bi { left: 10px; top: 16px; color: var(--dock-ink); opacity: .55; }
+        .command-dock .segments { background: transparent; border: 0; padding: 0; }
+        .command-dock .segments label>span { color: var(--dock-ink); opacity: .55; padding: 9px; font-size: 10px; }
+        .command-dock .segments input:checked + span { background: color-mix(in srgb, var(--dock-ink) 12%, transparent); border-color: transparent; color: var(--dock-ink); opacity: 1; box-shadow: none; }
+        .command-dock .icon-btn { width: 42px; height: 44px; flex-basis: 42px; color: var(--dock-ink); border-radius: 4px; }
+        .command-dock .icon-btn:hover { background: color-mix(in srgb, var(--dock-ink) 12%, transparent); border-color: transparent; }
+        .command-dock .launch { background: #d34830; color: #fff; }
+        .command-dock .launch:hover { background: #b73621; }
+        .dock-divider { width: 1px; align-self: stretch; margin: 9px 2px; background: color-mix(in srgb, var(--dock-ink) 20%, transparent); }
+
+        .workspace-edge {
+            position: fixed;
+            right: 28px;
+            bottom: 30px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            z-index: 3;
+        }
+        .workspace-tally { color: var(--muted); font: 10px/1.8 var(--mono); text-align: right; }
+        .workspace-tally span { color: var(--ink); }
+        .workspace-edge > .icon-btn { border: 1px solid var(--line); background: var(--page); width: 40px; height: 40px; }
+        .workspace-toolbar { margin: 0; padding-bottom: 14px; border-bottom: 1px solid var(--line); gap: 14px; }
+        .tabs { gap: 14px; flex-wrap: wrap; }
+        .tab { font-size: 11px; }
+        .tab-count { min-width: 16px; padding-inline: 3px; }
+        .toolbar-right { width: 100%; }
+        .search { flex: 1; }
+        .search input { width: 100%; }
+        .directory { padding: 14px 0 0; max-height: 40dvh; overflow-y: auto; }
+        .directory-item { background: transparent; }
+        .directory .section-label { padding-inline: 0; }
+        .directory-key { font-size: 12px; }
+        .dialog-tools { display: flex; align-items: center; gap: 8px; padding-top: 16px; }
+        .dialog-tools a { margin-left: auto; color: var(--muted); }
+        .network-pair { padding-block: 16px; border-block: 1px solid var(--line); }
+        .network-pair strong { font: 12px var(--mono); }
+        .node-line { margin-bottom: 20px; }
+        .connection-detail { display: flex; justify-content: space-between; gap: 12px; margin-top: 16px; color: var(--muted); font: 11px var(--mono); }
+        .btn.primary { background: #c7402b; border-color: #c7402b; }
+        .btn.primary:hover:not(:disabled) { background: #aa3220; }
+        .toast-stack { bottom: 108px; }
+        @keyframes channel-enter { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: translateY(0); } }
+
+        @media (max-width: 1100px) {
+            .identity { left: 20px; bottom: 27px; }
+            .brand-name { font-size: 16px; }
+            .command-dock { width: calc(100% - 320px); min-width: 380px; }
+            .workspace-edge { right: 20px; }
+            .workspace-tally { display: none; }
+        }
+        @media (max-width: 760px) {
+            .instrument { padding-bottom: 176px; }
+            .sessions, .sessions:not(.list) { padding: 16px 8px 0; grid-auto-columns: calc(100vw - 32px); scroll-padding-left: 8px; }
+            .session { scroll-margin: 8px; }
+            .session-header { padding: 10px 16px; }
+            .session-key { font-size: 15px; }
+            .session-status-row { padding: 4px 16px 14px 52px; }
+            .session-controls, .session-footer { margin-inline: 16px; }
+            .value-row { padding: 18px 16px 22px; }
+            .value-row pre { font-size: 13px; }
+            .identity { bottom: 92px; left: 18px; flex-direction: row; align-items: center; gap: 14px; }
+            .brand { gap: 6px; }
+            .brand img { width: 21px; height: 21px; }
+            .brand-name { font-size: 15px; }
+            .connection-trigger { font-size: 9px; }
+            .command-dock { bottom: max(14px, env(safe-area-inset-bottom)); width: calc(100% - 24px); min-width: 0; padding: 6px; }
+            .session-form { flex-wrap: nowrap; gap: 3px; }
+            .key-field { flex-basis: auto; }
+            .key-field input { font-size: 11px; padding-left: 27px; }
+            .session-form .segments, .session-form .segments label { flex: 0 0 auto; }
+            .command-dock .segments label>span { padding: 10px 7px; }
+            .command-dock .mode-label { display: none; }
+            .command-dock .icon-btn { width: 36px; flex-basis: 36px; }
+            .workspace-edge { bottom: 87px; right: 16px; }
+            .workspace-edge > .icon-btn { width: 32px; height: 32px; }
+            .empty-workspace { bottom: 176px; }
+            .empty-workspace h1 { font-size: 36px; }
+            .toolbar-right { gap: 4px; }
+            .tabs { justify-content: flex-start; gap: 16px; }
+            .toast-stack { bottom: 144px; }
+        }
+        @media (max-height: 540px) and (min-width: 761px) {
+            .instrument { padding-bottom: 104px; }
+            .empty-workspace { bottom: 104px; gap: 8px; }
+            .empty-symbol { display: none; }
+        }
+    </style>
 </head>
 
 <body>
-    <div class="container" style="max-width: 880px;">
-        <header class="m-3 p-3">
-            <div class="row">
-                <div class="col-sm-5 d-flex align-items-center">
-                    <h2>OpenDHT web node</h2>
-                </div>
-                <div class="col-sm-7">
-                    <div class="card card-body bg-light" style="margin-top:10px; margin-bottom:0px;">
-                        <form id="serverForm" class="form-inline" onsubmit="return setServer();"
-                            style="margin-bottom:4px;">
-                            <div class="input-group">
-                                <input type="text" class="form-control" id="serverValue" placeholder="Proxy server" value="http://127.0.0.1:8080" />
-                                <button id="serverBtn" type="submit" class="btn btn-outline-secondary">
-                                    <div class='spinner-border spinner-border-sm' role='status'
-                                        style="display: none;">
-                                        <span class='visually-hidden'>Loading...</span>
-                                    </div>
-                                    <span class="btn-icon"><i class="bi bi-arrow-clockwise"></i></span>
-                                </button>
-                            </div>
-                        </form>
-                        <div id="serverStatus">
-                            <div class='spinner-border spinner-border-sm' role='status'><span
-                                    class='visually-hidden'>Loading...</span></div>
-                        </div>
+    <div class="identity">
+        <a class="brand" href="#" aria-label="OpenDHT Web client"><img width="36" height="36"
+                src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAgAAAAIACAYAAAD0eNT6AAAABHNCSVQICAgIfAhkiAAAAAlwSFlzAAAbrwAAG68BXhqRHAAAABl0RVh0U29mdHdhcmUAd3d3Lmlua3NjYXBlLm9yZ5vuPBoAAAANdEVYdFRpdGxlAE9wZW5ESFTHxCi8AAAAHnRFWHRBdXRob3IAU2F2b2lyLWZhaXJlIExpbnV4IEluYy5H+atxAAAgAElEQVR4nOzdebydVX0v/s/a4zknc8IUFcWZqgwC0qvSa6iYhCGoQFKxSq0X52pr61AR8VRbK7ZXarWDtv21vR0NVYSEsVhsb0WuBpKcEAhj5pxxT8/e+5mftX5/POeQEHPO2fvsYT3D591XXkkhnv0l2Wev7/Nd3/VdABERERERERERERERERERERERERERERERERERERERERERERERERERERERERERERERERERERERERERERERERERERERERERERERERERERERERERERERERERERERERERERERERERERERERERERERERERERERERERERERERERUduE7gCIqDVr7925SLq5VXnprfIzODmrxColxCoFtSqjxCol1CoAqwBkARQBDE3/T5cIIKcEMlBYNv3Pjv33dQA+ACWAKgAowAFghv9a1AHlK8AVQAkKJSFESQpVgsKkEKokgmwplwlKjcXLSj+6+KV2X/5AiKgjTACIImDj5gcHG4WBl6ps7gwodYYUOCMDvBQKZ0iB1SJc2Ad0x9miJoCSEDgIpfYpIfZBYR+E2JfJiL2LG5mDt256ras7SKK0YwJA1Cdr7925CD5eJ6Q4WwAvk1BnADhDAC8FcKrm8PpJAjgMYB+AvQLYKyGeEsg8utQSjzM5IOoPJgBEPfC22x95gchkzxdCvAZKvRZCnA+lzgSQ0R1bxPkCOKCAxwTwMITYraR87N4N5zwGIZTu4IiShAkAUQfWPPBArthYeTYg3gSocwBxDqBeA2CR7tgSpqKAEQG1C8AjCpmf3Lfh7D26gyKKMyYARG1Ys3n34oFB71wlMm+GUhcBuAjAct1xpZMwAPVTAfxYCfHfS83Gj2/d9CZLd1REccEEgGgOb7v9kRdks7k3S6UuEsCbAbweLONHlQ9gpwJ+LICHA+R+dP+G1x7QHRRRVDEBIDrGJf++bVnWyl8CgfUA1gE4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3/zRt/wuSaRWKQCIXIq7n4oQTW0lm7+dfG4d+UwzxbzfVV2+kAuFOr2K3jTBdoo44TPY1nMUrM9zePtP/C5LpF4oAIhcqc889hEy+c2UCjdSyC+jkA/XTTMi26EuAoxpQihcIOSMEAqdwA49RXjNI/T/dp38Q4vUHgUAkcWw50vrKBS3UCh+iFKhh0I+RjFv1tzygW1DscbGUMvxcEJZLOcMIet7GMY/0PT2v9Dfr0YOIgtIAUBkqfQ/b5M5cQtF4zZKhfWUCispFeMUSw6lvD/PRcvCl26JpgV2qIjtTGDZg9ih18D8D4r2Ezy0aXTpCxIJHgUAkVqw7dEQce/DYH6EUmE9ntdDqdhGqRilVLIpFc1FOZ64GAHAMMAMeVhWEdvOYppjWNZbmPYrWOUXGLGe5mjf2ML+pSJyqRQAROrFnx12sY1fxbbfS9lYi+GtpuR1Q7mTUimG57l4ZZeyZ2GUTcrnfnnnnufl0oXnuwGUy5V34l6ZSS8FhulhGGDgVT42S2B4WGYRjAKmmcMwU1jGMJhnMK3/xfNeo5z/ASOll3nibr2DFxEREREREREREREREREREREREREREREREREREREREREREREREREREREREREREREREREREREREREREREREREREREREREREREREREREREREREREREREREREREREREREREREREREREREREREREREREREREREREREREREREREWlM/wcN9jwM3NZliAAAAABJRU5ErkJggg==" alt=""><span class="brand-name">OpenDHT</span><span
+                class="sr-only"></span></a>
+        <button class="connection-trigger" id="connectionBtn" title="Proxy connection" aria-haspopup="dialog">
+            <span class="connection-pill" id="topStatus"><span class="dot"></span>Offline</span>
+            <i class="bi bi-chevron-expand" aria-hidden="true"></i>
+        </button>
+    </div>
+    <dialog id="connectionDialog" aria-labelledby="connectionTitle">
+        <div class="dialog-header"><h2 id="connectionTitle">Proxy connection</h2><button class="icon-btn" data-close="connectionDialog" title="Close" aria-label="Close connection"><i class="bi bi-x-lg" aria-hidden="true"></i></button></div>
+        <div class="dialog-body">
+                <div class="section-label"><span class="badge" id="connectionBadge"><span
+                            class="dot"></span>Offline</span></div>
+                <form id="serverForm"><label class="server-label" for="serverValue">Endpoint</label>
+                    <div class="server-control">
+                        <input id="serverValue" type="url" value="http://127.0.0.1:8080" required spellcheck="false"
+                            aria-label="Proxy server URL">
+                        <button class="icon-btn" id="serverBtn" type="submit" title="Connect to proxy"
+                            aria-label="Connect to proxy"><i class="bi bi-arrow-clockwise"
+                                aria-hidden="true"></i></button>
                     </div>
+                </form>
+                <div class="connection-error" id="connectionError" role="status" hidden></div>
+                <div class="node-line"><i class="bi bi-hdd-network" aria-hidden="true"></i><span class="node-id mono"
+                        id="nodeId">No node connected</span><button class="icon-btn" id="copyNodeBtn"
+                        title="Copy node ID" aria-label="Copy node ID" disabled><i class="bi bi-copy"
+                            aria-hidden="true"></i></button></div>
+                <div class="network-pair">
+                    <div><span>IPv4</span><strong id="ipv4Status">Unavailable</strong></div>
+                    <div><span>IPv6</span><strong id="ipv6Status">Unavailable</strong></div>
+                </div>
+                <div class="connection-detail"><span><span id="latency">--</span> ms</span><span><span id="eventCount">0</span> events received</span></div>
+        </div>
+    </dialog>
+    <main class="instrument" aria-label="Live DHT channels">
+        <div class="sessions" id="sessions"></div>
+        <div class="empty-workspace" id="emptyWorkspace">
+            <h1 id="emptyTitle">OpenDHT</h1>
+            <span class="muted" id="emptyDescription">No open channels</span>
+        </div>
+    </main>
+    <div class="command-dock">
+            <form class="session-form" id="sessionForm">
+                <div class="key-field"><i class="bi bi-key" aria-hidden="true"></i><input id="getKey"
+                        placeholder="Key or hash" aria-label="Session key" required spellcheck="false"
+                        autocomplete="off" list="knownKeys"></div>
+                <div class="segments" aria-label="Session mode"><label><input type="radio" name="sessionMode"
+                            value="listen" aria-label="Listen" checked><span><i class="bi bi-broadcast"
+                                aria-hidden="true"></i><span class="mode-label">Listen</span></span></label><label><input type="radio"
+                            name="sessionMode" value="get" aria-label="Get"><span><i class="bi bi-arrow-down"
+                                aria-hidden="true"></i><span class="mode-label">Get</span></span></label></div>
+                <button class="icon-btn launch" type="submit" title="Open channel" aria-label="Open channel"><i class="bi bi-arrow-right" aria-hidden="true"></i></button>
+                <span class="dock-divider" aria-hidden="true"></span>
+                <button class="icon-btn" id="openPublishBtn" type="button" title="Publish value" aria-label="Publish value"><i class="bi bi-arrow-up-right" aria-hidden="true"></i></button>
+            </form>
+    </div>
+    <div class="workspace-edge">
+        <div class="workspace-tally"><div><span id="activeCount">0</span> live</div><div><span id="valueCount">0</span> values</div></div>
+        <button class="icon-btn" id="workspaceBtn" title="Channels and controls" aria-label="Channels and controls" aria-haspopup="dialog"><i class="bi bi-grid" aria-hidden="true"></i></button>
+    </div>
+    <dialog id="workspaceDialog" aria-labelledby="workspaceTitle">
+        <div class="dialog-header"><h2 id="workspaceTitle">Channels</h2><button class="icon-btn" data-close="workspaceDialog" title="Close" aria-label="Close channels"><i class="bi bi-x-lg" aria-hidden="true"></i></button></div>
+        <div class="dialog-body">
+            <div class="workspace-toolbar">
+                <div class="tabs" aria-label="Session filter"><button class="tab" data-filter="all"
+                        aria-pressed="true">All<span class="tab-count" id="allCount">0</span></button><button
+                        class="tab" data-filter="active" aria-pressed="false">Active<span class="tab-count"
+                            id="runningCount">0</span></button><button class="tab" data-filter="stopped"
+                        aria-pressed="false">Inactive<span class="tab-count" id="stoppedCount">0</span></button></div>
+                <div class="toolbar-right">
+                    <div class="search"><i class="bi bi-search" aria-hidden="true"></i><input id="searchInput"
+                            type="search" placeholder="Filter keys or values" aria-label="Filter keys or values"></div>
+                    <button class="icon-btn" id="layoutBtn" title="Stack channels"
+                        aria-label="Stack channels" aria-pressed="false"><i class="bi bi-view-list"
+                            aria-hidden="true"></i></button><button class="icon-btn" id="stopAllBtn"
+                        title="Stop all sessions" aria-label="Stop all sessions" disabled><i class="bi bi-stop-circle"
+                            aria-hidden="true"></i></button><button class="icon-btn" id="settingsBtn"
+                        title="Workspace settings" aria-label="Workspace settings"><i class="bi bi-sliders2"
+                            aria-hidden="true"></i></button>
                 </div>
             </div>
-        </header>
-        <div class="list-group" id="dhtResult">
-            <div class="list-group-item list-group-item-light">
-                <div class="row">
-                    <div class="col-sm-6">
-                        <form class="form-inline" onsubmit="return onGet('');">
-                            <div class="input-group" id="getTools">
-                                <input type="text" class="form-control" id="getKey" placeholder="Key" aria-label="Key" />
-                                <button id="getBtn" class="btn btn-outline-secondary" type="submit">
-                                    <div class='spinner-border spinner-border-sm' role='status' style="display: none;">
-                                        <span class='visually-hidden'>Loading...</span>
-                                    </div>
-                                    <span class="btn-text">Get</span>
-                                </button>
-                                <button id="menuBtn" type="button" class="btn btn-outline-secondary dropdown-toggle dropdown-toggle-split" data-bs-toggle="dropdown" aria-expanded="false">
-                                    <span class="visually-hidden">Toggle Dropdown</span>
-                                </button>
-                                <ul class="dropdown-menu dropdown-menu-end">
-                                    <li><a class="dropdown-item" id="listenBtn" href="#">Listen</a></li>
-                                </ul>
-                                <button id="getStopBtn" class="btn btn-outline-secondary">Stop</button>
-                            </div>
-                        </form>
-                    </div>
-                    <div class="col-sm-6">
-                        <form class="form-inline" onsubmit="return onPut();">
-                            <div class="input-group">
-                                <input type="text" class="form-control input-group-input" id="putValue"
-                                    placeholder="Value" />
-                                <button id="putBtn" type="submit" class="btn btn-outline-secondary">
-                                    <div class='spinner-border spinner-border-sm' role='status' style="display: none;">
-                                        <span class='visually-hidden'>Loading...</span>
-                                    </div>
-                                    <span class="btn-text">Put</span>
-                                </button>
-                            </div>
-                        </form>
-                    </div>
-                </div>
+            <nav class="directory" aria-label="Sessions">
+                <div class="section-label">Keys <button class="icon-btn" id="newSessionBtn" title="Open a channel" aria-label="Open a channel"><i class="bi bi-plus-lg" aria-hidden="true"></i></button></div>
+                <div id="sessionDirectory"></div>
+            </nav>
+            <div class="dialog-tools">
+                <button class="icon-btn" id="exportAllBtn" title="Export workspace values" aria-label="Export workspace values"><i class="bi bi-download" aria-hidden="true"></i></button>
+                <button class="icon-btn" id="themeBtn" title="Switch color theme" aria-label="Switch color theme"><i class="bi bi-moon" aria-hidden="true"></i></button>
+                <a href="https://github.com/savoirfairelinux/opendht" target="_blank" rel="noopener noreferrer" title="OpenDHT on GitHub" aria-label="OpenDHT on GitHub"><i class="bi bi-github" aria-hidden="true"></i></a>
             </div>
         </div>
-    </div>
+    </dialog>
+    <datalist id="knownKeys"></datalist>
+    <dialog id="publishDialog" aria-labelledby="publishTitle">
+        <div class="dialog-header">
+            <h2 id="publishTitle">Publish value</h2><button class="icon-btn" data-close="publishDialog" title="Close"
+                aria-label="Close publish dialog"><i class="bi bi-x-lg" aria-hidden="true"></i></button>
+        </div>
+        <form class="dialog-body" id="publishForm">
+            <label class="field"><span>Key</span><input id="putKey" required placeholder="Key or hash" list="knownKeys"
+                    spellcheck="false"></label>
+            <label class="field"><span>Proxy endpoint</span><input id="putServer" type="url" required
+                    spellcheck="false"></label>
+            <div class="payload-label"><label for="putValue">Payload</label>
+                <div class="segments" aria-label="Payload encoding"><label><input type="radio" name="putEncoding"
+                            value="text" checked><span>Text</span></label><label><input type="radio" name="putEncoding"
+                            value="json"><span>JSON</span></label><label><input type="radio" name="putEncoding"
+                            value="base64"><span>Base64</span></label></div>
+            </div>
+            <textarea id="putValue" placeholder="Value" aria-label="Value payload" spellcheck="false"></textarea>
+            <div class="payload-footer"><span id="payloadBytes">0 bytes</span><span id="payloadEncoding">UTF-8</span>
+            </div>
+            <details>
+                <summary>Value metadata</summary>
+                <div class="field-row"><label class="field"><span>Type</span><input id="putType" type="number" min="0"
+                            max="65535" step="1" placeholder="Default"></label><label class="field"><span>User
+                            type</span><input id="putUserType" placeholder="Optional"></label></div>
+            </details>
+            <div class="form-message" id="publishMessage" role="status" hidden></div>
+            <div class="dialog-footer"><label class="check-label"><input id="listenAfterPut" type="checkbox"
+                        checked>Listen to this key</label><button class="btn primary" type="submit" id="putBtn"><i
+                        class="bi bi-arrow-up-right" aria-hidden="true"></i><span>Publish</span></button></div>
+        </form>
+    </dialog>
+    <dialog id="settingsDialog" aria-labelledby="settingsTitle">
+        <div class="dialog-header">
+            <h2 id="settingsTitle">Workspace settings</h2><button class="icon-btn" data-close="settingsDialog"
+                title="Close" aria-label="Close settings"><i class="bi bi-x-lg" aria-hidden="true"></i></button>
+        </div>
+        <div class="dialog-body">
+            <label class="field check-label"><span><input id="autoRetry" type="checkbox" checked> Automatically
+                    reconnect listeners</span></label>
+            <label class="field check-label"><span><input id="rememberSessions" type="checkbox" checked> Remember
+                    session keys (restore stopped)</span></label>
+            <label class="field"><span>Default value format</span><select id="defaultView">
+                    <option value="text">Text</option>
+                    <option value="json">JSON</option>
+                    <option value="base64">Base64</option>
+                    <option value="hex">Hex</option>
+                </select></label>
+            <div class="dialog-footer"><button class="btn" id="resumeAllBtn"><i class="bi bi-play"
+                        aria-hidden="true"></i>Resume listeners</button><button class="btn" id="removeStoppedBtn"><i
+                        class="bi bi-trash3" aria-hidden="true"></i>Remove inactive</button></div>
+        </div>
+    </dialog>
+    <dialog id="inspectDialog" aria-labelledby="inspectTitle">
+        <div class="dialog-header">
+            <h2 id="inspectTitle">Value details</h2><button class="icon-btn" data-close="inspectDialog" title="Close"
+                aria-label="Close value details"><i class="bi bi-x-lg" aria-hidden="true"></i></button>
+        </div>
+        <div class="dialog-body">
+            <dl class="inspect-meta" id="inspectMeta"></dl>
+            <pre id="inspectPayload"></pre>
+            <div class="dialog-footer"><button class="btn" id="inspectCopyBtn"><i class="bi bi-copy"
+                        aria-hidden="true"></i>Copy JSON</button><button class="btn" id="inspectDownloadBtn"><i
+                        class="bi bi-download" aria-hidden="true"></i>Download payload</button></div>
+        </div>
+    </dialog>
+    <div class="toast-stack" id="toasts" role="status" aria-live="polite"></div>
+    <script>
+        "use strict";
+        const $ = (id) => document.getElementById(id);
+        const storageKey = 'opendht.workspace.v1';
+        const sessions = new Map();
+        const dirtySessions = new Set();
+        const stateLabels = { connecting: 'Connecting', live: 'Listening', reading: 'Fetching', retrying: 'Reconnecting', stopped: 'Stopped', complete: 'Complete', error: 'Error' };
+        const valueTypeNames = new Map([
+            [0, 'User Data'], [1, 'DHT message'], [2, 'Internet Service Announcement'],
+            [3, 'IM message'], [4, 'Certificate trust request'], [5, 'ICE candidates'], [8, 'Certificate']
+        ]);
+        let nextSessionId = 0;
+        let framePending = false;
+        let filter = 'all';
+        let search = '';
+        let nodeInfo = null;
+        let connectionRequest = null;
+        let inspectedValue = null;
+        let saved = {};
+        try { saved = JSON.parse(localStorage.getItem(storageKey)) || {}; } catch { }
+        const settings = { autoRetry: saved.autoRetry !== false, remember: saved.remember !== false, view: ['text', 'json', 'base64', 'hex'].includes(saved.view) ? saved.view : 'text' };
+        let server = 'http://127.0.0.1:8080';
 
-    <script type="text/javascript">"use strict";
-        const valueGetElement = (o) => window.atob(o.data);
-        const getTools = document.getElementById("getTools");
-        const getBtn = document.getElementById("getBtn");
-        const menuBtn = document.getElementById("menuBtn");
-        const getStopBtn = document.getElementById("getStopBtn");
-        const listenBtn = document.getElementById("listenBtn");
-        const putBtn = document.getElementById("putBtn");
-        const group = document.getElementById("dhtResult");
-        const serverValue = document.getElementById("serverValue");
-        const serverStatus = document.getElementById("serverStatus");
-        const serverBtn = document.getElementById("serverBtn");
-
-        var request = undefined;
-        const setGetRequest = () => {
-            getBtn.disabled = true;
-            getBtn.querySelector('.spinner-border').style.display = 'inline-block';
-            getBtn.querySelector('.btn-text').style.display = 'none';
-            menuBtn.style.display = 'none';
-            getTools.appendChild(getStopBtn);
-        };
-        const clearGetRequest = () => {
-            if (request === undefined)
-                return;
-            request.abort();
-            request = undefined;
-            if (getStopBtn.parentNode) {
-                getStopBtn.parentNode.removeChild(getStopBtn);
-            }
-            menuBtn.style.display = '';
-            getBtn.disabled = false;
-            getBtn.querySelector('.spinner-border').style.display = 'none';
-            getBtn.querySelector('.btn-text').style.display = 'inline';
-        };
-
-        const clearResults = () => {
-            while (group.children.length > 1) {
-                group.removeChild(group.lastChild);
-            }
-        };
-
-        var server;
-        const setServer = (event) => {
-            server = serverValue.value + '/';
-            serverStatus.innerHTML = '';
-            serverBtn.disabled = true;
-            serverBtn.querySelector('.spinner-border').style.display = 'inline-block';
-            serverBtn.querySelector('.btn-icon').style.display = 'none';
-            var xhr = new XMLHttpRequest();
-            xhr.open('GET', server, true);
-            xhr.onreadystatechange = () => {
-                if (xhr.readyState === XMLHttpRequest.DONE) {
-                    serverBtn.disabled = false;
-                    serverBtn.querySelector('.spinner-border').style.display = 'none';
-                    serverBtn.querySelector('.btn-icon').style.display = 'inline';
-                    if (xhr.status === 200) {
-                        const data = JSON.parse(xhr.responseText);
-                        const span = document.createElement('span');
-                        span.innerHTML = '<b>Node</b> ' + data.node_id;
-                        serverStatus.appendChild(span);
-                    } else {
-                        const message = " Can't access node.";
-                        if (serverValue.value.indexOf("https") != -1) {
-                            message += "</br></br>Self-signed certificate must be allowed in browser.";
-                        }
-                        serverStatus.innerHTML = "<div class='alert alert-danger' style='margin-bottom: 0px;'>" +
-                            "<span class='glyphicon glyphicon-remove' aria-hidden='true'></span>" +
-                            message + "</div>";
-                    }
+        function icon(name) {
+            const node = document.createElement('i');
+            node.className = 'bi bi-' + name;
+            node.setAttribute('aria-hidden', 'true');
+            return node;
+        }
+        function element(tag, className, text) {
+            const node = document.createElement(tag);
+            if (className) node.className = className;
+            if (text !== undefined) node.textContent = text;
+            return node;
+        }
+        function actionButton(name, label, action) {
+            const button = element('button', 'icon-btn');
+            button.type = 'button';
+            button.title = label;
+            button.setAttribute('aria-label', label);
+            button.append(icon(name));
+            button.addEventListener('click', action);
+            return button;
+        }
+        function normalizeServer(value) {
+            const url = new URL(value.trim());
+            if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) throw new Error('Use an HTTP(S) proxy URL without credentials.');
+            url.search = ''; url.hash = '';
+            return url.href.replace(/\/+$/, '');
+        }
+        function persist() {
+            try {
+                localStorage.setItem(storageKey, JSON.stringify({
+                    server, ...settings, theme: document.documentElement.dataset.theme, list: $('sessions').classList.contains('list'),
+                    sessions: settings.remember ? [...sessions.values()].map(({ key, endpoint, mode, view }) => ({ key, endpoint, mode, view })) : []
+                }));
+            } catch { }
+        }
+        function toast(message) {
+            const node = element('div', 'toast', message);
+            $('toasts').append(node);
+            setTimeout(() => node.remove(), 4500);
+        }
+        async function copy(text) {
+            try {
+                if (navigator.clipboard && window.isSecureContext) await navigator.clipboard.writeText(text);
+                else {
+                    const input = element('textarea', 'sr-only');
+                    input.value = text;
+                    (document.querySelector('dialog[open]') || document.body).append(input);
+                    input.select();
+                    const success = document.execCommand('copy');
+                    input.remove();
+                    if (!success) throw new Error();
                 }
-            };
-            xhr.send();
-            return false;
-        };
-        setServer();
-
-        const onGet = (path) => {
-            if (request !== undefined)
-                return false;
-            const input = document.getElementById("getKey").value;
-            clearResults()
-            let lastAppended = 0;
-            let start = new Date().getTime();
-            request = new XMLHttpRequest();
-            request.onreadystatechange = (event) => {
-                if (request.readyState >= 2) { // LOADING
-                    if (request.status === 200) {
-                        const elements = request.responseText.split("\n");
-                        const elementsLength = elements.length;
-                        const now = new Date().getTime();
-                        for (let i = lastAppended; i < elementsLength; i++) {
-                            const element = elements[i];
-                            if (!element || element.length == 0)
-                                break;
-                            const o = JSON.parse(element);
-                            if (o.expired) {
-                                const expiredElement = document.getElementById('value' + o.id);
-                                if (expiredElement) {
-                                    expiredElement.style.display = 'none';
-                                    if (expiredElement.parentNode) {
-                                        expiredElement.parentNode.removeChild(expiredElement);
-                                    }
-                                }
-                            } else {
-                                const d = window.atob(o.data);
-                                const delay = Math.max(0, start - now);
-                                const li = document.createElement('li');
-                                li.className = 'list-group-item';
-                                li.id = 'value' + o.id;
-                                li.innerHTML = valueGetElement(o);
-                                li.style.opacity = 0;
-                                li.style.transition = 'opacity 0.1s ease-in';
-                                group.appendChild(li);
-                                setTimeout(() => {
-                                    li.style.opacity = 1;
-                                }, delay);
-                                lastAppended = i + 1;
-                                start = Math.max(start, now) + 25;
-                            }
-                        }
-                    } else if (request.status !== 0) {
-                        clearResults()
-                        const li = document.createElement('li');
-                        li.className = 'list-group-item list-group-item-danger';
-                        li.textContent = "Error loading content: " + request.statusText;
-                        group.appendChild(li);
-                    }
+                toast('Copied to clipboard');
+            } catch { toast('Clipboard unavailable in this browser context'); }
+        }
+        function download(name, content, type = 'application/json') {
+            const url = URL.createObjectURL(new Blob([content], { type }));
+            const link = element('a');
+            link.href = url; link.download = name; link.click();
+            setTimeout(() => URL.revokeObjectURL(url), 1000);
+        }
+        function bytesFromBase64(data) { return Uint8Array.from(atob(data), (character) => character.charCodeAt(0)); }
+        function base64FromBytes(bytes) {
+            let binary = '';
+            for (let offset = 0; offset < bytes.length; offset += 8192) binary += String.fromCharCode(...bytes.subarray(offset, offset + 8192));
+            return btoa(binary);
+        }
+        function parseWire(text) {
+            return JSON.parse(text, (key, value, context) => {
+                if (key === 'id' && typeof value === 'number') {
+                    if (context && context.source) return context.source;
+                    if (!Number.isSafeInteger(value)) throw new Error('This browser cannot preserve 64-bit value IDs. Update your browser.');
+                    return String(value);
                 }
-                if (request.readyState == 4) { // DONE
-                    clearGetRequest();
-                }
-            };
-            request.onerror = (event) => {
-                clearGetRequest();
-                clearResults()
-                const li = document.createElement('li');
-                li.className = 'list-group-item list-group-item-danger';
-                li.textContent = "Error loading content.";
-                group.appendChild(li);
-            };
-            request.open('GET', server + 'key/' + input + path, true);
-            request.send(null);
-            setGetRequest();
-            return false;
-        };
-        const onPut = () => {
-            const key = document.getElementById("getKey").value;
-            const value = document.getElementById("putValue").value;
-            putBtn.disabled = true;
-            putBtn.querySelector('.spinner-border').style.display = 'inline-block';
-            putBtn.querySelector('.btn-text').style.display = 'none';
-            fetch(server + key, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json; charset=utf-8' },
-                body: JSON.stringify({ data: window.btoa(value) })
-            })
-            .then(response => {
-                if (!response.ok)
-                    throw new Error(response.statusText);
-            })
-            .catch(error => {
-                group.innerHTML = '';
-                const li = document.createElement('li');
-                li.className = 'list-group-item list-group-item-danger';
-                li.textContent = error.message;
-                group.appendChild(li);
-            })
-            .finally(() => {
-                putBtn.disabled = false;
-                putBtn.querySelector('.spinner-border').style.display = 'none';
-                putBtn.querySelector('.btn-text').style.display = 'inline';
+                return value;
             });
-            return false;
-        };
-
-        listenBtn.addEventListener('click', () => { onGet('/listen'); });
-        getStopBtn.parentNode.removeChild(getStopBtn);
-        getStopBtn.addEventListener('click', clearGetRequest);
+        }
+        function formatValue(value, view) {
+            const payload = value.cypher ?? value.data ?? '';
+            if (view === 'base64') return payload;
+            const bytes = bytesFromBase64(payload);
+            if (view === 'hex') return [...bytes].map((byte) => byte.toString(16).padStart(2, '0')).join(' ');
+            if (value.cypher !== undefined) return '[Encrypted payload: ' + bytes.length + ' bytes]';
+            let text;
+            try { text = new TextDecoder('utf-8', { fatal: true }).decode(bytes); }
+            catch { return '[Binary payload: ' + bytes.length + ' bytes. Select Hex or Base64.]'; }
+            if (view === 'json') { try { return JSON.stringify(JSON.parse(text), null, 2); } catch { return text; } }
+            return text;
+        }
+        function active(session) { return Boolean(session.controller || session.retryTimer); }
+        function schedule(session) {
+            if (session) dirtySessions.add(session.id);
+            if (framePending) return;
+            framePending = true;
+            requestAnimationFrame(() => {
+                framePending = false;
+                for (const id of dirtySessions) if (sessions.has(id)) renderSession(sessions.get(id));
+                dirtySessions.clear(); renderWorkspace();
+            });
+        }
+        function addEvent(session, kind, message) {
+            session.events.unshift({ kind, message, time: Date.now() });
+            if (session.events.length > 200) session.events.length = 200;
+        }
+        function receiveValue(session, value) {
+            if (!value || typeof value !== 'object' || value.id === undefined) throw new Error('Invalid value received from proxy.');
+            const id = String(value.id);
+            session.received++; session.updated = Date.now(); session.retries = 0;
+            if (value.expired) {
+                if (session.values.delete(id)) session.changes.set(id, 'expired');
+                addEvent(session, 'expired', id);
+            }
+            else {
+                const payload = value.cypher ?? value.data;
+                if (typeof payload !== 'string') throw new Error('Value has no Base64 payload.');
+                bytesFromBase64(payload);
+                const kind = session.values.has(id) ? 'updated' : 'added';
+                addEvent(session, kind, id); session.changes.set(id, kind);
+                session.values.delete(id);
+                session.values.set(id, value);
+            }
+            schedule(session);
+        }
+        async function consumeNDJSON(response, onValue) {
+            if (!response.body) throw new Error('Streaming responses are unavailable in this browser.');
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            let buffer = '';
+            try {
+                while (true) {
+                    const { value, done } = await reader.read();
+                    buffer += done ? decoder.decode() : decoder.decode(value, { stream: true });
+                    let boundary;
+                    while ((boundary = buffer.indexOf('\n')) !== -1) {
+                        const line = buffer.slice(0, boundary).trim(); buffer = buffer.slice(boundary + 1);
+                        if (line) onValue(parseWire(line));
+                    }
+                    if (buffer.length > 16 * 1024 * 1024) throw new Error('Proxy sent an oversized NDJSON record.');
+                    if (done) { if (buffer.trim()) onValue(parseWire(buffer)); break; }
+                }
+            } finally { try { await reader.cancel(); } catch { } reader.releaseLock(); }
+        }
+        async function startSession(session) {
+            stopSession(session, false);
+            const controller = new AbortController();
+            session.controller = controller; session.state = 'connecting'; session.error = '';
+            addEvent(session, 'open', session.mode === 'listen' ? 'Listener started' : 'Get started');
+            schedule(session);
+            const timeout = setTimeout(() => controller.abort('Connection timed out'), 30000);
+            let getDeadline;
+            try {
+                const url = session.endpoint + '/key/' + encodeURIComponent(session.key) + (session.mode === 'listen' ? '/listen' : '');
+                const response = await fetch(url, { signal: controller.signal, cache: 'no-store', headers: { Accept: 'application/json' } });
+                clearTimeout(timeout);
+                if (!response.ok) throw new Error('HTTP ' + response.status + (response.statusText ? ': ' + response.statusText : ''));
+                if (session.controller !== controller) return;
+                session.values.clear(); session.changes.clear();
+                session.state = session.mode === 'listen' ? 'live' : 'reading';
+                schedule(session);
+                if (session.mode === 'get') getDeadline = setTimeout(() => controller.abort('Get timed out'), 60000);
+                await consumeNDJSON(response, (value) => { if (session.controller === controller) receiveValue(session, value); });
+                if (session.controller !== controller) return;
+                if (session.mode === 'listen') throw new Error('Proxy closed the live stream.');
+                session.state = 'complete'; addEvent(session, 'done', 'Get complete');
+            } catch (error) {
+                if (session.controller !== controller) return;
+                session.error = typeof controller.signal.reason === 'string' ? controller.signal.reason : error.message;
+                if (error instanceof TypeError) session.error = 'Cannot reach proxy. Check the URL, CORS, TLS certificate, and mixed-content policy.';
+                addEvent(session, 'error', session.error);
+                if (session.mode === 'listen' && settings.autoRetry) {
+                    session.state = 'retrying';
+                    const delay = Math.min(30000, 1000 * 2 ** Math.min(session.retries++, 5));
+                    session.retryTimer = setTimeout(() => { session.retryTimer = null; startSession(session); }, delay);
+                } else session.state = 'error';
+            } finally {
+                clearTimeout(timeout); clearTimeout(getDeadline);
+                if (session.controller === controller) { session.controller = null; schedule(session); }
+            }
+        }
+        function stopSession(session, log = true) {
+            const controller = session.controller;
+            session.controller = null;
+            if (controller) controller.abort();
+            clearTimeout(session.retryTimer); session.retryTimer = null; session.state = 'stopped';
+            if (log) { session.error = ''; session.retries = 0; addEvent(session, 'stop', 'Session stopped'); }
+            schedule(session);
+        }
+        function removeSession(session) {
+            for (const id of session.rows.keys()) removeValueRow(session, id);
+            stopSession(session, false); sessions.delete(session.id); session.node.remove(); persist(); schedule();
+        }
+        function createSession(key, mode = 'listen', endpoint = server, restored = false, view = settings.view) {
+            key = key.trim();
+            if (!key) throw new Error('Enter a session key.');
+            endpoint = normalizeServer(endpoint);
+            const session = {
+                id: ++nextSessionId, key, mode, endpoint, view, state: 'stopped', values: new Map(),
+                rows: new Map(), changes: new Map(),
+                events: [], received: 0, updated: null, controller: null, retryTimer: null, retries: 0, error: '', showEvents: false
+            };
+            sessions.set(session.id, session); buildSession(session);
+            filter = 'all'; search = ''; $('searchInput').value = '';
+            for (const existing of sessions.values()) schedule(existing);
+            if (!restored) startSession(session);
+            schedule(session); persist();
+            return session;
+        }
+        function buildSession(session) {
+            const node = element('article', 'session');
+            node.id = 'session-' + session.id; node.dataset.color = String((session.id - 1) % 4); node.tabIndex = -1;
+            node.setAttribute('aria-label', session.key + ' ' + session.mode + ' session');
+            const header = element('div', 'session-header');
+            const symbol = element('span', 'session-symbol', String(session.id).padStart(2, '0'));
+            const heading = element('div', 'session-heading');
+            const title = element('h2', 'session-key', session.key); title.title = session.key;
+            const source = element('div', 'session-source', new URL(session.endpoint).host + ' / ' + session.mode); source.title = session.endpoint;
+            heading.append(title, source);
+            session.toggle = actionButton('stop', 'Stop session', () => active(session) ? stopSession(session) : startSession(session));
+            const remove = actionButton('x-lg', 'Remove session', () => removeSession(session)); remove.classList.add('danger');
+            header.append(symbol, heading, session.toggle, remove);
+            const statusRow = element('div', 'session-status-row');
+            session.badge = element('span', 'badge'); session.count = element('span', 'mono'); statusRow.append(session.badge, session.count);
+            const controls = element('div', 'session-controls');
+            const select = element('select', 'view-select'); select.setAttribute('aria-label', 'Value format for ' + session.key);
+            for (const [value, label] of [['text', 'TEXT'], ['json', 'JSON'], ['base64', 'BASE64'], ['hex', 'HEX']]) {
+                const option = element('option', '', label); option.value = value; select.append(option);
+            }
+            select.value = session.view;
+            select.addEventListener('change', () => { session.view = select.value; persist(); schedule(session); });
+            const actions = element('div', 'session-actions');
+            session.historyBtn = actionButton('clock-history', 'Show recent session events', () => { session.showEvents = !session.showEvents; schedule(session); });
+            actions.append(actionButton('copy', 'Copy key', () => copy(session.key)), actionButton('arrow-up-right', 'Publish to this key', () => openPublish(session)), actionButton('download', 'Export session values', () => exportSession(session)), session.historyBtn);
+            controls.append(select, actions);
+            session.errorNode = element('div', 'session-error'); session.errorNode.setAttribute('role', 'status');
+            session.body = element('div', 'values'); session.body.setAttribute('aria-label', 'Values for ' + session.key); session.body.tabIndex = 0;
+            const footer = element('div', 'session-footer'); session.eventCount = element('span'); session.updatedNode = element('span'); footer.append(session.eventCount, session.updatedNode);
+            node.append(header, statusRow, controls, session.errorNode, session.body, footer); session.node = node; $('sessions').append(node);
+        }
+        function removeValueRow(session, id) {
+            const entry = session.rows.get(id);
+            for (const animation of entry.animations) animation.cancel();
+            entry.slot.remove(); session.rows.delete(id);
+        }
+        function animateValue(entry, kind) {
+            const height = entry.slot.getBoundingClientRect().height;
+            for (const animation of entry.animations) animation.cancel();
+            entry.animations = []; entry.exiting = kind === 'expired';
+            if (matchMedia('(prefers-reduced-motion: reduce)').matches || !entry.node.animate) return;
+            const duration = entry.exiting ? 460 : 520;
+            const easing = entry.exiting ? 'cubic-bezier(.4,0,.2,1)' : 'cubic-bezier(.16,1,.3,1)';
+            let collapse;
+            if (kind !== 'updated') {
+                collapse = entry.slot.animate([
+                    { height: entry.exiting ? height + 'px' : '0px' },
+                    { height: entry.exiting ? '0px' : entry.node.getBoundingClientRect().height + 'px' }
+                ], { duration, easing });
+                entry.animations.push(collapse);
+            }
+            entry.animations.push(entry.node.animate(entry.exiting ? [
+                { opacity: 1, transform: 'none', filter: 'blur(0)' },
+                { opacity: 0, transform: 'translateX(14px) scale(.985)', filter: 'blur(2px)' }
+            ] : [
+                { opacity: 0, transform: 'translateY(-12px) scale(.985)' },
+                { opacity: 1, transform: 'none' }
+            ], { duration, easing }));
+            if (!entry.exiting) {
+                const colors = getComputedStyle(document.documentElement);
+                entry.animations.push(entry.node.animate([
+                    { backgroundColor: colors.getPropertyValue('--accent-bg'), boxShadow: 'inset 3px 0 ' + colors.getPropertyValue('--accent') },
+                    { backgroundColor: 'transparent', boxShadow: 'inset 0 0 transparent' }
+                ], { duration: 1100, easing: 'ease-out' }));
+            }
+            return collapse;
+        }
+        function renderSession(session) {
+            session.badge.dataset.state = session.state;
+            session.badge.replaceChildren(element('span', 'dot'), document.createTextNode(stateLabels[session.state]));
+            session.count.textContent = session.values.size + (session.values.size === 1 ? ' value' : ' values');
+            session.toggle.replaceChildren(icon(active(session) ? 'stop' : session.mode === 'listen' ? 'play' : 'arrow-clockwise'));
+            const toggleLabel = active(session) ? 'Stop session' : session.mode === 'listen' ? 'Resume listener' : 'Run get again';
+            session.toggle.title = toggleLabel; session.toggle.setAttribute('aria-label', toggleLabel);
+            session.errorNode.textContent = session.error; session.errorNode.hidden = !session.error;
+            session.historyBtn.setAttribute('aria-pressed', String(session.showEvents));
+            session.eventCount.textContent = session.received + ' events received';
+            session.updatedNode.textContent = session.updated ? 'Updated ' + new Date(session.updated).toLocaleTimeString() : 'No values received';
+            const scroll = session.body.scrollTop;
+            const fragment = document.createDocumentFragment();
+            if (session.showEvents) {
+                for (const id of session.rows.keys()) removeValueRow(session, id);
+                for (const event of session.events) {
+                    const row = element('div', 'event-row ' + event.kind);
+                    const time = element('time', '', new Date(event.time).toLocaleTimeString()); time.dateTime = new Date(event.time).toISOString();
+                    row.append(time, element('span', 'event-label', event.kind), element('span', 'mono', event.message)); fragment.append(row);
+                }
+                session.body.replaceChildren(fragment);
+            } else {
+                for (const child of [...session.body.children]) if (!child.classList.contains('value-slot')) child.remove();
+                const visible = new Set();
+                const arrivals = [];
+                let cursor = session.body.firstChild;
+                for (const [id, value] of [...session.values].reverse()) {
+                    const text = formatValue(value, session.view);
+                    if (search && !session.key.toLowerCase().includes(search) && !text.toLowerCase().includes(search) && !String(value.id).includes(search)) continue;
+                    let entry = session.rows.get(id);
+                    if (!entry) {
+                        entry = { slot: element('div', 'value-slot'), node: element('div', 'value-row'), animations: [], exiting: false };
+                        entry.slot.dataset.valueId = id; entry.slot.append(entry.node); session.rows.set(id, entry);
+                    }
+                    if (entry.value !== value || entry.view !== session.view) {
+                        const meta = element('div', 'value-meta');
+                        const label = element('span', 'value-id', '#' + value.id); label.title = id;
+                        const actions = element('span', 'value-actions');
+                        actions.append(actionButton('copy', 'Copy value', () => copy(text)), actionButton('arrows-angle-expand', 'Inspect value', () => inspect(value, session)));
+                        const typeLabel = element('span', 'value-type', value.cypher !== undefined ? 'ENCRYPTED' : value.type === undefined ? 'VALUE' : valueTypeNames.get(value.type) || 'TYPE ' + value.type);
+                        typeLabel.title = typeLabel.textContent;
+                        meta.append(label, typeLabel, actions);
+                        entry.node.replaceChildren(meta, element('pre', '', text || '(empty payload)'));
+                        entry.value = value; entry.view = session.view;
+                    }
+                    let nextValue = cursor;
+                    while (nextValue && !session.values.has(nextValue.dataset.valueId)) nextValue = nextValue.nextSibling;
+                    if (entry.slot === nextValue) cursor = nextValue;
+                    if (entry.slot !== cursor) session.body.insertBefore(entry.slot, cursor);
+                    cursor = entry.slot.nextSibling; visible.add(id);
+                    if (session.changes.has(id)) arrivals.push([entry, entry.exiting ? 'added' : session.changes.get(id)]);
+                }
+                for (const [id, entry] of session.rows) {
+                    if (visible.has(id) || (entry.exiting && !session.values.has(id))) continue;
+                    if (!session.values.has(id) && session.changes.get(id) === 'expired') {
+                        entry.slot.inert = true;
+                        const animation = animateValue(entry, 'expired');
+                        if (animation) {
+                            animation.onfinish = () => { removeValueRow(session, id); schedule(session); };
+                            continue;
+                        }
+                    }
+                    removeValueRow(session, id);
+                }
+                for (const [entry, kind] of arrivals) { entry.slot.inert = false; animateValue(entry, kind); }
+            }
+            session.changes.clear();
+            if (!session.body.childNodes.length) {
+                const empty = element('div', 'session-empty'); let message = 'Waiting for values';
+                if (session.showEvents) message = 'No recent events';
+                else if (search && session.values.size) message = 'No matching values';
+                else if (session.state === 'complete') message = 'No values found';
+                else if (!active(session)) message = 'No cached values';
+                empty.append(icon(session.showEvents ? 'clock-history' : 'inbox'), element('span', '', message)); session.body.append(empty);
+            }
+            session.body.scrollTop = scroll;
+        }
+        function matchesSession(session) {
+            if (filter === 'active' && !active(session)) return false;
+            if (filter === 'stopped' && active(session)) return false;
+            if (!search || session.key.toLowerCase().includes(search)) return true;
+            return [...session.values.values()].some((value) => String(value.id).includes(search) || formatValue(value, session.view).toLowerCase().includes(search));
+        }
+        function renderWorkspace() {
+            let running = 0, listeners = 0, values = 0, events = 0, visible = 0;
+            const directory = document.createDocumentFragment(); const keys = new Set();
+            for (const session of sessions.values()) {
+                if (active(session)) { running++; if (session.mode === 'listen') listeners++; }
+                values += session.values.size; events += session.received; session.node.hidden = !matchesSession(session);
+                if (!session.node.hidden) visible++;
+                keys.add(session.key);
+                const item = element('button', 'directory-item'); item.title = session.key;
+                const dot = element('span', 'dot'); dot.style.color = active(session) ? 'var(--accent)' : 'var(--muted)';
+                item.append(dot, element('span', 'directory-key', session.key), element('span', 'directory-count', session.values.size));
+                item.addEventListener('click', () => {
+                    $('workspaceDialog').close();
+                    filter = 'all'; search = ''; $('searchInput').value = ''; renderWorkspace();
+                    for (const existing of sessions.values()) schedule(existing);
+                    session.node.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth', block: 'center' }); session.node.focus({ preventScroll: true });
+                }); directory.append(item);
+            }
+            if (!sessions.size) directory.append(element('div', 'directory-empty', 'No sessions'));
+            $('sessionDirectory').replaceChildren(directory);
+            $('knownKeys').replaceChildren(...[...keys].map((key) => { const option = element('option'); option.value = key; return option; }));
+            $('activeCount').textContent = listeners; $('valueCount').textContent = values; $('eventCount').textContent = events;
+            $('allCount').textContent = sessions.size; $('runningCount').textContent = running; $('stoppedCount').textContent = sessions.size - running;
+            $('stopAllBtn').disabled = !running; $('emptyWorkspace').hidden = visible > 0;
+            $('emptyTitle').textContent = sessions.size ? 'No matches' : 'OpenDHT';
+            $('emptyDescription').textContent = sessions.size ? '0 matches / ' + sessions.size + ' channels' : 'No open channels';
+            for (const tab of document.querySelectorAll('[data-filter]')) tab.setAttribute('aria-pressed', String(tab.dataset.filter === filter));
+        }
+        async function connect() {
+            let endpoint;
+            try { endpoint = normalizeServer($('serverValue').value); } catch (error) { toast(error.message); return; }
+            server = endpoint; $('serverValue').value = server; persist();
+            if (connectionRequest) connectionRequest.abort();
+            const controller = new AbortController(); connectionRequest = controller; nodeInfo = null;
+            $('copyNodeBtn').disabled = true; $('nodeId').textContent = 'Connecting...';
+            $('ipv4Status').textContent = $('ipv6Status').textContent = 'Unavailable'; $('latency').textContent = '--'; $('connectionError').hidden = true;
+            $('serverBtn').querySelector('i').classList.add('spin'); setConnectionStatus('Connecting', false);
+            const start = performance.now(); const timeout = setTimeout(() => controller.abort(), 10000);
+            try {
+                const response = await fetch(server + '/', { signal: controller.signal, cache: 'no-store' });
+                if (!response.ok) throw new Error('Proxy returned HTTP ' + response.status);
+                const data = await response.json();
+                if (!data || typeof data.node_id !== 'string') throw new Error('Endpoint did not return an OpenDHT node.');
+                if (connectionRequest !== controller) return;
+                nodeInfo = data; $('nodeId').textContent = data.node_id; $('nodeId').title = data.node_id; $('copyNodeBtn').disabled = false;
+                $('latency').textContent = Math.round(performance.now() - start);
+                const peerText = (stats) => stats && Number.isFinite(stats.good) ? stats.good.toLocaleString() + ' good peers' : 'Unavailable';
+                $('ipv4Status').textContent = peerText(data.ipv4);
+                $('ipv6Status').textContent = peerText(data.ipv6);
+                setConnectionStatus('Connected', true);
+            } catch (error) {
+                if (connectionRequest !== controller) return;
+                $('nodeId').textContent = 'No node connected';
+                $('connectionError').textContent = error.name === 'AbortError' ? 'Connection timed out.' : error instanceof TypeError ? 'Proxy unreachable. Check CORS, TLS, and the URL.' : error.message;
+                $('connectionError').hidden = false; setConnectionStatus('Offline', false);
+            } finally {
+                clearTimeout(timeout);
+                if (connectionRequest === controller) { connectionRequest = null; $('serverBtn').querySelector('i').classList.remove('spin'); }
+            }
+        }
+        function setConnectionStatus(label, connected) {
+            for (const node of [$('topStatus'), $('connectionBadge')]) { node.replaceChildren(element('span', 'dot'), document.createTextNode(label)); node.classList.toggle('connected', connected); }
+        }
+        function exportSession(session) { download('opendht-session-' + session.id + '.json', JSON.stringify({ key: session.key, proxy: session.endpoint, exported: new Date().toISOString(), values: [...session.values.values()] }, null, 2)); }
+        function inspect(value, session) {
+            inspectedValue = value; const meta = $('inspectMeta'); meta.replaceChildren();
+            for (const [key, content] of Object.entries({ key: session.key, proxy: session.endpoint, ...value })) {
+                if (key !== 'data' && key !== 'cypher') meta.append(element('dt', '', key), element('dd', '', typeof content === 'object' ? JSON.stringify(content) : String(content)));
+            }
+            $('inspectPayload').textContent = formatValue(value, 'json'); $('inspectDialog').showModal();
+        }
+        function openPublish(session) {
+            $('putKey').value = session ? session.key : $('getKey').value; $('putServer').value = session ? session.endpoint : server;
+            $('publishMessage').hidden = true; $('publishDialog').showModal(); $('putValue').focus();
+        }
+        function payloadBytes() {
+            const encoding = document.querySelector('input[name="putEncoding"]:checked').value; const text = $('putValue').value;
+            if (encoding === 'base64') return bytesFromBase64(text.replace(/\s/g, ''));
+            if (encoding === 'json') JSON.parse(text);
+            return new TextEncoder().encode(text);
+        }
+        function updatePayloadSize() {
+            try { $('payloadBytes').textContent = payloadBytes().length.toLocaleString() + ' bytes'; }
+            catch { $('payloadBytes').textContent = 'Invalid ' + document.querySelector('input[name="putEncoding"]:checked').value; }
+            $('payloadEncoding').textContent = document.querySelector('input[name="putEncoding"]:checked').value === 'base64' ? 'BINARY' : 'UTF-8';
+        }
+        async function publish(event) {
+            event.preventDefault(); const message = $('publishMessage'); message.hidden = true;
+            let endpoint, payload; const key = $('putKey').value.trim(); const listenAfter = $('listenAfterPut').checked;
+            try {
+                if (!key) throw new Error('Enter a key.');
+                endpoint = normalizeServer($('putServer').value); payload = { data: base64FromBytes(payloadBytes()) };
+                if ($('putType').value !== '') payload.type = Number($('putType').value);
+                if ($('putUserType').value) payload.utype = $('putUserType').value;
+            } catch (error) { message.textContent = error.message; message.classList.add('error'); message.hidden = false; return; }
+            $('putBtn').disabled = true; $('putBtn').querySelector('i').className = 'bi bi-arrow-repeat spin';
+            const controller = new AbortController(); const timeout = setTimeout(() => controller.abort(), 30000);
+            try {
+                const response = await fetch(endpoint + '/' + encodeURIComponent(key), { method: 'POST', signal: controller.signal, headers: { 'Content-Type': 'application/json; charset=utf-8' }, body: JSON.stringify(payload) });
+                if (!response.ok) throw new Error('Publish failed: HTTP ' + response.status);
+                const text = await response.text(); const value = text.trim() ? parseWire(text) : null;
+                message.classList.remove('error'); message.textContent = 'Published successfully' + (value && value.id !== undefined ? ' / ID ' + value.id : ''); message.hidden = false;
+                toast('Value published to ' + key);
+                if (listenAfter && ![...sessions.values()].some((session) => session.key === key && session.endpoint === endpoint && session.mode === 'listen' && active(session))) createSession(key, 'listen', endpoint);
+            } catch (error) {
+                message.classList.add('error'); message.textContent = error.name === 'AbortError' ? 'Publish timed out. The value may still have reached the DHT.' : error.message; message.hidden = false;
+            } finally { clearTimeout(timeout); $('putBtn').disabled = false; $('putBtn').querySelector('i').className = 'bi bi-arrow-up-right'; }
+        }
+        function focusKey() {
+            $('workspaceDialog').close(); document.querySelector('input[name="sessionMode"][value="listen"]').checked = true; $('getKey').focus();
+        }
+        function applyTheme(theme) {
+            document.documentElement.dataset.theme = theme; $('themeBtn').replaceChildren(icon(theme === 'dark' ? 'sun' : 'moon'));
+            document.querySelector('meta[name="theme-color"]').content = theme === 'dark' ? '#181d1b' : '#f4f6f5';
+        }
+        $('serverForm').addEventListener('submit', (event) => { event.preventDefault(); connect(); });
+        $('copyNodeBtn').addEventListener('click', () => { if (nodeInfo) copy(nodeInfo.node_id); });
+        $('sessionForm').addEventListener('submit', (event) => {
+            event.preventDefault();
+            try { const session = createSession($('getKey').value, document.querySelector('input[name="sessionMode"]:checked').value); $('getKey').value = ''; session.node.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth' }); }
+            catch (error) { toast(error.message); }
+        });
+        $('newSessionBtn').addEventListener('click', focusKey);
+        $('stopAllBtn').addEventListener('click', () => { for (const session of sessions.values()) if (active(session)) stopSession(session); });
+        $('searchInput').addEventListener('input', () => { search = $('searchInput').value.trim().toLowerCase(); for (const session of sessions.values()) schedule(session); schedule(); });
+        for (const tab of document.querySelectorAll('[data-filter]')) tab.addEventListener('click', () => { filter = tab.dataset.filter; schedule(); });
+        $('layoutBtn').addEventListener('click', () => {
+            const list = $('sessions').classList.toggle('list'); $('layoutBtn').setAttribute('aria-pressed', String(list)); $('layoutBtn').replaceChildren(icon(list ? 'grid' : 'view-list'));
+            $('layoutBtn').title = list ? 'Arrange channels side by side' : 'Stack channels'; $('layoutBtn').setAttribute('aria-label', $('layoutBtn').title); persist();
+        });
+        $('themeBtn').addEventListener('click', () => { applyTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark'); persist(); });
+        $('openPublishBtn').addEventListener('click', () => openPublish()); $('publishForm').addEventListener('submit', publish); $('putValue').addEventListener('input', updatePayloadSize);
+        for (const radio of document.querySelectorAll('input[name="putEncoding"]')) radio.addEventListener('change', updatePayloadSize);
+        for (const button of document.querySelectorAll('[data-close]')) button.addEventListener('click', () => $(button.dataset.close).close());
+        for (const dialog of document.querySelectorAll('dialog')) dialog.addEventListener('click', (event) => {
+            const rect = dialog.getBoundingClientRect();
+            if (event.target === dialog && (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom)) dialog.close();
+        });
+        $('connectionBtn').addEventListener('click', () => $('connectionDialog').showModal());
+        $('workspaceBtn').addEventListener('click', () => $('workspaceDialog').showModal());
+        $('settingsBtn').addEventListener('click', () => { $('workspaceDialog').close(); $('settingsDialog').showModal(); });
+        $('autoRetry').checked = settings.autoRetry; $('rememberSessions').checked = settings.remember; $('defaultView').value = settings.view;
+        $('autoRetry').addEventListener('change', () => { settings.autoRetry = $('autoRetry').checked; if (!settings.autoRetry) for (const session of sessions.values()) if (session.retryTimer) stopSession(session); persist(); });
+        $('rememberSessions').addEventListener('change', () => { settings.remember = $('rememberSessions').checked; persist(); });
+        $('defaultView').addEventListener('change', () => { settings.view = $('defaultView').value; persist(); });
+        $('resumeAllBtn').addEventListener('click', () => { for (const session of sessions.values()) if (session.mode === 'listen' && !active(session)) startSession(session); $('settingsDialog').close(); });
+        $('removeStoppedBtn').addEventListener('click', () => { for (const session of [...sessions.values()]) if (!active(session)) removeSession(session); $('settingsDialog').close(); });
+        $('exportAllBtn').addEventListener('click', () => download('opendht-workspace.json', JSON.stringify({ exported: new Date().toISOString(), sessions: [...sessions.values()].map((session) => ({ key: session.key, proxy: session.endpoint, mode: session.mode, state: session.state, values: [...session.values.values()] })) }, null, 2)));
+        $('inspectCopyBtn').addEventListener('click', () => { if (inspectedValue) copy(JSON.stringify(inspectedValue, null, 2)); });
+        $('inspectDownloadBtn').addEventListener('click', () => { if (inspectedValue) download('value-' + inspectedValue.id + '.bin', bytesFromBase64(inspectedValue.cypher ?? inspectedValue.data), 'application/octet-stream'); });
+        window.addEventListener('online', () => { connect(); for (const session of sessions.values()) if (session.retryTimer && settings.autoRetry) startSession(session); });
+        window.addEventListener('pagehide', () => { for (const session of sessions.values()) stopSession(session, false); });
+        window.addEventListener('pageshow', (event) => { if (event.persisted) { connect(); schedule(); } });
+        try { if (typeof saved.server === 'string') server = normalizeServer(saved.server); } catch { }
+        $('serverValue').value = server; applyTheme(saved.theme === 'dark' ? 'dark' : 'light');
+        if (saved.list) $('layoutBtn').click();
+        if (settings.remember && Array.isArray(saved.sessions)) {
+            for (const session of saved.sessions) {
+                try { if (typeof session.key === 'string' && ['get', 'listen'].includes(session.mode)) createSession(session.key, session.mode, session.endpoint, true, ['text', 'json', 'base64', 'hex'].includes(session.view) ? session.view : settings.view); } catch { }
+            }
+        }
+        renderWorkspace(); connect();
     </script>
 </body>
+
 </html>
