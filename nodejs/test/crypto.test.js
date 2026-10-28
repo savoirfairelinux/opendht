@@ -66,12 +66,12 @@ test('signed and encrypted values round-trip between authenticated nodes', { tim
         reader.bootstrap('127.0.0.1', writer.getBoundPort());
         const signedKey = hash('nodejs signed value');
         assert.equal(await writer.putSigned(signedKey, payload, { id: 41n }), true);
-        const signed = await reader.get(signedKey);
+        const signed = await reader.getAll(signedKey);
         assert.ok(signed.some(value => value.data.equals(payload) && value.isSigned));
         assert.equal(signed[0].owner, writerIdentity.certificate.getLongId());
         const encryptedKey = hash('nodejs encrypted value');
         assert.equal(await writer.putEncrypted(encryptedKey, payload, readerIdentity.certificate.getPublicKey(), { id: 42n }), true);
-        const decrypted = await reader.get(encryptedKey);
+        const decrypted = await reader.getAll(encryptedKey);
         assert.ok(decrypted.some(value => value.data.equals(payload)));
         assert.throws(() => writer.putEncrypted(encryptedKey, payload, {}), TypeError);
         assert.throws(() => writer.putEncrypted(encryptedKey, payload, writerIdentity.certificate.getPublicKey()), /RSA/i);

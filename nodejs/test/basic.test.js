@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
 import { EventEmitter, once } from 'node:events';
+import { createServer } from 'node:http';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
@@ -29,6 +30,7 @@ test('runner lifecycle and argument validation', async () => {
     const runner = new DhtRunner();
     assert.equal(runner.isRunning(), false);
     assert.throws(() => runner.get(hash('idle')), /running/i);
+    assert.throws(() => runner.getAll(hash('idle')), /running/i);
     assert.throws(() => runner.run({ port: -1 }), RangeError);
     assert.throws(() => runner.run({ port: 65536 }), RangeError);
     assert.throws(() => runner.run({ port: 1.5 }), RangeError);
@@ -136,7 +138,7 @@ test('two loopback nodes exchange binary values and cancel listeners', { timeout
         assert.equal(value.isSigned, false);
         assert.equal(value.isEncrypted, false);
         value.data.fill(7);
-        const values = await reader.get(key);
+        const values = await reader.getAll(key);
         retainedValue = values.find(candidate => candidate.id === value.id);
         assert.ok(retainedValue);
         assert.deepEqual(retainedValue.data, payload);
@@ -153,12 +155,242 @@ test('close settles pending operations and suppresses queued listener deliveries
     const runner = startNode();
     let deliveries = 0;
     const subscription = runner.listen(hash('closing'), () => deliveries++);
-    const pending = runner.get(hash('unreachable'));
+    const pending = runner.getAll(hash('unreachable'));
     const settled = assert.rejects(pending, { code: 'ERR_DHT_CLOSED' });
     await runner.close();
     await settled;
     subscription.cancel();
     assert.equal(deliveries, 0);
+});
+
+test('get iterators settle pending reads on cancellation and reject on runner close', { timeout: 10000 }, async () => {
+    const runner = startNode();
+    try {
+        const cancelled = runner.get(hash('cancel get'));
+        assert.equal(cancelled[Symbol.asyncIterator](), cancelled);
+        const pending = [cancelled.next(), cancelled.next()];
+        await cancelled.return();
+        cancelled.cancel();
+        assert.deepEqual(await Promise.all(pending), [
+            { value: undefined, done: true },
+            { value: undefined, done: true },
+        ]);
+        assert.deepEqual(await cancelled.next(), { value: undefined, done: true });
+
+        const closing = runner.get(hash('close get'));
+        const rejected = assert.rejects(closing.next(), { code: 'ERR_DHT_CLOSED' });
+        await runner.close();
+        await rejected;
+        await assert.rejects(closing.next(), { code: 'ERR_DHT_CLOSED' });
+    } finally {
+        await runner.close();
+    }
+});
+
+test('async listeners deliver queued values and cancel on loop exit', { timeout: 15000 }, async () => {
+    const writer = startNode();
+    const reader = startNode();
+    const key = hash('async listener');
+    let iterator;
+    try {
+        writer.bootstrap('127.0.0.1', reader.getBoundPort());
+        reader.bootstrap('127.0.0.1', writer.getBoundPort());
+        iterator = reader.listen(key);
+        assert.equal(iterator[Symbol.asyncIterator](), iterator);
+        const pending = iterator.next();
+        assert.equal(await writer.put(key, Buffer.from('first'), { id: 1n }), true);
+        const first = await pending;
+        assert.equal(first.done, false);
+        assert.equal(first.value.expired, false);
+        assert.equal(first.value.value.id, 1n);
+        assert.equal(first.value.value.data.toString(), 'first');
+
+        assert.equal(await writer.put(key, Buffer.from('second'), { id: 2n }), true);
+        for await (const { value, expired } of iterator) {
+            assert.equal(expired, false);
+            assert.equal(value.id, 2n);
+            assert.equal(value.data.toString(), 'second');
+            break;
+        }
+        assert.deepEqual(await iterator.next(), { value: undefined, done: true });
+        iterator.cancel();
+    } finally {
+        iterator?.cancel();
+        await Promise.all([writer.close(), reader.close()]);
+    }
+});
+
+test('async listener cancellation settles concurrent reads and drops buffered values', { timeout: 10000 }, async () => {
+    const runner = startNode();
+    const peer = startNode();
+    const key = hash('async cancellation');
+    let iterator;
+    try {
+        runner.bootstrap('127.0.0.1', peer.getBoundPort());
+        peer.bootstrap('127.0.0.1', runner.getBoundPort());
+        iterator = runner.listen(key);
+        const pending = [iterator.next(), iterator.next()];
+        iterator.cancel();
+        iterator.cancel();
+        assert.deepEqual(await Promise.all(pending), [
+            { value: undefined, done: true },
+            { value: undefined, done: true },
+        ]);
+        assert.equal(await runner.put(key, Buffer.from('cancelled'), { id: 3n }), true);
+        assert.deepEqual(await iterator.next(), { value: undefined, done: true });
+
+        const buffered = runner.listen(key);
+        await runner.getAll(key);
+        await buffered.return();
+        assert.deepEqual(await buffered.next(), { value: undefined, done: true });
+    } finally {
+        iterator?.cancel();
+        await Promise.all([runner.close(), peer.close()]);
+    }
+});
+
+test('async listener throw, disposal, and runner close settle pending reads', { timeout: 10000 }, async () => {
+    const runner = startNode();
+    try {
+        const thrown = runner.listen(hash('async throw'));
+        const pendingThrow = thrown.next();
+        const failure = new Error('consumer failed');
+        await assert.rejects(thrown.throw(failure), error => error === failure);
+        assert.deepEqual(await pendingThrow, { value: undefined, done: true });
+        assert.deepEqual(await thrown.next(), { value: undefined, done: true });
+
+        const disposed = runner.listen(hash('async dispose'));
+        const pendingDispose = disposed.next();
+        await disposed[Symbol.asyncDispose]();
+        assert.deepEqual(await pendingDispose, { value: undefined, done: true });
+
+        const closing = runner.listen(hash('async close'));
+        const pendingClose = [closing.next(), closing.next()];
+        const close = runner.close();
+        assert.equal(runner.close(), close);
+        assert.deepEqual(await Promise.all(pendingClose), [
+            { value: undefined, done: true },
+            { value: undefined, done: true },
+        ]);
+        await close;
+        assert.deepEqual(await closing.next(), { value: undefined, done: true });
+        assert.throws(() => runner.listen(hash('closed iterator')), /closed/i);
+    } finally {
+        await runner.close();
+    }
+});
+
+test('proxy configuration validates option types before starting', async () => {
+    const runner = new DhtRunner();
+    try {
+        assert.throws(() => runner.run({ proxyServer: 42 }), TypeError);
+        assert.throws(() => runner.run({ proxyUserAgent: false }), TypeError);
+        assert.throws(() => runner.run({ proxyUserAgent: 'client\r\nInjected: header' }), TypeError);
+        assert.throws(() => runner.run({ proxyServer: 'http://127.0.0.1\0' }), TypeError);
+        assert.throws(() => runner.run({ proxyServer: 'ftp://127.0.0.1' }), /http/i);
+        assert.throws(() => runner.run({ proxyServer: 'not a URL' }), /url/i);
+        assert.equal(runner.isRunning(), false);
+        runner.run({ port: 0, ipv4: '127.0.0.1', ipv6: '::1', proxyServer: '' });
+        assert.ok(runner.getBoundPort() > 0);
+    } finally {
+        await runner.close();
+    }
+});
+
+test('proxy configuration routes operations through HTTP with a custom user agent', { timeout: 15000 }, async () => {
+    const runner = new DhtRunner();
+    const requests = [];
+    const values = new Map();
+    let streamNextGet = false;
+    let streamResponse;
+    const server = createServer(async (request, response) => {
+        response.setHeader('content-type', 'application/json');
+        if (request.url === '/') {
+            response.end(JSON.stringify({
+                node_id: hash('proxy fixture'),
+                ipv4: { good: 1 },
+                ipv6: {},
+                public_ip: '127.0.0.1',
+            }));
+            return;
+        }
+        requests.push({ method: request.method, url: request.url, userAgent: request.headers['user-agent'] });
+        if (request.url === `/key/${hash('proxy failure')}`) {
+            response.statusCode = 500;
+            response.end();
+            return;
+        }
+        if (request.method === 'POST') {
+            const chunks = [];
+            for await (const chunk of request) chunks.push(chunk);
+            const value = JSON.parse(Buffer.concat(chunks).toString());
+            values.set(request.url, value);
+            response.end(JSON.stringify(value));
+        } else {
+            const value = values.get(request.url);
+            const body = value ? `${JSON.stringify(value)}\n` : '';
+            if (streamNextGet) {
+                streamNextGet = false;
+                streamResponse = response;
+                response.write(body);
+            } else response.end(body);
+        }
+    });
+    server.listen(0, '127.0.0.1');
+    try {
+        await once(server, 'listening');
+        runner.run({
+            proxyServer: `http://127.0.0.1:${server.address().port}`,
+            proxyUserAgent: 'opendht-node-test/1.0',
+            persistPath: '',
+        });
+        const key = hash('proxy configuration');
+        const payload = Buffer.from([0, 255, 42]);
+        assert.equal(await runner.put(key, payload, { id: 42n }), true);
+        const received = await runner.getAll(key);
+        assert.equal(received.length, 1);
+        assert.equal(received[0].id, 42n);
+        assert.deepEqual(received[0].data, payload);
+
+        streamNextGet = true;
+        const iterator = runner.get(key);
+        const first = await iterator.next();
+        assert.equal(first.done, false);
+        assert.equal(first.value.id, 42n);
+        assert.deepEqual(first.value.data, payload);
+        assert.equal(streamResponse.writableEnded, false);
+        streamResponse.end();
+        assert.deepEqual(await iterator.next(), { value: undefined, done: true });
+        assert.deepEqual(await iterator.next(), { value: undefined, done: true });
+        assert.deepEqual(requests.map(request => request.method), ['POST', 'GET', 'GET']);
+        assert.ok(requests.every(request => request.url === `/key/${key}`));
+        assert.ok(requests.every(request => request.userAgent === 'opendht-node-test/1.0'));
+
+        const empty = runner.get(hash('proxy empty'));
+        assert.deepEqual(await empty.next(), { value: undefined, done: true });
+        const failed = runner.get(hash('proxy failure'));
+        await assert.rejects(failed.next(), { code: 'ERR_DHT_GET_FAILED' });
+        await assert.rejects(runner.getAll(hash('proxy failure')), { code: 'ERR_DHT_GET_FAILED' });
+
+        const all = [];
+        for await (const value of runner.get(key)) all.push(value);
+        assert.equal(all.length, 1);
+        assert.deepEqual(all[0].data, payload);
+
+        streamNextGet = true;
+        const cancelled = runner.get(key);
+        for await (const value of cancelled) {
+            assert.equal(value.id, 42n);
+            break;
+        }
+        assert.equal(streamResponse.writableEnded, false);
+        assert.deepEqual(await cancelled.next(), { value: undefined, done: true });
+        streamResponse.end();
+    } finally {
+        streamResponse?.end();
+        await runner.close();
+        await new Promise((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
+    }
 });
 
 test('worker termination cleans up native runners', { timeout: 10000 }, async () => {
@@ -280,7 +512,7 @@ test('dhtnode example handles commands and quit while a get is pending', { timeo
         import { DhtRunner } from ${JSON.stringify(moduleURL)};
         const close = DhtRunner.prototype.close;
         let rejectGet;
-        DhtRunner.prototype.get = function () {
+        DhtRunner.prototype.getAll = function () {
             console.log('Get pending');
             return new Promise((resolve, reject) => { rejectGet = reject; });
         };

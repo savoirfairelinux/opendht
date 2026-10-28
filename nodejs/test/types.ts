@@ -1,5 +1,5 @@
 import { Certificate, DhtRunner, Identity, PrivateKey, PublicKey, hash, version } from '../index.js';
-import type { ConnectivityStatus, NodeStatus, Value } from '../index.js';
+import type { ConnectivityStatus, ListenEvent, ListenerIterator, NodeStatus, Value, ValueIterator } from '../index.js';
 
 async function exercise(): Promise<void> {
     const privateKey: PrivateKey = await PrivateKey.generate({ algorithm: 'rsa', bits: 2048 });
@@ -22,7 +22,12 @@ async function exercise(): Promise<void> {
     const accepted: boolean = await runner.put(key, Buffer.from(version), { id: 42n, permanent: true });
     const signed: boolean = await runner.putSigned(key, plaintext);
     const encrypted: boolean = await runner.putEncrypted(key, plaintext, publicKey);
-    const values: Value[] = await runner.get(key);
+    const values: Value[] = await runner.getAll(key);
+    const get: ValueIterator<Value> = runner.get(key);
+    for await (const value of get) {
+        const payload: Buffer = value.data;
+        void payload;
+    }
     const listener = runner.listen(key, (value, expired) => {
         const payload: Buffer = value.data;
         const id: bigint = value.id;
@@ -30,7 +35,21 @@ async function exercise(): Promise<void> {
     });
     runner.ref().unref();
     listener.cancel();
+    const iterator: ListenerIterator = runner.listen(key);
+    for await (const event of iterator) {
+        const typed: ListenEvent = event;
+        const value: Value = typed.value;
+        const expired: boolean = typed.expired;
+        void [value, expired];
+        break;
+    }
+    iterator.cancel();
+    await iterator.return();
+    await iterator[Symbol.asyncDispose]();
     await runner[Symbol.asyncDispose]();
+    const proxy = new DhtRunner();
+    proxy.run({ proxyServer: 'https://proxy.example.com', proxyUserAgent: 'typed-client/1.0' });
+    await proxy.close();
     void [accepted, values, valid, signed, encrypted, status];
 }
 
