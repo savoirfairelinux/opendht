@@ -626,4 +626,4 @@ jobs:
           if [[ "${RELEASE_TAG#v}" == *-* ]]; then
             dist_tag=next
           fi
-          npm publish dist/*.tgz --access public --provenance --tag "$dist_tag"
+          npm publish ./dist/*.tgz --access public --provenance --tag "$dist_tag"

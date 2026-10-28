@@ -149,7 +149,12 @@ jobs:
         working-directory: nodejs
         env:
           RELEASE_TAG: ${{ github.ref_name }}
-        run: npm version "${RELEASE_TAG#v}" --no-git-tag-version --ignore-scripts --allow-same-version
+        run: |
+          release_version=$(npm version "${RELEASE_TAG#v}" --no-git-tag-version --ignore-scripts --allow-same-version)
+          if [[ "$release_version" != "$RELEASE_TAG" ]]; then
+            printf '::error::Release tag %s is not an exact npm semantic version (normalized to %s).\n' "$RELEASE_TAG" "$release_version" >&2
+            exit 1
+          fi
       - name: Pack all platforms
         working-directory: nodejs
         run: |
