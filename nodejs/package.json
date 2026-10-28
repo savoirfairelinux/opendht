@@ -1,9 +1,17 @@
 {
     "name": "opendht",
     "version": "0.1.0",
-    "private": true,
     "description": "Distributed hash table for Node.js",
     "license": "MIT",
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/savoirfairelinux/opendht.git",
+        "directory": "nodejs"
+    },
+    "publishConfig": {
+        "access": "public",
+        "registry": "https://registry.npmjs.org/"
+    },
     "type": "module",
     "main": "index.js",
     "types": "index.d.ts",

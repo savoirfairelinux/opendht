@@ -2,6 +2,7 @@ name: Node.js Package
 
 on:
   push:
+    branches: ['**']
     paths:
       - 'nodejs/**'
       - '.github/workflows/nodejs-package.yml'
@@ -23,8 +24,7 @@ on:
       - 'vcpkg*.json'
       - 'ports/**'
       - 'LICENSE'
-  release:
-    types: [published]
+  workflow_call:
   workflow_dispatch:
 
 permissions:
@@ -144,6 +144,12 @@ jobs:
           pattern: opendht-node-prebuild-*
           path: nodejs/prebuilds
           merge-multiple: true
+      - name: Set release version
+        if: github.event_name == 'push' && github.ref_type == 'tag'
+        working-directory: nodejs
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: npm version "${RELEASE_TAG#v}" --no-git-tag-version --ignore-scripts --allow-same-version
       - name: Pack all platforms
         working-directory: nodejs
         run: |
@@ -178,22 +184,3 @@ jobs:
       - name: Test installed archive without a native build toolchain
         working-directory: nodejs
         run: npm run test:package -- dist
-
-  release:
-    name: Attach npm archive to release
-    if: github.event_name == 'release'
-    needs: smoke
-    runs-on: ubuntu-26.04
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/download-artifact@v8
-        with:
-          name: opendht-node-npm
-          path: dist
-      - name: Upload verified archive
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-          RELEASE_TAG: ${{ github.event.release.tag_name }}
-        run: gh release upload "$RELEASE_TAG" dist/*.tgz --clobber

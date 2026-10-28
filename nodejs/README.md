@@ -1,8 +1,13 @@
 # OpenDHT Node.js Bindings
 
 Initial Node-API bindings using `node-addon-api` directly over the C++ library.
-The package is private while its API and binary distribution are being developed.
 Node.js 22.9 or later is required; the addon targets Node-API version 8.
+
+## Install
+
+```sh
+npm install opendht
+```
 
 ## Build
 
@@ -66,7 +71,7 @@ TypeScript or development dependencies, including from inside `node_modules`.
 ## Usage
 
 ```js
-import { DhtRunner, hash } from './nodejs/index.js';
+import { DhtRunner, hash } from 'opendht';
 
 async function main() {
     const writer = new DhtRunner();
@@ -158,7 +163,7 @@ integer between 2048 and 8192; the default is 2048.
   transparently decrypted for the recipient by OpenDHT's get/listen layer.
 
 ```js
-import { Identity, DhtRunner } from './nodejs/index.js';
+import { Identity, DhtRunner } from 'opendht';
 
 async function createAuthenticatedNode() {
     const identity = await Identity.generate('example', { algorithm: 'rsa', bits: 2048 });
@@ -216,14 +221,35 @@ published `latest` tag. simdutf is linked statically because Ubuntu 24.04 does n
 provide its development package.
 
 CI combines platform prebuilds into one npm archive and verifies that archive on
-Node 22, 24, and 26 on each platform, including Ubuntu 24.04 and 26.04. Published
-GitHub releases receive the verified archive only after all install tests pass.
-The package remains private;
-the workflow does not publish to the npm registry or require an npm token.
+Node 22, 24, and 26 on each platform, including Ubuntu 24.04 and 26.04. Branch
+pushes, pull requests, and manual runs build and test without publishing.
 musl/Alpine and other architectures are not currently built. Node-API stability
 does not remove OS/libc or native dependency compatibility requirements. Review
 the included dependency licenses and source-distribution obligations before
-redistributing binaries beyond these development/release artifacts.
+redistributing binaries.
+
+## Releases
+
+Pushing a `v*` tag starts [the release workflow](../.github/workflows/release-package.yml),
+which calls the Node.js package workflow. The npm archive version is taken from
+the tag without its leading `v`, for example `v4.4.99` becomes `opendht@4.4.99`.
+After all Node install tests and Windows builds pass, the release workflow attaches
+the verified npm archive alongside the Windows assets to the draft GitHub Release,
+then publishes that same archive to npm with provenance. Stable versions use the
+`latest` dist-tag; prerelease versions such as `v4.5.0-rc.1` use `next`.
+Publishing to npm happens on the tag push, not when the GitHub draft is published.
+Published npm versions cannot be overwritten; use a new version tag for changes.
+
+Configure an npm trusted publisher for the `opendht` package with GitHub owner
+`savoirfairelinux`, repository `opendht`, and workflow filename `release-package.yml`
+(not `nodejs-package.yml`). Allow direct `npm publish`. Publication runs on a
+GitHub-hosted runner with OIDC, so no npm token is needed once this is configured.
+
+For the first publication, before the npm package exists, set the repository's
+`NPM_TOKEN` secret to a granular npm token with publishing permission and 2FA
+bypass. After the first successful tag release, configure the trusted publisher
+in the npm package settings, then remove `NPM_TOKEN`. The publishing job supports
+the token for this bootstrap and prefers OIDC when available.
 
 Query filters, async iterators, AbortSignal support, certificate trust-store
 validation, CA issuance controls, and proxy controls remain future work.
