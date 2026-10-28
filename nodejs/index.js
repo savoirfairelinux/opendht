@@ -1,10 +1,15 @@
 import { EventEmitter } from 'node:events';
+import { constants } from 'node:os';
 import { dlopen } from 'node:process';
 import load from 'node-gyp-build';
 import createCrypto from './crypto.js';
 
 const binding = { exports: {} };
-dlopen(binding, process.env.OPENDHT_NODE_BINDING || load.path(import.meta.dirname));
+const flags = process.platform === 'linux'
+    ? constants.dlopen.RTLD_LAZY | constants.dlopen.RTLD_DEEPBIND
+    : undefined;
+dlopen(binding, process.env.OPENDHT_NODE_BINDING || load.path(import.meta.dirname),
+    flags);
 const native = binding.exports;
 const { PublicKey, PrivateKey, Certificate, Identity, handle } = createCrypto(native);
 
