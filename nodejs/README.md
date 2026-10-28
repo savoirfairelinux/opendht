@@ -36,38 +36,6 @@ Set `OPENDHT_NODE_BINDING` to an absolute addon path to select an explicit build
 Packaged binaries include OpenDHT and non-system native dependencies, so archive
 installation does not require a compiler or a system OpenDHT installation.
 
-## Example Tool
-
-After building, start the TypeScript example from the repository root:
-
-```sh
-npm --prefix nodejs run dhtnode -- --port 4222 --bootstrap bootstrap.jami.net
-```
-
-The source is [examples/dhtnode.ts](examples/dhtnode.ts). `npm run build` compiles
-it to JavaScript; run `npm run build:examples` after editing just the example.
-Bootstrap is optional;
-`--bootstrap-port` selects its UDP port. Use `--port 0` for a free local port.
-
-```text
-listen greeting
-put greeting hello world
-get greeting
-sign greeting signed hello
-cancel greeting
-quit
-```
-
-Keys are text labels, hashed automatically; values are UTF-8 text. The tool
-generates a fresh EC identity on each run and prints IPv4/IPv6 connectivity
-changes. Operations run concurrently, leaving the prompt responsive; dependent
-commands should be entered after their preceding operation completes. EOF waits
-for pending operations, then cancels listeners and closes the runner. Ctrl-C,
-SIGTERM, and `quit` close immediately, rejecting pending operations without
-printing cancellation errors. `--help` lists all options. Archives include both
-the TypeScript source and compiled `examples/dhtnode.js`, runnable without
-TypeScript or development dependencies, including from inside `node_modules`.
-
 ## Usage
 
 ```js
@@ -213,13 +181,6 @@ The [Node.js package workflow](../.github/workflows/nodejs-package.yml) builds:
 | macOS ARM64 and x64 | macOS 15 |
 | Windows x64 | Windows Server 2022 / MSVC |
 
-The Linux build uses `ghcr.io/savoirfairelinux/opendht/opendht-deps-noble`,
-built from [the Noble Dockerfile](../docker/DockerfileDepsNoble), restored from
-the Ubuntu 24.04 recipe in git history. The release workflow publishes this
-multi-architecture image alongside the other Docker images. Node builds use its
-published `latest` tag. simdutf is linked statically because Ubuntu 24.04 does not
-provide its development package.
-
 CI combines platform prebuilds into one npm archive and verifies that archive on
 Node 22, 24, and 26 on each platform, including Ubuntu 24.04 and 26.04. Branch
 pushes, pull requests, and manual runs build and test without publishing.
@@ -227,29 +188,6 @@ musl/Alpine and other architectures are not currently built. Node-API stability
 does not remove OS/libc or native dependency compatibility requirements. Review
 the included dependency licenses and source-distribution obligations before
 redistributing binaries.
-
-## Releases
-
-Pushing a `v*` tag starts [the release workflow](../.github/workflows/release-package.yml),
-which calls the Node.js package workflow. The npm archive version is taken from
-the tag without its leading `v`, for example `v4.4.99` becomes `opendht@4.4.99`.
-After all Node install tests and Windows builds pass, the release workflow attaches
-the verified npm archive alongside the Windows assets to the draft GitHub Release,
-then publishes that same archive to npm with provenance. Stable versions use the
-`latest` dist-tag; prerelease versions such as `v4.5.0-rc.1` use `next`.
-Publishing to npm happens on the tag push, not when the GitHub draft is published.
-Published npm versions cannot be overwritten; use a new version tag for changes.
-
-Configure an npm trusted publisher for the `opendht` package with GitHub owner
-`savoirfairelinux`, repository `opendht`, and workflow filename `release-package.yml`
-(not `nodejs-package.yml`). Allow direct `npm publish`. Publication runs on a
-GitHub-hosted runner with OIDC, so no npm token is needed once this is configured.
-
-For the first publication, before the npm package exists, set the repository's
-`NPM_TOKEN` secret to a granular npm token with publishing permission and 2FA
-bypass. After the first successful tag release, configure the trusted publisher
-in the npm package settings, then remove `NPM_TOKEN`. The publishing job supports
-the token for this bootstrap and prefers OIDC when available.
 
 Query filters, async iterators, AbortSignal support, certificate trust-store
 validation, CA issuance controls, and proxy controls remain future work.
