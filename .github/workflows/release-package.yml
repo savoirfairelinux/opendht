@@ -619,7 +619,6 @@ jobs:
       - name: Publish verified archive
         working-directory: nodejs
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           RELEASE_TAG: ${{ github.ref_name }}
         run: |
           dist_tag=latest
