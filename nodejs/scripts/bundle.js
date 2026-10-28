@@ -27,6 +27,9 @@ function copyNotices(dependencies) {
             name = match[2];
             notices = fs.readdirSync(match[1]).filter(file => /^(COPYING|LICENSE|COPYRIGHT)([._-]|$)/i.test(file))
                 .map(file => path.join(match[1], file));
+        } else if (process.platform === 'linux' && /^libllhttp\.so(?:\.|$)/.test(path.basename(real))) {
+            name = 'llhttp';
+            notices = [path.join(repository, 'resources', 'llhttp-LICENSE-MIT')];
         } else if (process.platform === 'linux') {
             let owner;
             try { owner = run('dpkg-query', ['-S', real]); }
