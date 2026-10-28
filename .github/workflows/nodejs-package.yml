@@ -71,7 +71,19 @@ jobs:
           cache-dependency-path: nodejs/package-lock.json
       - name: Install macOS dependencies
         if: runner.os == 'macOS'
-        run: brew install cmake ninja pkg-config dylibbundler gnutls nettle argon2 msgpack-cxx fmt jsoncpp simdutf
+        run: brew install cmake ninja pkg-config dylibbundler gnutls nettle argon2 msgpack-cxx fmt jsoncpp simdutf asio llhttp openssl
+      - name: Install restinio
+        if: runner.os == 'macOS'
+        env:
+          RESTINIO_VERSION: '0.7.10'
+        run: |
+          include="$RUNNER_TEMP/opendht-proxy/include"
+          mkdir -p "$include/nonstd"
+          curl -fsSL --retry 3 https://raw.githubusercontent.com/martinmoene/expected-lite/v0.10.0/include/nonstd/expected.hpp -o "$include/nonstd/expected.hpp"
+          curl -fsSL --retry 3 "https://github.com/Stiffstream/restinio/releases/download/v${RESTINIO_VERSION}/restinio-${RESTINIO_VERSION}.tar.bz2" -o "$RUNNER_TEMP/restinio.tar.bz2"
+          tar -xjf "$RUNNER_TEMP/restinio.tar.bz2" -C "$RUNNER_TEMP"
+          cp -R "$RUNNER_TEMP/restinio-${RESTINIO_VERSION}/dev/restinio" "$include/"
+          echo "CMAKE_PREFIX_PATH=$RUNNER_TEMP/opendht-proxy" >> "$GITHUB_ENV"
       - name: Set up MSVC
         if: runner.os == 'Windows'
         uses: ilammy/msvc-dev-cmd@v1
@@ -98,6 +110,8 @@ jobs:
         run: |
           if [[ "$RUNNER_OS" == 'macOS' ]]; then
             export MACOSX_DEPLOYMENT_TARGET=15.0
+            openssl_prefix=$(brew --prefix openssl)
+            export PKG_CONFIG_PATH="$openssl_prefix/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
           fi
           npm run build -- --CDOPENDHT_DOWNLOAD_DEPS=OFF
       - name: Build Windows addon
@@ -110,6 +124,7 @@ jobs:
             "--CDVCPKG_INSTALLED_DIR=$env:VCPKG_INSTALLED_DIR" `
             "--CDVCPKG_TARGET_TRIPLET=$env:VCPKG_DEFAULT_TRIPLET" `
             --CDVCPKG_MANIFEST_NO_DEFAULT_FEATURES=ON `
+            --CDVCPKG_MANIFEST_FEATURES=proxy `
             --CDCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreadedDLL `
             --CDOPENDHT_DOWNLOAD_DEPS=OFF
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

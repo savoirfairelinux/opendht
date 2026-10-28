@@ -49,6 +49,8 @@ export interface RunOptions {
     network?: number;
     persistPath?: string;
     identity?: Identity;
+    proxyServer?: string;
+    proxyUserAgent?: string;
 }
 
 export interface PutOptions {
@@ -73,6 +75,18 @@ export interface Listener {
     cancel(): void;
 }
 
+export interface ListenEvent {
+    value: Value;
+    expired: boolean;
+}
+
+export interface ValueIterator<T> extends AsyncIterableIterator<T, undefined>, Listener, AsyncDisposable {
+    return(): Promise<IteratorResult<T, undefined>>;
+    throw(error?: unknown): Promise<IteratorResult<T, undefined>>;
+}
+
+export interface ListenerIterator extends ValueIterator<ListenEvent> { }
+
 export type NodeStatus = 'disconnected' | 'connecting' | 'connected';
 
 export interface ConnectivityStatus {
@@ -92,10 +106,12 @@ export class DhtRunner extends EventEmitter<RunnerEvents> implements AsyncDispos
     getNodeId(): string;
     getStatus(): ConnectivityStatus;
     bootstrap(host: string, port: number): void;
-    get(key: string): Promise<Value[]>;
+    get(key: string): ValueIterator<Value>;
+    getAll(key: string): Promise<Value[]>;
     put(key: string, data: Uint8Array, options?: PutOptions): Promise<boolean>;
     putSigned(key: string, data: Uint8Array, options?: PutOptions): Promise<boolean>;
     putEncrypted(key: string, data: Uint8Array, recipient: PublicKey, options?: PutOptions): Promise<boolean>;
+    listen(key: string): ListenerIterator;
     listen(key: string, callback: (value: Value, expired: boolean) => void): Listener;
     close(): Promise<void>;
     ref(): this;

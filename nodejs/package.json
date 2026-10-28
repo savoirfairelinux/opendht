@@ -52,7 +52,7 @@
     "devDependencies": {
         "@types/node": "^22.20.5",
         "cmake-js": "^8.0.0",
-        "node-addon-api": "^8.5.0",
+        "node-addon-api": "^8.8.0",
         "typescript": "^7.0.2"
     }
 }

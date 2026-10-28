@@ -90,7 +90,7 @@ valueToJS(Napi::Env env, const dht::Value& value)
     result.Set("data", Napi::Buffer<uint8_t>::Copy(env, value.data.data(), value.data.size()));
     result.Set("userType", Napi::String::New(env, value.user_type));
     result.Set("owner",
-               value.owner ? Napi::Value(Napi::String::New(env, value.owner->getLongId().toString()))
+               value.owner ? Napi::Value(Napi::String::New(env, value.owner->getLongId().to_view()))
                            : Napi::Value(env.Null()));
     result.Set("isSigned", Napi::Boolean::New(env, value.isSigned()));
     result.Set("isEncrypted", Napi::Boolean::New(env, value.isEncrypted()));
@@ -102,6 +102,8 @@ struct PendingOperation
     Napi::Promise::Deferred deferred;
     bool get;
     std::vector<std::shared_ptr<const dht::Value>> values;
+    Napi::FunctionReference onValue;
+    std::shared_ptr<std::atomic_bool> cancelled;
 };
 
 struct Subscription
@@ -195,7 +197,10 @@ struct RunnerState
             if (listener != state.listeners.end()) {
                 listener->second.callback.Call({valueToJS(state.env, *value), Napi::Boolean::New(state.env, expired)});
             } else if (const auto pending = state.operations.find(operation); pending != state.operations.end()) {
-                pending->second.values.emplace_back(std::move(value));
+                if (!pending->second.onValue.IsEmpty())
+                    pending->second.onValue.Call({valueToJS(state.env, *value)});
+                else
+                    pending->second.values.emplace_back(std::move(value));
             }
         });
     }
@@ -213,6 +218,8 @@ struct RunnerState
             auto error = Napi::Error::New(env, "DHT get failed");
             error.Set("code", "ERR_DHT_GET_FAILED");
             operation.deferred.Reject(error.Value());
+        } else if (!operation.onValue.IsEmpty()) {
+            operation.deferred.Resolve(env.Undefined());
         } else {
             auto values = Napi::Array::New(env, operation.values.size());
             for (size_t index = 0; index < operation.values.size(); ++index)
@@ -224,12 +231,8 @@ struct RunnerState
     Napi::Object status() const
     {
         auto result = Napi::Object::New(env);
-        result.Set("ipv4",
-                   Napi::String::New(env,
-                                     std::string(dht::statusToStr(closing ? dht::NodeStatus::Disconnected : status4))));
-        result.Set("ipv6",
-                   Napi::String::New(env,
-                                     std::string(dht::statusToStr(closing ? dht::NodeStatus::Disconnected : status6))));
+        result.Set("ipv4", Napi::String::New(env, dht::statusToStr(closing ? dht::NodeStatus::Disconnected : status4)));
+        result.Set("ipv6", Napi::String::New(env, dht::statusToStr(closing ? dht::NodeStatus::Disconnected : status6)));
         return result;
     }
 
@@ -370,6 +373,8 @@ public:
                                InstanceMethod("getStatus", &Runner::getStatus),
                                InstanceMethod("bootstrap", &Runner::bootstrap),
                                InstanceMethod("get", &Runner::get),
+                               InstanceMethod("getAll", &Runner::getAll),
+                               InstanceMethod("cancelGet", &Runner::cancelGet),
                                InstanceMethod("put", &Runner::put),
                                InstanceMethod("putSigned", &Runner::putSigned),
                                InstanceMethod("putEncrypted", &Runner::putEncrypted),
@@ -401,6 +406,13 @@ private:
                 config.dht_config.node_config.persist_path = text(options.Get("persistPath"), "persistPath");
             if (options.Has("identity"))
                 config.dht_config.id = opendht_node::readIdentity(options.Get("identity"));
+            if (options.Has("proxyServer"))
+                config.proxy_server = text(options.Get("proxyServer"), "proxyServer");
+            if (options.Has("proxyUserAgent")) {
+                config.proxy_user_agent = text(options.Get("proxyUserAgent"), "proxyUserAgent");
+                if (config.proxy_user_agent.find_first_of("\r\n") != std::string::npos)
+                    throw Napi::TypeError::New(info.Env(), "proxyUserAgent must not contain line breaks");
+            }
             dht::DhtRunner::Context context;
             const std::weak_ptr<RunnerState> state = state_;
             context.statusChangedCallback = [state](dht::NodeStatus ipv4, dht::NodeStatus ipv6) {
@@ -466,7 +478,7 @@ private:
     {
         return guarded(info, [&]() -> Napi::Value {
             state_->requireRunning();
-            return Napi::String::New(info.Env(), state_->runner.getNodeId().toString());
+            return Napi::String::New(info.Env(), state_->runner.getNodeId().to_view());
         });
     }
 
@@ -483,26 +495,36 @@ private:
         });
     }
 
-    Napi::Value get(const Napi::CallbackInfo& info)
+    Napi::Value get(const Napi::CallbackInfo& info) { return getValues(info, true); }
+
+    Napi::Value getAll(const Napi::CallbackInfo& info) { return getValues(info, false); }
+
+    Napi::Value getValues(const Napi::CallbackInfo& info, bool stream)
     {
         return guarded(info, [&]() -> Napi::Value {
             state_->requireRunning();
             const auto key = infoHash(info[0]);
+            if (stream && !info[1].IsFunction())
+                throw Napi::TypeError::New(info.Env(), "callback must be a function");
             const auto operation = state_->nextOperation++;
             auto deferred = Napi::Promise::Deferred::New(info.Env());
-            state_->operations.emplace(operation, PendingOperation {deferred, true, {}});
+            auto cancelled = std::make_shared<std::atomic_bool>(false);
+            PendingOperation pending {deferred, true, {}, {}, cancelled};
+            if (stream)
+                pending.onValue = Napi::Persistent(info[1].As<Napi::Function>());
+            state_->operations.emplace(operation, std::move(pending));
             const std::weak_ptr<RunnerState> state = state_;
             try {
                 state_->runner.get(key,
-                                   dht::GetCallback(
-                                       [state, operation](const std::vector<std::shared_ptr<dht::Value>>& values) {
-                                           const auto owner = state.lock();
-                                           if (!owner || owner->closing)
-                                               return false;
-                                           for (const auto& value : values)
-                                               owner->sendValue(operation, value);
-                                           return !owner->closing;
-                                       }),
+                                   dht::GetCallback([state, operation, cancelled](
+                                                        const std::vector<std::shared_ptr<dht::Value>>& values) {
+                                       const auto owner = state.lock();
+                                       if (!owner || owner->closing || *cancelled)
+                                           return false;
+                                       for (const auto& value : values)
+                                           owner->sendValue(operation, value);
+                                       return !owner->closing && !*cancelled;
+                                   }),
                                    dht::DoneCallbackSimple([state, operation](bool ok) {
                                        if (const auto owner = state.lock())
                                            owner->send([operation, ok](RunnerState& state) {
@@ -513,7 +535,26 @@ private:
                 state_->operations.erase(operation);
                 throw;
             }
+            if (stream) {
+                auto result = Napi::Object::New(info.Env());
+                result.Set("token", Napi::BigInt::New(info.Env(), operation));
+                result.Set("done", deferred.Promise());
+                return result;
+            }
             return deferred.Promise();
+        });
+    }
+
+    Napi::Value cancelGet(const Napi::CallbackInfo& info)
+    {
+        return guarded(info, [&]() -> Napi::Value {
+            const auto operation = state_->operations.find(unsignedBigInt(info[0]));
+            if (operation != state_->operations.end() && !operation->second.onValue.IsEmpty()) {
+                *operation->second.cancelled = true;
+                operation->second.deferred.Resolve(info.Env().Undefined());
+                state_->operations.erase(operation);
+            }
+            return info.Env().Undefined();
         });
     }
 
@@ -562,7 +603,7 @@ private:
             }
             const auto operation = state_->nextOperation++;
             auto deferred = Napi::Promise::Deferred::New(info.Env());
-            state_->operations.emplace(operation, PendingOperation {deferred, false, {}});
+            state_->operations.emplace(operation, PendingOperation {deferred, false, {}, {}, {}});
             const std::weak_ptr<RunnerState> state = state_;
             try {
                 dht::DoneCallbackSimple done = [state, operation](bool ok) {
@@ -672,7 +713,7 @@ hash(const Napi::CallbackInfo& info)
     } else {
         throw Napi::TypeError::New(env, "Expected a string or Uint8Array");
     }
-    return Napi::String::New(env, result.toString());
+    return Napi::String::New(env, result.to_view());
 }
 
 Napi::Object

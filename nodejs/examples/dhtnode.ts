@@ -96,7 +96,7 @@ Keys are text labels hashed with SHA-1. Values are UTF-8 text.`);
         const location = hash(key);
         switch (command) {
             case 'get': {
-                const found = await runner.get(location);
+                const found = await runner.getAll(location);
                 if (closing) return;
                 for (const value of found) printValue(key, value);
                 if (!found.length) print(`No values for ${key}`);

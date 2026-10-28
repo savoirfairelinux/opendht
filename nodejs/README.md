@@ -12,7 +12,8 @@ npm install opendht
 ## Build
 
 Install the native dependencies described in [BUILD.md](../BUILD.md), plus Node.js,
-a C++17 compiler, and CMake 3.21 or later. Ninja is optional.
+a C++17 compiler, and CMake 3.21 or later. Ninja is optional. Proxy-client support
+defaults to enabled and requires ASIO, llhttp, RESTinio, and expected-lite headers.
 
 ```sh
 cd nodejs
@@ -30,6 +31,11 @@ Native CMake options can be passed through, for example:
 ```sh
 npm run build -- --CDOPENDHT_PEER_DISCOVERY=ON
 ```
+
+For an existing build, change cached options directly with CMake, for example
+`cmake -S . -B build -DOPENDHT_PROXY_CLIENT=ON`, then rebuild. A custom build can
+disable proxy support with `-DOPENDHT_PROXY_CLIENT=OFF`; requesting a proxy then
+throws an explicit unsupported-build error.
 
 The loader checks local builds, then compatible Node-API binaries under `prebuilds/`.
 Set `OPENDHT_NODE_BINDING` to an absolute addon path to select an explicit build.
@@ -52,7 +58,7 @@ async function main() {
         const key = hash('example');
         const stored = await writer.put(key, Buffer.from('hello'), { id: 42n });
         if (!stored) throw new Error('DHT put failed');
-        for (const value of await reader.get(key)) {
+        for await (const value of reader.get(key)) {
             console.log(value.id, value.data.toString());
         }
     } finally {
@@ -71,6 +77,7 @@ main().catch(console.error);
 - `run({port, ipv4, ipv6, network, persistPath, identity})` starts a threaded node. Port 0
   selects a free port. The defaults bind both IP families on all interfaces.
   `persistPath` is optional; use an empty string to disable persistence.
+  `proxyServer` and `proxyUserAgent` configure proxy mode (see below).
 - `getBoundPort(4 | 6)` defaults to IPv4; `getNodeId()` returns the node's hex ID.
 - `getStatus()` returns the latest JS-dispatched `{ipv4, ipv6}` connectivity
   snapshot. Each family is `'disconnected'`, `'connecting'`, or `'connected'`.
@@ -81,12 +88,16 @@ main().catch(console.error);
   peer is connected; subsequent DHT operations report their own completion.
 - `put(key, Uint8Array, {id, type, userType, permanent})` copies the input and
   resolves to the native success boolean. IDs are unsigned 64-bit `bigint` values.
-- `get(key)` resolves to value snapshots, or rejects with `ERR_DHT_GET_FAILED`.
+- `get(key)` returns an async iterator of values as they arrive. The iterator
+  ends when the lookup completes, or rejects with `ERR_DHT_GET_FAILED` on failure.
+  `getAll(key)` returns a single promise resolving to the complete value array.
   Values contain `id`, `type`, `seq`, `userType`, copied `Buffer` data, `isSigned`,
   `isEncrypted`, and an `owner` long fingerprint (or null for unsigned values).
 - `listen(key, (value, expired) => {})` returns a listener with idempotent
   `cancel()`. Queued deliveries are suppressed after cancellation. Callback
   return values are ignored; callbacks may cancel or close the runner.
+- `listen(key)` without a callback returns an async iterator of `{value, expired}`
+  events. It continues until cancelled or the runner closes.
 - `close()` is idempotent and returns the same promise on repeated calls. It
   waits off the JS thread for graceful shutdown, then joins the native threads.
   After two seconds it forces the join if graceful shutdown has not completed.
@@ -101,8 +112,47 @@ Pending operations, active listeners, and registered status handlers keep their
 runner alive until completion, cancellation, handler removal, or explicit close.
 Graceful persistence cannot be guaranteed if the process is killed.
 
-The binding does not cap the callback queue or accumulated get results. Queued
-callbacks retain their native values until delivery or cleanup.
+The binding does not cap the callback queue, accumulated `getAll()` results, or
+iterator buffers. Slow iterator consumers can accumulate values without
+backpressure. Queued callbacks retain their native values until delivery or cleanup.
+
+## Async Iteration
+
+`get()` and callback-free `listen()` start immediately and return iterators with
+`next()`, `return()`, `throw()`, `cancel()`, and `Symbol.asyncDispose`.
+Leaving a `for await` loop with `break` or an exception cancels the subscription.
+Explicit cancellation discards buffered values and settles pending reads as done.
+Closing the runner rejects active get iterators with `ERR_DHT_CLOSED`; listener
+iterators end normally. Successful get completion preserves unread buffered values.
+
+```js
+for await (const value of runner.get(hash('example'))) {
+  console.log(value.id, value.data);
+}
+const snapshots = await runner.getAll(hash('example'));
+
+for await (const { value, expired } of runner.listen(hash('updates'))) {
+  console.log(value.id, expired);
+  if (expired) break;
+}
+```
+
+## Proxy Configuration
+
+Pass the URL of an OpenDHT HTTP(S) proxy at startup:
+
+```js
+runner.run({
+  proxyServer: 'https://proxy.example.com',
+  proxyUserAgent: 'my-app/1.0',
+});
+```
+
+This selects the native OpenDHT proxy client, not an HTTP CONNECT or SOCKS proxy.
+The node does not bind UDP sockets in this mode; `port`, `ipv4`, `ipv6`, and
+`bootstrap()` are for direct DHT nodes. Omit `proxyServer` or use an empty string
+for direct networking. Proxy settings are startup-only; create a new runner to
+change transports or servers. Packaged binaries include proxy-client support.
 
 ## Crypto
 
@@ -189,5 +239,5 @@ does not remove OS/libc or native dependency compatibility requirements. Review
 the included dependency licenses and source-distribution obligations before
 redistributing binaries.
 
-Query filters, async iterators, AbortSignal support, certificate trust-store
-validation, CA issuance controls, and proxy controls remain future work.
+Query filters, AbortSignal support, certificate trust-store validation, CA
+issuance controls, and runtime proxy switching remain future work.
