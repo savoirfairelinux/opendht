@@ -139,6 +139,81 @@ runner.join()?;
 	`loop_once()` calls while waiting. `join()` remains blocking; await graceful
 	`shutdown()` first when persistence is required.
 
+## Typed Records
+
+Enable `serde` for typed MessagePack operations on `AsyncDhtRunner`. This feature
+also enables `async`; neither Serde nor MessagePack is required by default.
+
+```toml
+[dependencies]
+opendht = { version = "0.6", features = ["serde"] }
+serde = { version = "1", features = ["derive"] }
+serde_bytes = "0.11"
+futures = "0.3"
+```
+
+With an already running async adapter:
+
+```rust,ignore
+use futures::TryStreamExt;
+use opendht::InfoHash;
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Serialize, Deserialize)]
+struct Service {
+	version: u32,
+	name: String,
+	port: u16,
+	#[serde(with = "serde_bytes")]
+	payload: Vec<u8>,
+}
+
+let hash = InfoHash::get("services/chat");
+let mut updates = runner.listen_typed::<Service>(&hash)?;
+let record = Service {
+	version: 1, name: "chat".into(), port: 4222, payload: vec![0, 0x80, 0xff],
+};
+runner.put_typed(&hash, &record, false).await?;
+if let Some(event) = updates.try_next().await? {
+	println!("{}: {:?}", event.value.raw.id, event.value.data);
+}
+drop(updates);
+let records: Vec<_> = runner.get_typed::<Service>(&hash).try_collect().await?;
+```
+
+Typed puts accept `Serialize`, including unsized values. Typed reads require
+`DeserializeOwned`, without imposing `Clone`, `Send`, or `Unpin` on the record.
+Decoding happens when the consumer polls, not in native callbacks. Each
+`TypedValue<T>` exposes decoded `data` and the original `raw` snapshot, retaining
+payload bytes and all metadata. `TypedEvent<T>` preserves the expiration flag.
+
+`TypedError` distinguishes `Serialize`, `Deserialize { id, source }`, and native
+`Operation` errors, preserving the underlying error through `Error::source()`.
+An invalid MessagePack payload or incompatible schema yields a per-value error; keep
+polling to read subsequent records. `try_collect()` short-circuits on any error.
+Buffer limits, terminal native failures, and listener cancellation on drop are
+unchanged from the async API.
+
+`put_typed` is an ordinary lazy async method: it serializes and starts publication
+only when polled. Serialization failure does not start a native put. Dropping
+the future after publication starts does not undo the put. Typed puts use the
+default native metadata; for custom IDs/types or signed/encrypted publication,
+serialize into a `Value` and use the existing untyped methods. Raw get/listen
+snapshots can also be decoded with `TypedValue::<T>::try_from(snapshot)` or
+`TypedEvent::<T>::try_from(event)`.
+
+The wire payload is compact MessagePack, following OpenDHT's serialization
+convention. Structs are encoded as arrays in field order; field order is part
+of the wire schema. No schema version or envelope is inserted; applications
+control their record format and versioning. Use `#[serde(with = "serde_bytes")]`
+on byte buffers (or `serde_bytes::ByteBuf`) for native MessagePack `bin` values;
+plain `Vec<u8>` otherwise serializes as an integer array. Run the complete typed
+loopback example with:
+
+```sh
+cargo run --features serde --example dhtnode_async
+```
+
 ## Extended APIs
 
 - Values expose explicit IDs, user types, value types, sequence numbers,

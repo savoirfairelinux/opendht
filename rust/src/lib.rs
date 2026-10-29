@@ -43,6 +43,9 @@ mod value;
 #[cfg(feature = "async")]
 pub mod aio;
 
+#[cfg(feature = "serde")]
+pub mod typed;
+
 pub use blob::Blob;
 pub use dhtrunner::{
     DhtNodeConfig, DhtRunner, DhtRunnerConfig, DhtSecureConfig, NodeStatus, OpToken,
