@@ -55,7 +55,6 @@ fn native_handles_can_move_out_of_their_boxes() {
     let token = *runner
         .listen(&hash, move |value, expired| {
             if !expired {
-                let value = *value;
                 sent.send(value.as_bytes()).unwrap();
             }
             true
@@ -482,6 +481,69 @@ fn threaded_signed_and_encrypted_roundtrips() {
     }
 }
 
+#[test]
+fn callbacks_move_mutable_values_without_copying() {
+    let mut runner = DhtRunner::new();
+    let mut config = DhtRunnerConfig::new();
+    config.threaded = false;
+    runner.run_config(0, config).unwrap();
+    let hash = InfoHash::get("single Value callback ownership");
+    let (listen_sent, listen_received) = mpsc::channel();
+    let _token = runner
+        .listen(&hash, move |mut value: Box<Value>, expired| {
+            if !expired {
+                value.set_seq(8);
+                let pointer = value.as_slice().as_ptr() as usize;
+                let _ = listen_sent.send((pointer, value));
+            }
+            true
+        })
+        .unwrap();
+    let mut value = Value::with_id(b"immutable\0payload\xff", 42);
+    value.set_seq(7);
+    value.set_user_type("application/immutable").unwrap();
+    value.set_push_type("call").unwrap();
+    runner.put(&hash, value, |_| {}, false);
+    runner.loop_once().unwrap();
+
+    let (get_sent, get_received) = mpsc::channel();
+    runner.get(
+        &hash,
+        move |value: Box<Value>| {
+            let pointer = value.as_slice().as_ptr() as usize;
+            let _ = get_sent.send((pointer, value));
+            true
+        },
+        |_| {},
+    );
+    runner.loop_once().unwrap();
+    runner.join().unwrap();
+
+    for (received, expected_seq) in [(listen_received, 8), (get_received, 7)] {
+        let (pointer, value) = received.recv_timeout(Duration::from_secs(5)).unwrap();
+        let value = std::thread::spawn(move || {
+            let mut value = value;
+            assert_eq!(value.as_slice().as_ptr() as usize, pointer);
+            assert_eq!(value.as_slice(), b"immutable\0payload\xff");
+            assert_eq!(value.id(), 42);
+            assert_eq!(value.seq(), expected_seq);
+            let user_type: &str = value.user_type().unwrap();
+            assert_eq!(user_type, "application/immutable");
+            let push_type: &str = value.push_type().unwrap();
+            assert_eq!(push_type, "call");
+            value.set_seq(9);
+            assert_eq!(value.as_slice().as_ptr() as usize, pointer);
+            value
+        })
+        .join()
+        .unwrap();
+        let mut editable = value.boxed();
+        editable.set_seq(10);
+        assert_eq!(value.seq(), 9);
+        assert_eq!(editable.seq(), 10);
+    }
+}
+
 #[cfg(feature = "async")]
 mod asynchronous {
     use super::*;
@@ -541,17 +603,17 @@ mod asynchronous {
         let _pending = runner.put(&hash, value, false);
         let event = drive(&runner, listener.next()).unwrap().unwrap();
         assert!(!event.expired);
-        assert_eq!(event.value.data, b"async\0binary\xff");
-        assert_eq!(event.value.id, 42);
-        assert_eq!(event.value.value_type, 17);
-        assert_eq!(event.value.seq, 7);
-        assert_eq!(event.value.priority, 2);
-        assert_eq!(event.value.user_type, "application/async");
-        assert_eq!(event.value.push_type, "call");
-        assert!(event.value.owner.is_none());
-        assert!(event.value.recipient.is_zero());
+        assert_eq!(event.value.as_slice(), b"async\0binary\xff");
+        assert_eq!(event.value.id(), 42);
+        assert_eq!(event.value.value_type(), 17);
+        assert_eq!(event.value.seq(), 7);
+        assert_eq!(event.value.priority(), 2);
+        assert_eq!(event.value.user_type().unwrap(), "application/async");
+        assert_eq!(event.value.push_type().unwrap(), "call");
+        assert!(event.value.owner().is_none());
+        assert!(event.value.recipient().is_zero());
         let event = std::thread::spawn(move || event).join().unwrap();
-        assert_eq!(event.value.data, b"async\0binary\xff");
+        assert_eq!(event.value.as_slice(), b"async\0binary\xff");
         drop(listener);
         runner.loop_once().unwrap();
         runner.join().unwrap();
@@ -568,8 +630,8 @@ mod asynchronous {
         assert!(!drive(&runner, listener.next()).unwrap().unwrap().expired);
         let event = drive(&runner, listener.next()).unwrap().unwrap();
         assert!(event.expired);
-        assert_eq!(event.value.id, 42);
-        assert_eq!(event.value.data, b"expires");
+        assert_eq!(event.value.id(), 42);
+        assert_eq!(event.value.as_slice(), b"expires");
         drop(listener);
         runner.join().unwrap();
     }
@@ -584,7 +646,7 @@ mod asynchronous {
             runner.loop_once().unwrap();
         }
         assert_eq!(
-            drive(&runner, listener.next()).unwrap().unwrap().value.id,
+            drive(&runner, listener.next()).unwrap().unwrap().value.id(),
             1
         );
         let error = drive(&runner, listener.next()).unwrap().err().unwrap();
@@ -687,6 +749,7 @@ mod asynchronous {
         )
             .into();
         let recipient = destination_native.public_key().unwrap().long_id();
+        let signer = nodes.last().unwrap().public_key().unwrap().id();
         let source = AsyncDhtRunner::new(nodes.pop().unwrap());
         let destination = AsyncDhtRunner::new(destination_native);
         wait(source.bootstrap(&["127.0.0.1:9".parse().unwrap(), address])).unwrap();
@@ -704,9 +767,12 @@ mod asynchronous {
             wait(put).unwrap();
             let event = wait(listener.next()).unwrap().unwrap();
             assert!(!event.expired);
-            assert_eq!(event.value.data, b"async network\0value");
+            assert_eq!(event.value.as_slice(), b"async network\0value");
             if mode != "plain" {
-                assert!(event.value.owner.is_some());
+                assert!(event.value.owner().is_some());
+                assert!(event.value.owner().unwrap().id() == signer);
+                let event = std::thread::spawn(move || event).join().unwrap();
+                assert!(event.value.owner().unwrap().id() == signer);
             }
             drop(listener);
             if mode == "signed" {
@@ -717,12 +783,14 @@ mod asynchronous {
                         .try_collect(),
                 )
                 .unwrap();
-                assert!(values.iter().any(|value| value.id == 42 && value.seq == 7));
+                assert!(values
+                    .iter()
+                    .any(|value| value.id() == 42 && value.seq() == 7));
             }
             let values: Vec<_> = wait(destination.get(&hash).try_collect()).unwrap();
             assert!(values
                 .iter()
-                .any(|value| value.data == b"async network\0value"));
+                .any(|value| value.as_slice() == b"async network\0value"));
             let rows: Vec<_> =
                 wait(destination.query(&hash, "SELECT id").unwrap().try_collect()).unwrap();
             assert!(rows.iter().any(|row| row.id == Some(42)));
@@ -774,7 +842,7 @@ mod asynchronous {
             let fixture = [0x91, 0xc4, 0x04, 0x00, 0x80, 0xff, 0x01];
             let _pending = runner.put(&hash, Value::with_id(&fixture, 42), false);
             let event = drive(&runner, listener.next()).unwrap().unwrap();
-            assert_eq!(event.value.raw.data, fixture);
+            assert_eq!(event.value.raw.as_slice(), fixture);
             assert_eq!(event.value.data.payload, [0, 0x80, 0xff, 1]);
             drop(listener);
             runner.join().unwrap();
@@ -793,18 +861,21 @@ mod asynchronous {
             let event = drive(&runner, listener.next()).unwrap().unwrap();
             assert!(!event.expired);
             assert_eq!(event.value.data, record());
-            assert_eq!(event.value.raw.id, 42);
-            assert_eq!(event.value.raw.value_type, 17);
-            assert_eq!(event.value.raw.seq, 7);
-            assert_eq!(event.value.raw.user_type, "application/typed-test");
+            assert_eq!(event.value.raw.id(), 42);
+            assert_eq!(event.value.raw.value_type(), 17);
+            assert_eq!(event.value.raw.seq(), 7);
             assert_eq!(
-                rmp_serde::from_slice::<Record>(&event.value.raw.data).unwrap(),
+                event.value.raw.user_type().unwrap(),
+                "application/typed-test"
+            );
+            assert_eq!(
+                rmp_serde::from_slice::<Record>(event.value.raw.as_slice()).unwrap(),
                 record()
             );
             let event = drive(&runner, listener.next()).unwrap().unwrap();
             assert!(event.expired);
             assert_eq!(event.value.data, record());
-            assert_eq!(event.value.raw.id, 42);
+            assert_eq!(event.value.raw.id(), 42);
             drop(listener);
             runner.join().unwrap();
         }
@@ -828,7 +899,7 @@ mod asynchronous {
                 false,
             );
             let event = drive(&runner, listener.next()).unwrap().unwrap();
-            assert_eq!(event.value.raw.id, 3);
+            assert_eq!(event.value.raw.id(), 3);
             assert_eq!(event.value.data, record());
             runner.join().unwrap();
             let error = wait(listener.next()).unwrap().err().unwrap();
@@ -917,7 +988,7 @@ mod asynchronous {
                     .unwrap()
                     .value
                     .raw
-                    .id,
+                    .id(),
                 1
             );
             let error = drive(&runner, listener.next()).unwrap().err().unwrap();
@@ -948,22 +1019,22 @@ mod asynchronous {
             wait(source.put_typed(&hash, &record(), false)).unwrap();
             let event = wait(listener.next()).unwrap().unwrap();
             assert_eq!(event.value.data, record());
-            assert_eq!(event.value.raw.data.first(), Some(&0x94));
+            assert_eq!(event.value.raw.as_slice().first(), Some(&0x94));
             assert!(event
                 .value
                 .raw
-                .data
+                .as_slice()
                 .ends_with(&[0xc4, 0x04, 0x00, 0x80, 0xff, 0x01]));
-            let id = event.value.raw.id;
+            let id = event.value.raw.id();
             drop(listener);
             let values: Vec<_> =
                 wait(destination.get_typed::<Record>(&hash).try_collect()).unwrap();
             assert!(values
                 .iter()
-                .any(|value| value.data == record() && value.raw.id == id));
+                .any(|value| value.data == record() && value.raw.id() == id));
             let values: Vec<_> = wait(destination.get(&hash).try_collect()).unwrap();
             assert!(values.iter().any(|value| {
-                rmp_serde::from_slice::<Record>(&value.data).unwrap() == record()
+                rmp_serde::from_slice::<Record>(value.as_slice()).unwrap() == record()
             }));
             wait(source.shutdown()).unwrap();
             wait(destination.shutdown()).unwrap();

@@ -131,3 +131,33 @@ impl fmt::Display for Value {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn value_moves_between_threads_without_copying_payload() {
+        let mut value = Value::from_bytes(b"native\0payload\xff");
+        value.set_user_type("borrowed metadata").unwrap();
+        let view = unsafe { ffi::dht_value_get_data(value.as_ptr()) };
+        let value = std::thread::spawn(move || {
+            value.set_seq(7);
+            value
+        })
+        .join()
+        .unwrap();
+        assert_eq!(value.as_slice().as_ptr(), view.data);
+        assert_eq!(value.as_slice(), b"native\0payload\xff");
+        assert_eq!(value.seq(), 7);
+        let user_type: &str = value.user_type().unwrap();
+        assert_eq!(user_type, "borrowed metadata");
+    }
+
+    #[test]
+    fn empty_value_payload_is_borrowed_safely() {
+        let value = Value::from_bytes(&[]);
+        assert!(value.as_slice().is_empty());
+        assert_eq!(value.as_slice(), &[]);
+    }
+}
