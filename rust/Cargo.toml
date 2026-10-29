@@ -4,8 +4,20 @@ version = "0.2.0"
 authors = ["Sébastien Blin <sebastien.blin@savoirfairelinux.com>", "Adrien Beraud <adrien.beraud@savoirfairelinux.com>"]
 edition = "2024"
 
+[features]
+async = ["dep:futures-channel", "dep:futures-core"]
+
+[[example]]
+name = "dhtnode_async"
+required-features = ["async"]
+
 [dependencies]
 libc="0.2"
 os_socketaddr="0.2.3"
+futures-channel = { version = "0.3", optional = true }
+futures-core = { version = "0.3", optional = true }
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dev-dependencies]
+futures = "0.3"

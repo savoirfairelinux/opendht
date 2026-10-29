@@ -77,6 +77,68 @@ For non-threaded operation set `config.threaded = false` and repeatedly call
 `loop_once()`. Priority operations can take an iteration before normal work.
 `run_bind` selects IPv4/IPv6 bind addresses; `bound_port` reports OS-assigned ports.
 
+## Async API
+
+The optional `async` feature adds `opendht::aio::AsyncDhtRunner`. It uses futures
+channels without depending on Tokio or any other executor. The callback API and
+default dependency set are unchanged.
+
+```toml
+[dependencies]
+opendht = { version = "0.6", features = ["async"] }
+futures = "0.3"
+```
+
+Configure and start a normal `DhtRunner`, then transfer it into
+`AsyncDhtRunner::new(runner)`. Clones share the same runner. Run the complete
+two-node loopback example with:
+
+```sh
+cargo run --features async --example dhtnode_async
+cargo test --all-features --all-targets
+cargo test --all-features --doc
+```
+
+With an already running async adapter:
+
+```rust,ignore
+use futures::{StreamExt, TryStreamExt};
+use opendht::{InfoHash, Value};
+
+let hash = InfoHash::get("example");
+let mut updates = runner.listen(&hash)?;
+runner.put(&hash, Value::new("hello"), false).await?;
+let update = updates.next().await.transpose()?;
+drop(updates);
+let values: Vec<_> = runner.get(&hash).try_collect().await?;
+runner.shutdown().await?;
+runner.join()?;
+```
+
+- `put`, `put_signed`, `put_encrypted`, and `ping` return futures resolving to
+	`io::Result<()>`. `bootstrap(&[SocketAddr])` contacts pre-resolved peers
+	concurrently and succeeds when any peer responds. Resolve hostnames through
+	the application's runtime before calling it.
+- `get`, `get_filtered`, and `query` return fallible streams. Get/listen values
+	are independent `ValueSnapshot`s containing payload, ID, type, sequence,
+	priority, user/push types, signer public-key bytes, and recipient. Listener
+	`ValueEvent`s also preserve the expiration flag.
+- Streams buffer at most 64 items by default; `with_capacity` changes this
+	limit. A full buffer stops delivery and yields `WouldBlock` after buffered
+	items, then ends. Restart the operation to obtain a fresh snapshot. Native
+	failures, invalid metadata, and runner termination also yield errors rather
+	than successful EOF. Duplicate native deliveries are not suppressed.
+- Dropping a listener immediately queues native cancellation and releases its
+	token. Listeners retain the runner until dropped. Dropping get/query streams
+	stops delivery at the next native callback, or when the runner is joined.
+	Dropping a completion future abandons its result but does not cancel the
+	native operation or undo a permanent put.
+- Runner adapters and listeners remain thread-bound. Use `block_on`, a local
+	executor, or Tokio `LocalSet`, not `tokio::spawn`. Snapshots and query rows can
+	be sent to other threads. Non-threaded runners still require independent
+	`loop_once()` calls while waiting. `join()` remains blocking; await graceful
+	`shutdown()` first when persistence is required.
+
 ## Extended APIs
 
 - Values expose explicit IDs, user types, value types, sequence numbers,

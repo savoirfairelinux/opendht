@@ -40,6 +40,9 @@ mod infohash;
 mod pkid;
 mod value;
 
+#[cfg(feature = "async")]
+pub mod aio;
+
 pub use blob::Blob;
 pub use dhtrunner::{
     DhtNodeConfig, DhtRunner, DhtRunnerConfig, DhtSecureConfig, NodeStatus, OpToken,
