@@ -733,4 +733,242 @@ mod asynchronous {
         source.join().unwrap();
         destination.join().unwrap();
     }
+
+    #[cfg(feature = "serde")]
+    mod typed {
+        use super::*;
+        use opendht::typed::TypedError;
+        use serde::{Deserialize, Serialize};
+        use std::error::Error;
+        use std::marker::PhantomPinned;
+
+        #[derive(Debug, PartialEq, Serialize, Deserialize)]
+        struct Record {
+            version: u32,
+            name: String,
+            ports: Vec<u16>,
+            #[serde(with = "serde_bytes")]
+            payload: Vec<u8>,
+        }
+
+        fn record() -> Record {
+            Record {
+                version: 1,
+                name: "node-\u{03bb}\0".into(),
+                ports: vec![4222, 8443],
+                payload: vec![0, 0x80, 0xff, 1],
+            }
+        }
+
+        #[test]
+        fn typed_listener_decodes_compact_msgpack_binary() {
+            #[derive(Debug, PartialEq, Deserialize)]
+            struct Packet {
+                #[serde(with = "serde_bytes")]
+                payload: Vec<u8>,
+            }
+
+            let runner = nonthreaded(8);
+            let hash = InfoHash::get("typed MessagePack binary fixture");
+            let mut listener = runner.listen_typed::<Packet>(&hash).unwrap();
+            let fixture = [0x91, 0xc4, 0x04, 0x00, 0x80, 0xff, 0x01];
+            let _pending = runner.put(&hash, Value::with_id(&fixture, 42), false);
+            let event = drive(&runner, listener.next()).unwrap().unwrap();
+            assert_eq!(event.value.raw.data, fixture);
+            assert_eq!(event.value.data.payload, [0, 0x80, 0xff, 1]);
+            drop(listener);
+            runner.join().unwrap();
+        }
+
+        #[test]
+        fn typed_listener_preserves_metadata_and_expiration() {
+            let runner = nonthreaded(8);
+            let hash = InfoHash::get("typed metadata");
+            let mut listener = runner.listen_typed::<Record>(&hash).unwrap();
+            let mut value = Value::with_id(&rmp_serde::to_vec(&record()).unwrap(), 42);
+            value.set_value_type(17);
+            value.set_seq(7);
+            value.set_user_type("application/typed-test").unwrap();
+            let _pending = runner.put(&hash, value, false);
+            let event = drive(&runner, listener.next()).unwrap().unwrap();
+            assert!(!event.expired);
+            assert_eq!(event.value.data, record());
+            assert_eq!(event.value.raw.id, 42);
+            assert_eq!(event.value.raw.value_type, 17);
+            assert_eq!(event.value.raw.seq, 7);
+            assert_eq!(event.value.raw.user_type, "application/typed-test");
+            assert_eq!(
+                rmp_serde::from_slice::<Record>(&event.value.raw.data).unwrap(),
+                record()
+            );
+            let event = drive(&runner, listener.next()).unwrap().unwrap();
+            assert!(event.expired);
+            assert_eq!(event.value.data, record());
+            assert_eq!(event.value.raw.id, 42);
+            drop(listener);
+            runner.join().unwrap();
+        }
+
+        #[test]
+        fn typed_decode_errors_do_not_end_listener() {
+            let runner = nonthreaded(8);
+            let hash = InfoHash::get("typed mixed payloads");
+            let mut listener = runner.listen_typed::<Record>(&hash).unwrap();
+            for (id, payload) in [(1, [0xc1].as_slice()), (2, [0x11].as_slice())] {
+                let _pending = runner.put(&hash, Value::with_id(payload, id), false);
+                let error = drive(&runner, listener.next()).unwrap().err().unwrap();
+                assert!(error.source().is_some());
+                assert!(
+                    matches!(error, TypedError::Deserialize { id: value_id, .. } if value_id == id)
+                );
+            }
+            let _pending = runner.put(
+                &hash,
+                Value::with_id(&rmp_serde::to_vec(&record()).unwrap(), 3),
+                false,
+            );
+            let event = drive(&runner, listener.next()).unwrap().unwrap();
+            assert_eq!(event.value.raw.id, 3);
+            assert_eq!(event.value.data, record());
+            runner.join().unwrap();
+            let error = wait(listener.next()).unwrap().err().unwrap();
+            assert!(matches!(error, TypedError::Operation(_)));
+            assert!(wait(listener.next()).is_none());
+        }
+
+        #[test]
+        fn typed_put_distinguishes_serialization_and_native_errors() {
+            struct Unserializable;
+
+            impl Serialize for Unserializable {
+                fn serialize<Serializer>(
+                    &self,
+                    _: Serializer,
+                ) -> Result<Serializer::Ok, Serializer::Error>
+                where
+                    Serializer: serde::Serializer,
+                {
+                    Err(serde::ser::Error::custom(
+                        "intentional serialization failure",
+                    ))
+                }
+            }
+
+            let runner = AsyncDhtRunner::new(DhtRunner::new());
+            let hash = InfoHash::get("typed put errors");
+            let error = wait(runner.put_typed(&hash, &Unserializable, false)).unwrap_err();
+            assert!(error.source().is_some());
+            assert!(matches!(error, TypedError::Serialize(_)));
+            let error = wait(runner.put_typed(&hash, &record(), false)).unwrap_err();
+            assert!(error.source().is_some());
+            assert!(matches!(error, TypedError::Operation(_)));
+            runner.join().unwrap();
+        }
+
+        #[test]
+        fn typed_streams_support_non_unpin_records_and_detached_lifetimes() {
+            #[derive(Serialize, Deserialize)]
+            struct PinnedRecord {
+                message: String,
+                #[serde(skip)]
+                _pin: PhantomPinned,
+            }
+
+            let runner = nonthreaded(8);
+            let hash = InfoHash::get("typed pinned records");
+            let mut listener = runner.listen_typed::<PinnedRecord>(&hash).unwrap();
+            let value = PinnedRecord {
+                message: "owned".into(),
+                _pin: PhantomPinned,
+            };
+            let _pending = runner.put(
+                &hash,
+                Value::from_bytes(&rmp_serde::to_vec(&value).unwrap()),
+                false,
+            );
+            let event = drive(&runner, listener.next()).unwrap().unwrap();
+            assert_eq!(event.value.data.message, "owned");
+            drop(listener);
+            let mut values = runner.get_typed::<PinnedRecord>(&InfoHash::get("temporary hash"));
+            drop(runner);
+            assert!(matches!(
+                wait(values.next()).unwrap(),
+                Err(TypedError::Operation(_))
+            ));
+            assert!(wait(values.next()).is_none());
+        }
+
+        #[test]
+        fn typed_listener_inherits_bounded_stream_errors() {
+            let runner = nonthreaded(1);
+            let hash = InfoHash::get("typed overflow");
+            let mut listener = runner.listen_typed::<Record>(&hash).unwrap();
+            for id in 1..=3 {
+                let _pending = runner.put(
+                    &hash,
+                    Value::with_id(&rmp_serde::to_vec(&record()).unwrap(), id),
+                    false,
+                );
+                runner.loop_once().unwrap();
+            }
+            assert_eq!(
+                drive(&runner, listener.next())
+                    .unwrap()
+                    .unwrap()
+                    .value
+                    .raw
+                    .id,
+                1
+            );
+            let error = drive(&runner, listener.next()).unwrap().err().unwrap();
+            assert!(
+                matches!(error, TypedError::Operation(error) if error.kind() == std::io::ErrorKind::WouldBlock)
+            );
+            assert!(drive(&runner, listener.next()).is_none());
+            drop(listener);
+            runner.join().unwrap();
+        }
+
+        #[test]
+        fn typed_threaded_put_get_listen_roundtrip() {
+            let mut source = DhtRunner::new();
+            let mut destination = DhtRunner::new();
+            source
+                .run_bind("127.0.0.1", "::1", 0, DhtRunnerConfig::new())
+                .unwrap();
+            destination
+                .run_bind("127.0.0.1", "::1", 0, DhtRunnerConfig::new())
+                .unwrap();
+            let address = ([127, 0, 0, 1], destination.bound_port(libc::AF_INET as _)).into();
+            let source = AsyncDhtRunner::new(source);
+            let destination = AsyncDhtRunner::new(destination);
+            wait(source.bootstrap(&[address])).unwrap();
+            let hash = InfoHash::get("typed network record");
+            let mut listener = destination.listen_typed::<Record>(&hash).unwrap();
+            wait(source.put_typed(&hash, &record(), false)).unwrap();
+            let event = wait(listener.next()).unwrap().unwrap();
+            assert_eq!(event.value.data, record());
+            assert_eq!(event.value.raw.data.first(), Some(&0x94));
+            assert!(event
+                .value
+                .raw
+                .data
+                .ends_with(&[0xc4, 0x04, 0x00, 0x80, 0xff, 0x01]));
+            let id = event.value.raw.id;
+            drop(listener);
+            let values: Vec<_> =
+                wait(destination.get_typed::<Record>(&hash).try_collect()).unwrap();
+            assert!(values
+                .iter()
+                .any(|value| value.data == record() && value.raw.id == id));
+            let values: Vec<_> = wait(destination.get(&hash).try_collect()).unwrap();
+            assert!(values.iter().any(|value| {
+                rmp_serde::from_slice::<Record>(&value.data).unwrap() == record()
+            }));
+            wait(source.shutdown()).unwrap();
+            wait(destination.shutdown()).unwrap();
+            source.join().unwrap();
+            destination.join().unwrap();
+        }
+    }
 }

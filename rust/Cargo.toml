@@ -10,6 +10,7 @@ repository = "https://github.com/savoirfairelinux/opendht"
 
 [features]
 async = ["dep:futures-channel", "dep:futures-core"]
+serde = ["async", "dep:serde", "dep:serde_json", "dep:rmp-serde"]
 
 [[example]]
 name = "dhtnode_async"
@@ -20,6 +21,11 @@ libc="0.2"
 os_socketaddr="0.2.3"
 futures-channel = { version = "0.3", optional = true }
 futures-core = { version = "0.3", optional = true }
+serde = { version = "1", optional = true }
+serde_json = { version = "1", optional = true }
+rmp-serde = { version = "1", optional = true }
 
 [dev-dependencies]
 futures = "0.3"
+serde = { version = "1", features = ["derive"] }
+serde_bytes = "0.11"
