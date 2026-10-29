@@ -245,7 +245,7 @@ fn shutdown_owns_its_callback_and_contains_panics() {
 fn startup_errors_reach_rust() {
     let socket4 = std::net::UdpSocket::bind("0.0.0.0:0").unwrap();
     let port = socket4.local_addr().unwrap().port();
-    let _socket6 = std::net::UdpSocket::bind((std::net::Ipv6Addr::UNSPECIFIED, port)).unwrap();
+    let _socket6 = std::net::UdpSocket::bind((std::net::Ipv6Addr::LOCALHOST, port)).unwrap();
     assert!(DhtRunner::new().run(port).is_err());
 }
 
