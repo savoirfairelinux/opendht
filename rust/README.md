@@ -38,14 +38,18 @@ embedded NULs. Passwords and other C strings reject embedded NULs.
 
 Callbacks are owned `Send + 'static` closures, not borrowed `&mut` closures.
 Use `move` captures and channels or `Arc` for shared application state. Native
-handles are thread-bound; send copied data through channels rather than moving
-a runner or value handle between threads. Handles own stable native pointers
-and can be moved out of or back into their Rust boxes on the same thread.
-Callback panics are contained at the
-FFI boundary; a panicking value callback stops its operation.
+runner and crypto handles remain thread-bound. `Value` is `Send`, not `Sync`:
+it can move between threads, and mutation requires exclusive `&mut` access.
+Get/listen callbacks receive ordinary owned `Box<Value>` objects and can move
+them directly through channels. Callback panics are contained at the FFI
+boundary; a panicking value callback stops its operation.
 
-`Value::boxed()` creates an independent copy, including payload and metadata,
-so a retained value does not alias mutable native storage or in-flight puts.
+The same `Value` type is used for construction, callback delivery, async streams,
+and publication. `as_slice()` borrows the payload; `user_type()` and `push_type()`
+borrow strings. `owner()` returns a retained public-key handle without exporting
+it. `as_bytes()` explicitly copies the payload into a Rust `Vec<u8>`.
+Received values can be edited directly and passed to `put` without converting
+or cloning them. `boxed()` explicitly creates an additional independent copy.
 
 ```rust
 use opendht::{DhtRunner, InfoHash, Value};
@@ -56,11 +60,12 @@ runner.run(0)?;
 let hash = InfoHash::get("example");
 let (sent, received) = mpsc::channel();
 let token = runner.listen(&hash, move |value, expired| {
-		if !expired { let _ = sent.send(value.as_bytes()); }
+		if !expired { let _ = sent.send(value); }
 		true
 })?;
 runner.put(&hash, Value::new("hello"), |_| {}, false);
-let bytes = received.recv_timeout(std::time::Duration::from_secs(5))?;
+let value = received.recv_timeout(std::time::Duration::from_secs(5))?;
+assert_eq!(value.as_slice(), b"hello");
 runner.cancel_listen(&hash, token);
 runner.join()?;
 # Ok::<(), Box<dyn std::error::Error>>(())
@@ -120,13 +125,13 @@ runner.join()?;
 	concurrently and succeeds when any peer responds. Resolve hostnames through
 	the application's runtime before calling it.
 - `get`, `get_filtered`, and `query` return fallible streams. Get/listen values
-	are independent `ValueSnapshot`s containing payload, ID, type, sequence,
-	priority, user/push types, signer public-key bytes, and recipient. Listener
-	`ValueEvent`s also preserve the expiration flag.
+	are the same owned `Box<Value>` objects delivered by the callback API,
+	with borrowed access to payload and metadata. Listener `ValueEvent`s also
+	preserve the expiration flag.
 - Streams buffer at most 64 items by default; `with_capacity` changes this
 	limit. A full buffer stops delivery and yields `WouldBlock` after buffered
 	items, then ends. Restart the operation to obtain a fresh snapshot. Native
-	failures, invalid metadata, and runner termination also yield errors rather
+	failures and runner termination also yield errors rather
 	than successful EOF. Duplicate native deliveries are not suppressed.
 - Dropping a listener immediately queues native cancellation and releases its
 	token. Listeners retain the runner until dropped. Dropping get/query streams
@@ -134,10 +139,24 @@ runner.join()?;
 	Dropping a completion future abandons its result but does not cancel the
 	native operation or undo a permanent put.
 - Runner adapters and listeners remain thread-bound. Use `block_on`, a local
-	executor, or Tokio `LocalSet`, not `tokio::spawn`. Snapshots and query rows can
+	executor, or Tokio `LocalSet`, not `tokio::spawn`. Received values and query rows can
 	be sent to other threads. Non-threaded runners still require independent
 	`loop_once()` calls while waiting. `join()` remains blocking; await graceful
 	`shutdown()` first when persistence is required.
+
+Received values are copied once by the native callback bridge to isolate them
+from mutable DHT storage. Async streams move those exact boxes through their
+channels without copying payloads or rebuilding metadata. Borrowed data remains
+valid for the value's lifetime, even after the callback returns or the runner
+stops. Put operations consume their box, so Rust cannot continue mutating a value
+after native code retains it. Malformed UTF-8 metadata is reported when its
+string accessor is called, rather than eagerly failing the entire stream.
+
+`value.owner()` returns the existing `PublicKey` type, not a second key class or
+DER bytes. Call `pack()` only when exported bytes are actually needed. Shared
+const owner-key fingerprint caches are initialized on the callback thread before
+transfer. Replacing a returned key through `unpack()` changes that handle, not
+the value's owner key.
 
 ## Typed Records
 
@@ -175,7 +194,7 @@ let record = Service {
 };
 runner.put_typed(&hash, &record, false).await?;
 if let Some(event) = updates.try_next().await? {
-	println!("{}: {:?}", event.value.raw.id, event.value.data);
+	println!("{}: {:?}", event.value.raw.id(), event.value.data);
 }
 drop(updates);
 let records: Vec<_> = runner.get_typed::<Service>(&hash).try_collect().await?;
@@ -184,8 +203,10 @@ let records: Vec<_> = runner.get_typed::<Service>(&hash).try_collect().await?;
 Typed puts accept `Serialize`, including unsized values. Typed reads require
 `DeserializeOwned`, without imposing `Clone`, `Send`, or `Unpin` on the record.
 Decoding happens when the consumer polls, not in native callbacks. Each
-`TypedValue<T>` exposes decoded `data` and the original `raw` snapshot, retaining
-payload bytes and all metadata. `TypedEvent<T>` preserves the expiration flag.
+`TypedValue<T>` exposes decoded `data` and the original owned `raw: Box<Value>`, retaining
+payload bytes and all metadata. Decoding borrows the raw payload directly, with
+no intermediate byte-buffer copy; allocations required by the decoded record
+still apply. `TypedEvent<T>` preserves the expiration flag.
 
 `TypedError` distinguishes `Serialize`, `Deserialize { id, source }`, and native
 `Operation` errors, preserving the underlying error through `Error::source()`.
@@ -199,7 +220,7 @@ only when polled. Serialization failure does not start a native put. Dropping
 the future after publication starts does not undo the put. Typed puts use the
 default native metadata; for custom IDs/types or signed/encrypted publication,
 serialize into a `Value` and use the existing untyped methods. Raw get/listen
-snapshots can also be decoded with `TypedValue::<T>::try_from(snapshot)` or
+values can also be decoded with `TypedValue::<T>::try_from(value)` or
 `TypedEvent::<T>::try_from(event)`.
 
 The wire payload is compact MessagePack, following OpenDHT's serialization

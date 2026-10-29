@@ -272,7 +272,7 @@ extern "C" fn get_handler_cb(value: *const ffi::Value, ptr: *mut c_void) -> bool
     }
     callback(false, || unsafe {
         let handler = ptr as *mut GetHandler;
-        (*handler).get_cb(Value::from_raw(ffi::dht_value_copy(value)).expect("value copy failed"))
+        (*handler).get_cb(Value::copy_from_received(value).expect("value copy failed"))
     })
 }
 
@@ -308,7 +308,7 @@ extern "C" fn listen_handler(value: *const ffi::Value, expired: bool, ptr: *mut 
     callback(false, || unsafe {
         let handler = ptr as *mut ListenHandler;
         (*handler).cb(
-            Value::from_raw(ffi::dht_value_copy(value)).expect("value copy failed"),
+            Value::copy_from_received(value).expect("value copy failed"),
             expired,
         )
     })
@@ -537,6 +537,7 @@ impl DhtRunner {
         result(unsafe { ffi::dht_runner_connectivity_changed(self.as_ptr()) })
     }
 
+    /// Deliver owned values that callbacks may mutate or move to another thread.
     pub fn get(
         &mut self,
         h: &InfoHash,
@@ -676,7 +677,8 @@ impl DhtRunner {
         unsafe { ffi::dht_runner_cancel_put(self.as_ptr(), h, vid) }
     }
 
-    /// Registers an owned callback. It is released after cancellation or `join()`.
+    /// Registers an owned callback receiving ordinary owned `Box<Value>` objects.
+    /// It is released after cancellation or `join()`.
     /// Borrowed callbacks cannot outlive their stack frame:
     ///
     /// ```compile_fail

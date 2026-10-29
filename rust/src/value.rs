@@ -14,7 +14,40 @@ pub use crate::ffi::DataView;
 
 native_handle!(Value, dht_value_unref);
 
+/// Rust owns an unaliased native value: constructors allocate it, received
+/// values are deep-copied once, and boxed() deep-copies explicitly. Puts consume
+/// the handle before native code retains it. Shared owner keys are const and
+/// their lazy fingerprints are initialized before received values cross threads.
+/// Mutation requires exclusive access; native storage may be freed on any thread.
+/// Value is Send, not Sync.
+unsafe impl Send for Value {}
+
+impl AsRef<[u8]> for Value {
+    fn as_ref(&self) -> &[u8] {
+        self.as_slice()
+    }
+}
+
+impl fmt::Debug for Value {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("Value")
+            .field("id", &self.id())
+            .field("seq", &self.seq())
+            .finish_non_exhaustive()
+    }
+}
+
 impl Value {
+    pub(crate) unsafe fn copy_from_received(value: *const ffi::Value) -> io::Result<Box<Self>> {
+        let value = unsafe { Self::from_raw(ffi::dht_value_copy(value))? };
+        if let Some(owner) = value.owner() {
+            owner.id();
+            owner.long_id();
+        }
+        Ok(value)
+    }
+
     pub fn with_id(data: &[u8], id: u64) -> Box<Value> {
         unsafe {
             Self::from_raw(ffi::dht_value_with_id_new(data.as_ptr(), data.len(), id))
@@ -41,13 +74,16 @@ impl Value {
     }
 
     pub fn as_bytes(&self) -> Vec<u8> {
-        unsafe {
-            let dv = ffi::dht_value_get_data(self.as_ptr());
-            if dv.size == 0 {
-                return Vec::new();
-            }
-            let slice = slice::from_raw_parts(dv.data, dv.size);
-            slice.to_vec()
+        self.as_slice().to_vec()
+    }
+
+    /// Borrow the payload without allocating or copying it.
+    pub fn as_slice(&self) -> &[u8] {
+        let view = self.dataview();
+        if view.size == 0 {
+            &[]
+        } else {
+            unsafe { slice::from_raw_parts(view.data, view.size) }
         }
     }
 
@@ -63,12 +99,8 @@ impl Value {
         unsafe { PublicKey::from_raw(ffi::dht_value_get_owner(self.as_ptr())).ok() }
     }
 
-    pub fn user_type(&self) -> Result<String, str::Utf8Error> {
-        unsafe {
-            Ok(CStr::from_ptr(ffi::dht_value_get_user_type(self.as_ptr()))
-                .to_str()?
-                .to_owned())
-        }
+    pub fn user_type(&self) -> Result<&str, str::Utf8Error> {
+        unsafe { CStr::from_ptr(ffi::dht_value_get_user_type(self.as_ptr())).to_str() }
     }
 
     pub fn set_user_type(&mut self, value: &str) -> io::Result<()> {
@@ -103,12 +135,8 @@ impl Value {
             ffi::dht_value_set_priority(self.as_ptr(), value);
         }
     }
-    pub fn push_type(&self) -> Result<String, str::Utf8Error> {
-        unsafe {
-            Ok(CStr::from_ptr(ffi::dht_value_get_push_type(self.as_ptr()))
-                .to_str()?
-                .to_owned())
-        }
+    pub fn push_type(&self) -> Result<&str, str::Utf8Error> {
+        unsafe { CStr::from_ptr(ffi::dht_value_get_push_type(self.as_ptr())).to_str() }
     }
     pub fn set_push_type(&mut self, value: &str) -> io::Result<()> {
         let value = CString::new(value)?;

@@ -30,7 +30,7 @@
 //!     };
 //!     runner.put_typed(key, &record, false).await?;
 //!     if let Some(event) = updates.try_next().await? {
-//!         println!("{}: {:?}", event.value.raw.id, event.value.data);
+//!         println!("{}: {:?}", event.value.raw.id(), event.value.data);
 //!     }
 //!     drop(updates);
 //!     let records: Vec<_> = runner.get_typed::<Service>(key).try_collect().await?;
@@ -38,7 +38,7 @@
 //! }
 //! ```
 
-use crate::aio::{AsyncDhtRunner, ValueEvent, ValueSnapshot};
+use crate::aio::{AsyncDhtRunner, ValueEvent};
 use crate::{InfoHash, Value};
 use futures_core::Stream;
 use serde::{de::DeserializeOwned, Serialize};
@@ -51,7 +51,7 @@ use std::task::{Context, Poll};
 /// A decoded record together with its original payload and native metadata.
 pub struct TypedValue<T> {
     pub data: T,
-    pub raw: ValueSnapshot,
+    pub raw: Box<Value>,
 }
 
 impl<T: fmt::Debug> fmt::Debug for TypedValue<T> {
@@ -59,8 +59,8 @@ impl<T: fmt::Debug> fmt::Debug for TypedValue<T> {
         formatter
             .debug_struct("TypedValue")
             .field("data", &self.data)
-            .field("id", &self.raw.id)
-            .field("seq", &self.raw.seq)
+            .field("id", &self.raw.id())
+            .field("seq", &self.raw.seq())
             .finish_non_exhaustive()
     }
 }
@@ -106,12 +106,15 @@ impl Error for TypedError {
     }
 }
 
-impl<T: DeserializeOwned> TryFrom<ValueSnapshot> for TypedValue<T> {
+impl<T: DeserializeOwned> TryFrom<Box<Value>> for TypedValue<T> {
     type Error = TypedError;
 
-    fn try_from(raw: ValueSnapshot) -> Result<Self, Self::Error> {
-        let data = rmp_serde::from_slice(&raw.data)
-            .map_err(|source| TypedError::Deserialize { id: raw.id, source })?;
+    fn try_from(raw: Box<Value>) -> Result<Self, Self::Error> {
+        let data =
+            rmp_serde::from_slice(raw.as_slice()).map_err(|source| TypedError::Deserialize {
+                id: raw.id(),
+                source,
+            })?;
         Ok(Self { data, raw })
     }
 }

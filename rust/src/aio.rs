@@ -1,7 +1,8 @@
 //! Runtime-independent futures and bounded streams, enabled by the `async` feature.
 //!
 //! Runners and listeners stay on their creating thread. Use a local executor or
-//! Tokio `LocalSet`; streamed snapshots contain only owned, thread-safe data.
+//! Tokio `LocalSet`; received values own their native storage and can be
+//! transferred between threads without another payload copy.
 
 use crate::{DhtRunner, InfoHash, OpToken, PkId, QueryResult, Value};
 use futures_channel::{mpsc, oneshot};
@@ -16,43 +17,9 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::task::{Context, Poll};
 
-/// An independent value snapshot containing no native handles.
-pub struct ValueSnapshot {
-    pub data: Vec<u8>,
-    pub id: u64,
-    pub value_type: u16,
-    pub seq: u16,
-    pub priority: u32,
-    pub user_type: String,
-    pub push_type: String,
-    /// DER-encoded public key of the signer, if present.
-    pub owner: Option<Vec<u8>>,
-    pub recipient: InfoHash,
-}
-
-impl ValueSnapshot {
-    fn copy(value: &Value) -> io::Result<Self> {
-        Ok(Self {
-            data: value.as_bytes(),
-            id: value.id(),
-            value_type: value.value_type(),
-            seq: value.seq(),
-            priority: value.priority(),
-            user_type: value
-                .user_type()
-                .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?,
-            push_type: value
-                .push_type()
-                .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?,
-            owner: value.owner().map(|key| key.pack()).transpose()?,
-            recipient: value.recipient(),
-        })
-    }
-}
-
 /// A listener update; expiration events retain the expired value's metadata.
 pub struct ValueEvent {
-    pub value: ValueSnapshot,
+    pub value: Box<Value>,
     pub expired: bool,
 }
 
@@ -142,7 +109,7 @@ impl<T> StreamSender<T> {
 /// A bounded get or query stream.
 ///
 /// Buffered items precede a terminal error. Native failure, runner shutdown,
-/// invalid metadata, and buffer overflow are never reported as successful EOF.
+/// and buffer overflow are never reported as successful EOF.
 /// Dropping the stream stops delivery; native work stops at its next callback
 /// or when the runner is joined.
 #[must_use = "streams must be polled to receive values and completion errors"]
@@ -374,12 +341,12 @@ impl AsyncDhtRunner {
         pending
     }
 
-    pub fn get(&self, hash: &InfoHash) -> OperationStream<ValueSnapshot> {
+    pub fn get(&self, hash: &InfoHash) -> OperationStream<Box<Value>> {
         let (mut sender, stream) = stream_channel(self.capacity);
         let completion = sender.completion.clone();
         self.state.runner.borrow_mut().get(
             hash,
-            move |value| sender.send(ValueSnapshot::copy(&value)),
+            move |value| sender.send(Ok(value)),
             move |success| completion.finish(outcome(success)),
         );
         stream
@@ -389,13 +356,13 @@ impl AsyncDhtRunner {
         &self,
         hash: &InfoHash,
         filter: &str,
-    ) -> io::Result<OperationStream<ValueSnapshot>> {
+    ) -> io::Result<OperationStream<Box<Value>>> {
         let (mut sender, stream) = stream_channel(self.capacity);
         let completion = sender.completion.clone();
         self.state.runner.borrow_mut().get_filtered(
             hash,
             filter,
-            move |value| sender.send(ValueSnapshot::copy(&value)),
+            move |value| sender.send(Ok(value)),
             move |success| completion.finish(outcome(success)),
         )?;
         Ok(stream)
@@ -422,9 +389,7 @@ impl AsyncDhtRunner {
         let token = self.state.runner.borrow_mut().listen_filtered(
             hash,
             filter,
-            move |value, expired| {
-                sender.send(ValueSnapshot::copy(&value).map(|value| ValueEvent { value, expired }))
-            },
+            move |value, expired| sender.send(Ok(ValueEvent { value, expired })),
         )?;
         Ok(Listener {
             state: self.state.clone(),

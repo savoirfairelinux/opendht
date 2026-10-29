@@ -26,8 +26,8 @@ fn main() -> Result<(), Box<dyn Error>> {
             .ok_or_else(|| io::Error::other("listener ended before receiving a value"))??;
         println!(
             "LISTEN {}: {} (expired: {})",
-            event.value.id,
-            String::from_utf8_lossy(&event.value.data),
+            event.value.id(),
+            String::from_utf8_lossy(event.value.as_slice()),
             event.expired,
         );
         drop(updates);
@@ -60,7 +60,8 @@ fn main() -> Result<(), Box<dyn Error>> {
             })??;
             println!(
                 "TYPED LISTEN {}: {:?}",
-                event.value.raw.id, event.value.data
+                event.value.raw.id(),
+                event.value.data
             );
             drop(updates);
             let values: Vec<_> = destination
