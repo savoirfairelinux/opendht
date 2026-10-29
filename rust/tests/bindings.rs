@@ -481,3 +481,256 @@ fn threaded_signed_and_encrypted_roundtrips() {
         runner.join().unwrap();
     }
 }
+
+#[cfg(feature = "async")]
+mod asynchronous {
+    use super::*;
+    use futures::{executor::block_on, future, Future, StreamExt, TryStreamExt};
+    use opendht::aio::AsyncDhtRunner;
+    use std::pin::pin;
+    use std::time::Instant;
+
+    fn nonthreaded(capacity: usize) -> AsyncDhtRunner {
+        let mut runner = DhtRunner::new();
+        let mut config = DhtRunnerConfig::new();
+        config.threaded = false;
+        runner.run_bind("127.0.0.1", "::1", 0, config).unwrap();
+        runner.register_type(17, "async test", 1, false).unwrap();
+        AsyncDhtRunner::with_capacity(runner, capacity).unwrap()
+    }
+
+    fn drive<Output>(runner: &AsyncDhtRunner, operation: impl Future<Output = Output>) -> Output {
+        let mut operation = pin!(operation);
+        let deadline = Instant::now() + Duration::from_secs(15);
+        block_on(future::poll_fn(|context| {
+            assert!(Instant::now() < deadline, "async operation timed out");
+            runner.loop_once().unwrap();
+            context.waker().wake_by_ref();
+            operation.as_mut().poll(context)
+        }))
+    }
+
+    fn wait<Output>(operation: impl Future<Output = Output>) -> Output {
+        let (finished, stopped) = mpsc::channel();
+        let (expired, deadline) = futures::channel::oneshot::channel();
+        let watchdog = std::thread::spawn(move || {
+            if stopped.recv_timeout(Duration::from_secs(20)).is_err() {
+                let _ = expired.send(());
+            }
+        });
+        let outcome = block_on(future::select(Box::pin(operation), deadline));
+        let _ = finished.send(());
+        watchdog.join().unwrap();
+        match outcome {
+            future::Either::Left((output, _)) => output,
+            future::Either::Right(_) => panic!("async operation timed out"),
+        }
+    }
+
+    #[test]
+    fn async_listener_preserves_owned_metadata() {
+        let runner = nonthreaded(8);
+        let hash = InfoHash::get("async metadata");
+        let mut listener = runner.listen_filtered(&hash, "WHERE seq=7").unwrap();
+        let mut value = Value::with_id(b"async\0binary\xff", 42);
+        value.set_value_type(17);
+        value.set_seq(7);
+        value.set_priority(2);
+        value.set_user_type("application/async").unwrap();
+        value.set_push_type("call").unwrap();
+        let _pending = runner.put(&hash, value, false);
+        let event = drive(&runner, listener.next()).unwrap().unwrap();
+        assert!(!event.expired);
+        assert_eq!(event.value.data, b"async\0binary\xff");
+        assert_eq!(event.value.id, 42);
+        assert_eq!(event.value.value_type, 17);
+        assert_eq!(event.value.seq, 7);
+        assert_eq!(event.value.priority, 2);
+        assert_eq!(event.value.user_type, "application/async");
+        assert_eq!(event.value.push_type, "call");
+        assert!(event.value.owner.is_none());
+        assert!(event.value.recipient.is_zero());
+        let event = std::thread::spawn(move || event).join().unwrap();
+        assert_eq!(event.value.data, b"async\0binary\xff");
+        drop(listener);
+        runner.loop_once().unwrap();
+        runner.join().unwrap();
+    }
+
+    #[test]
+    fn async_listener_delivers_expiration_events() {
+        let runner = nonthreaded(8);
+        let hash = InfoHash::get("async expiration");
+        let mut listener = runner.listen(&hash).unwrap();
+        let mut value = Value::with_id(b"expires", 42);
+        value.set_value_type(17);
+        let _pending = runner.put(&hash, value, false);
+        assert!(!drive(&runner, listener.next()).unwrap().unwrap().expired);
+        let event = drive(&runner, listener.next()).unwrap().unwrap();
+        assert!(event.expired);
+        assert_eq!(event.value.id, 42);
+        assert_eq!(event.value.data, b"expires");
+        drop(listener);
+        runner.join().unwrap();
+    }
+
+    #[test]
+    fn async_overflow_is_reported_after_buffered_values() {
+        let runner = nonthreaded(1);
+        let hash = InfoHash::get("async overflow");
+        let mut listener = runner.listen(&hash).unwrap();
+        for id in 1..=3 {
+            let _pending = runner.put(&hash, Value::with_id(b"queued", id), false);
+            runner.loop_once().unwrap();
+        }
+        assert_eq!(
+            drive(&runner, listener.next()).unwrap().unwrap().value.id,
+            1
+        );
+        let error = drive(&runner, listener.next()).unwrap().err().unwrap();
+        assert_eq!(error.kind(), std::io::ErrorKind::WouldBlock);
+        assert!(drive(&runner, listener.next()).is_none());
+        drop(listener);
+        runner.join().unwrap();
+    }
+
+    #[test]
+    fn async_listener_retains_runner_until_drop() {
+        let released = Arc::new(AtomicUsize::new(0));
+        let counter = DropCounter(released.clone());
+        let mut native = DhtRunner::new();
+        let mut config = DhtRunnerConfig::new();
+        config.threaded = false;
+        config.set_status_callback(move |_, _| {
+            let _ = &counter;
+        });
+        native.run_config(0, config).unwrap();
+        let runner = AsyncDhtRunner::new(native);
+        let listener = runner.listen(&InfoHash::get("retained runner")).unwrap();
+        drop(runner);
+        assert_eq!(released.load(Ordering::SeqCst), 0);
+        drop(listener);
+        assert_eq!(released.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn async_join_completes_pending_operations_and_streams() {
+        let runner = nonthreaded(8);
+        let hash = InfoHash::get("async shutdown failures");
+        let put = runner.put(&hash, Value::new("pending"), false);
+        let mut values = runner.get(&hash);
+        let mut query = runner.query(&hash, "SELECT id").unwrap();
+        let mut listener = runner.listen(&hash).unwrap();
+        let ping = runner.ping("127.0.0.1:9".parse().unwrap());
+        let bootstrap = runner.bootstrap(&["127.0.0.1:9".parse().unwrap()]);
+        let shutdown = runner.shutdown();
+        runner.join().unwrap();
+        assert!(wait(put).is_err());
+        assert!(wait(ping).is_err());
+        assert!(wait(bootstrap).is_err());
+        assert!(wait(shutdown).is_err());
+        assert!(wait(values.next()).unwrap().is_err());
+        assert!(wait(values.next()).is_none());
+        assert!(wait(query.next()).unwrap().is_err());
+        assert!(wait(query.next()).is_none());
+        assert!(wait(listener.next()).unwrap().is_err());
+        assert!(wait(listener.next()).is_none());
+        drop(listener);
+    }
+
+    #[test]
+    fn async_stream_reports_runner_destruction() {
+        let runner = nonthreaded(8);
+        let mut values = runner.get(&InfoHash::get("dropped async runner"));
+        drop(runner);
+        assert!(wait(values.next()).unwrap().is_err());
+        assert!(wait(values.next()).is_none());
+    }
+
+    #[test]
+    fn async_invalid_inputs_and_dropped_operations() {
+        assert!(AsyncDhtRunner::with_capacity(DhtRunner::new(), 0).is_err());
+        let runner = nonthreaded(8);
+        let hash = InfoHash::get("async cancellation");
+        let error = wait(runner.bootstrap(&[])).unwrap_err();
+        assert_eq!(error.kind(), std::io::ErrorKind::InvalidInput);
+        assert!(runner.get_filtered(&hash, "WHERE user_type=\0").is_err());
+        assert!(runner.listen_filtered(&hash, "WHERE user_type=\0").is_err());
+        assert!(runner.query(&hash, "SELECT\0 id").is_err());
+        let mut invalid = runner.get_filtered(&hash, "WHERE invalid=1").unwrap();
+        assert!(wait(invalid.next()).unwrap().is_err());
+        assert!(wait(invalid.next()).is_none());
+        drop(runner.get(&hash));
+        drop(runner.query(&hash, "SELECT id").unwrap());
+        drop(runner.put(&hash, Value::new("abandoned"), false));
+        drop(runner.ping("127.0.0.1:9".parse().unwrap()));
+        let listener = runner.listen(&hash).unwrap();
+        drop(listener);
+        runner.loop_once().unwrap();
+        runner.join().unwrap();
+    }
+
+    #[test]
+    fn async_threaded_network_roundtrips() {
+        let mut nodes = Vec::new();
+        for name in ["async source", "async destination"] {
+            let mut runner = DhtRunner::new();
+            let mut config = DhtRunnerConfig::new();
+            config.dht_config.id = Some(DhtIdentity::new(name).unwrap());
+            runner.run_bind("127.0.0.1", "::1", 0, config).unwrap();
+            nodes.push(runner);
+        }
+        let destination_native = nodes.pop().unwrap();
+        let address = (
+            [127, 0, 0, 1],
+            destination_native.bound_port(libc::AF_INET as _),
+        )
+            .into();
+        let recipient = destination_native.public_key().unwrap().long_id();
+        let source = AsyncDhtRunner::new(nodes.pop().unwrap());
+        let destination = AsyncDhtRunner::new(destination_native);
+        wait(source.bootstrap(&["127.0.0.1:9".parse().unwrap(), address])).unwrap();
+
+        for mode in ["plain", "signed", "encrypted"] {
+            let hash = InfoHash::get(mode);
+            let mut listener = destination.listen(&hash).unwrap();
+            let mut value = Value::with_id(b"async network\0value", 42);
+            value.set_seq(7);
+            let put = match mode {
+                "signed" => source.put_signed(&hash, value, false),
+                "encrypted" => source.put_encrypted(&hash, &recipient, value, false),
+                _ => source.put(&hash, value, false),
+            };
+            wait(put).unwrap();
+            let event = wait(listener.next()).unwrap().unwrap();
+            assert!(!event.expired);
+            assert_eq!(event.value.data, b"async network\0value");
+            if mode != "plain" {
+                assert!(event.value.owner.is_some());
+            }
+            drop(listener);
+            if mode == "signed" {
+                let values: Vec<_> = wait(
+                    destination
+                        .get_filtered(&hash, "WHERE seq=7")
+                        .unwrap()
+                        .try_collect(),
+                )
+                .unwrap();
+                assert!(values.iter().any(|value| value.id == 42 && value.seq == 7));
+            }
+            let values: Vec<_> = wait(destination.get(&hash).try_collect()).unwrap();
+            assert!(values
+                .iter()
+                .any(|value| value.data == b"async network\0value"));
+            let rows: Vec<_> =
+                wait(destination.query(&hash, "SELECT id").unwrap().try_collect()).unwrap();
+            assert!(rows.iter().any(|row| row.id == Some(42)));
+        }
+
+        wait(source.shutdown()).unwrap();
+        wait(destination.shutdown()).unwrap();
+        source.join().unwrap();
+        destination.join().unwrap();
+    }
+}
