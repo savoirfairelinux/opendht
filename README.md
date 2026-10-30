@@ -20,7 +20,7 @@ Values are distributed over the network, with redundancy.
  * Public key cryptography layer providing optional data signature and encryption (using GnuTLS)
  * IPv4 and IPv6 support
  * Clean and powerful **C++17** map API
- * Bindings for **C, Rust & Python 3**
+ * Bindings for **C, Rust, Node.js & Python 3**
  * REST API with optional HTTP client+server with push notification support
 
 ## Documentation
