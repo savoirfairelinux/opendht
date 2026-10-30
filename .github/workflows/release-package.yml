@@ -608,6 +608,9 @@ jobs:
     name: Publish opendht to npm
     needs: create-github-release
     runs-on: ubuntu-26.04
+    environment:
+      name: npm
+      url: https://www.npmjs.com/package/opendht
     permissions:
       contents: read
       id-token: write
