@@ -25,6 +25,12 @@ jobs:
       contents: read
       packages: read
 
+  python-wheels:
+    name: Build Python wheels
+    uses: ./.github/workflows/python-wheels.yml
+    permissions:
+      contents: read
+
   build-and-push-deps-image:
     name: Dependency Docker image
     runs-on: ubuntu-latest
@@ -626,6 +632,25 @@ jobs:
             dist_tag=next
           fi
           npm publish ./dist/*.tgz --access public --provenance --tag "$dist_tag"
+
+  publish-pypi:
+    name: Publish opendht to PyPI
+    needs: [create-github-release, python-wheels]
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/opendht
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: opendht-wheels-*
+          path: dist
+          merge-multiple: true
+      - name: Publish wheels
+        uses: pypa/gh-action-pypi-publish@release/v1
 
   publish-crate:
     name: Publish opendht to crates.io
