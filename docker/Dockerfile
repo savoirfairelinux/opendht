@@ -8,6 +8,7 @@ RUN cd opendht && mkdir build && cd build \
 	&& cmake -GNinja .. -DCMAKE_INSTALL_PREFIX=/usr \
 	-DBUILD_TESTING=Off \
 	-DCMAKE_INTERPROCEDURAL_OPTIMIZATION=On \
+	-DCMAKE_BUILD_TYPE=RelWithDebInfo \
 	-DOPENDHT_C=On \
 	-DOPENDHT_PEER_DISCOVERY=On \
 	-DOPENDHT_PYTHON=On \

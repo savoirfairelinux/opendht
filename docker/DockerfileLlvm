@@ -7,6 +7,7 @@ COPY . opendht
 RUN cd opendht && mkdir build && cd build \
 	&& cmake .. -DCMAKE_INSTALL_PREFIX=/usr \
 				-DCMAKE_INTERPROCEDURAL_OPTIMIZATION=On \
+				-DCMAKE_BUILD_TYPE=RelWithDebInfo \
 				-DOPENDHT_C=On \
 				-DOPENDHT_PEER_DISCOVERY=On \
 				-DOPENDHT_PYTHON=On \

@@ -10,6 +10,7 @@ ENV DESTDIR=/install
 RUN cd opendht && mkdir build && cd build \
 	&& cmake .. -DCMAKE_INSTALL_PREFIX=/usr \
                 -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=On \
+                -DCMAKE_BUILD_TYPE=RelWithDebInfo \
                 -DBUILD_TESTING=Off \
                 -DOPENDHT_C=On \
                 -DOPENDHT_PEER_DISCOVERY=On \
