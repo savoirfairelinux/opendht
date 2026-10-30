@@ -1,12 +1,13 @@
-# OpenDHT: a kademlia Distributed Hash Table
+# OpenDHT: a Distributed Hash Table
 
-Store, discover, and share small pieces of data across a peer-to-peer network,
-without a central server. OpenDHT is useful for peer discovery, service
-announcements, and decentralized applications.
+OpenDHT is a Kademlia-based distributed hash table for storing and retrieving
+small values over a peer-to-peer network without a central server. Common uses
+include peer discovery, service announcements, and decentralized applications.
 
-The `opendht` crate brings [OpenDHT](https://opendht.net) to Rust, with callbacks,
-optional async streams, and typed records through Serde. It also supports signed
-and encrypted values for applications that need authentication or privacy.
+The `opendht` crate provides Rust bindings to [OpenDHT](https://opendht.net), with
+callback-based and runtime-independent async APIs. Capabilities include signed
+and encrypted values, filtered reads, metadata queries, and typed MessagePack
+records through Serde.
 
 ## Get Started
 
@@ -17,14 +18,14 @@ Add the crate to your dependencies:
 opendht = "0.6"
 ```
 
-You also need the native OpenDHT library with C bindings installed on your system;
-the crate does not bundle it. See the
+The native OpenDHT library with C bindings must be installed separately; it is
+not bundled with the crate. See the
 [build guide](https://github.com/savoirfairelinux/opendht/blob/master/rust/BUILD.md)
 for native installation, library paths, and source builds.
 
-Three types get you started: `DhtRunner` runs a node, `InfoHash` identifies a key,
-and `Value` holds the data stored under that key. You can publish with `put`,
-retrieve with `get`, or watch for changes with `listen`.
+`DhtRunner` manages a node, `InfoHash` identifies a DHT key, and `Value` contains
+the payload and metadata stored under that key. `put` publishes values, `get`
+retrieves them, and `listen` subscribes to value updates and expiration events.
 
 This example starts a node on an OS-assigned port, bootstraps into the public
 network, and listens for a value it publishes.
@@ -57,20 +58,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-The bootstrap server introduces your node to other peers. You can replace it
-with a known peer on your own network.
-A DHT is not a durable database: values expire, and availability depends on the
-participating peers.
+A bootstrap server supplies initial peers. Applications can use public
+bootstrap servers or known peers on a private network. Values expire, and their
+availability depends on participating nodes; the DHT does not provide durable
+storage guarantees.
 
 ## Optional Features
 
-| Feature | What you get |
+| Feature | Capabilities |
 |---------|--------------|
 | Default | Callback-based `DhtRunner`, binary values, keys, certificates, and signed/encrypted operations. |
-| `async` | `aio::AsyncDhtRunner` with futures for publication and streams for reads and updates. |
-| `serde` | Typed MessagePack records with `put_typed`, `get_typed`, and `listen_typed`. Includes `async`. |
+| `async` | `aio::AsyncDhtRunner` with publication futures, bounded read/update streams, and automatic listener cancellation on drop. |
+| `serde` | Serde-backed MessagePack records with `put_typed`, `get_typed`, and `listen_typed`. Enables `async`. |
 
-For async applications, enable the feature in your dependency:
+Enable `async` in the dependency configuration:
 
 ```toml
 [dependencies]
@@ -78,11 +79,10 @@ opendht = { version = "0.6", features = ["async"] }
 futures = "0.3"
 ```
 
-Start a `DhtRunner`, then wrap it with `AsyncDhtRunner::new(runner)`. The adapter
-does not require a particular runtime. Runners stay on the thread that owns them,
-so use a local executor or Tokio's `LocalSet`, rather than `tokio::spawn`.
-Dropping an async listener cancels its subscription. Streams use bounded buffers
-and report an error if the consumer cannot keep up.
+Create the adapter with `AsyncDhtRunner::new(runner)` after starting a
+`DhtRunner`. The adapter is runtime-independent and thread-bound; use a local
+executor or Tokio's `LocalSet`. Dropping a listener stream cancels its
+subscription. Streams use bounded buffers and report `WouldBlock` on overflow.
 
 This example waits for a bootstrap peer, publishes a value with `.await`, and
 reads matching values as a stream:
@@ -114,26 +114,34 @@ fn main() -> io::Result<()> {
 }
 ```
 
-Prefer working with Rust structs? Enable `serde` instead of `async`, and derive
-`Serialize` and `Deserialize` on your records. Typed reads provide both the
-decoded record and its original value metadata. Records use compact MessagePack:
-struct field order is part of the wire format, so plan for schema changes.
-Use `serde_bytes` for fields that should be encoded as binary buffers.
+### Typed Records
+
+The `serde` feature adds typed async operations and also enables `async`.
+`put_typed` serializes records implementing `Serialize`; `get_typed` and
+`listen_typed` decode records implementing `DeserializeOwned`. Typed reads retain
+the decoded record alongside its original payload and native metadata.
+
+Structs are serialized as compact MessagePack arrays. Field order is part of
+the wire format and must remain compatible across schema changes. `serde_bytes`
+encodes binary fields using MessagePack's binary representation.
 
 ## Working With Values
 
-Received values are yours to keep, send to another thread, edit, or publish
-again. Use `as_slice()` to borrow the payload or `as_bytes()` when you need a
-separate byte vector. Values also carry metadata such as IDs, types, sequence
-numbers, and owner keys. Filtered reads and queries help select the values your
-application needs.
+GET and LISTEN callbacks and async streams deliver owned `Box<Value>` instances.
+Received values implement `Send` but not `Sync`; they can be retained after the
+runner stops, moved to another thread, modified, and republished. `as_slice()`
+borrows the payload without copying; `as_bytes()` allocates a separate `Vec<u8>`.
 
-Callbacks use owned `move` closures; channels are a convenient way to deliver
-results to the rest of your application. With the callback API, explicitly call
-`cancel_listen` when finished: dropping its token alone does not unsubscribe.
-Call `join()` outside callbacks to stop the runner and wait for pending work.
-For graceful shutdown and persistence, wait for `shutdown` to complete before
-calling `join()`.
+Values expose metadata including IDs, types, sequence numbers, and owner keys.
+Filters select values by metadata, and queries return selected metadata fields.
+
+`DhtRunner::listen` returns a token that must be passed to `cancel_listen` to
+unsubscribe. Dropping the token does not cancel the registration; dropping an
+async listener stream does.
+
+`join()` stops the runner and waits for its threads to exit. It must not be
+called from a callback. For graceful shutdown and configured state persistence,
+wait for `shutdown` to complete before calling `join()`.
 
 ## Learn More
 
