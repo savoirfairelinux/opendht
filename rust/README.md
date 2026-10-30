@@ -1,92 +1,76 @@
-# Rust Bindings for OpenDHT
+# OpenDHT: a kademlia Distributed Hash Table
 
-## Build and Test
+Store, discover, and share small pieces of data across a peer-to-peer network,
+without a central server. OpenDHT is useful for peer discovery, service
+announcements, and decentralized applications.
 
-Install Rust and the native OpenDHT C library. From this directory:
+The `opendht` crate brings [OpenDHT](https://opendht.net) to Rust, with callbacks,
+optional async streams, and typed records through Serde. It also supports signed
+and encrypted values for applications that need authentication or privacy.
 
-```sh
-cargo build --all-targets
-cargo test --all-targets
-cargo test --doc
-cargo run --example dhtnode
+## Get Started
+
+Add the crate to your dependencies:
+
+```toml
+[dependencies]
+opendht = "0.6"
 ```
 
-To use an uninstalled native build, set its library search paths. For example,
-from the repository root on macOS:
+You also need the native OpenDHT library with C bindings installed on your system;
+the crate does not bundle it. See the
+[build guide](https://github.com/savoirfairelinux/opendht/blob/master/rust/BUILD.md)
+for native installation, library paths, and source builds.
 
-```sh
-cmake -S . -B build-bindings -DOPENDHT_C=ON -DBUILD_TESTING=ON
-cmake --build build-bindings
-ctest --test-dir build-bindings -R test_c --output-on-failure
-LIBRARY_PATH="$PWD/build-bindings" \
-DYLD_LIBRARY_PATH="$PWD/build-bindings" \
-RUSTFLAGS="-L native=$PWD/build-bindings" \
-cargo test --manifest-path rust/Cargo.toml --all-targets
-```
+Three types get you started: `DhtRunner` runs a node, `InfoHash` identifies a key,
+and `Value` holds the data stored under that key. You can publish with `put`,
+retrieve with `get`, or watch for changes with `listen`.
 
-On Linux use `LD_LIBRARY_PATH` instead of `DYLD_LIBRARY_PATH`; on Windows add
-the native DLL directory to `PATH`. When linking an AddressSanitizer native
-build, use the same compiler runtime, for example
-`RUSTFLAGS="-L native=$PWD/build-bindings -C linker=clang -C link-arg=-fsanitize=address"`.
-
-## Ownership and Errors
-
-Startup, crypto import/generation, serialization, and fallible settings return
-`std::io::Result`. Public-key `pack()` exports bytes; `unpack(bytes)` replaces a
-key only after successful import. Crypto methods accept binary buffers, including
-embedded NULs. Passwords and other C strings reject embedded NULs.
-
-Callbacks are owned `Send + 'static` closures, not borrowed `&mut` closures.
-Use `move` captures and channels or `Arc` for shared application state. Native
-runner and crypto handles remain thread-bound. `Value` is `Send`, not `Sync`:
-it can move between threads, and mutation requires exclusive `&mut` access.
-Get/listen callbacks receive ordinary owned `Box<Value>` objects and can move
-them directly through channels. Callback panics are contained at the FFI
-boundary; a panicking value callback stops its operation.
-
-The same `Value` type is used for construction, callback delivery, async streams,
-and publication. `as_slice()` borrows the payload; `user_type()` and `push_type()`
-borrow strings. `owner()` returns a retained public-key handle without exporting
-it. `as_bytes()` explicitly copies the payload into a Rust `Vec<u8>`.
-Received values can be edited directly and passed to `put` without converting
-or cloning them. `boxed()` explicitly creates an additional independent copy.
+This example starts a node on an OS-assigned port, bootstraps into the public
+network, and listens for a value it publishes.
 
 ```rust
 use opendht::{DhtRunner, InfoHash, Value};
-use std::sync::mpsc;
+use std::{sync::mpsc, time::Duration};
 
-let mut runner = DhtRunner::new();
-runner.run(0)?;
-let hash = InfoHash::get("example");
-let (sent, received) = mpsc::channel();
-let token = runner.listen(&hash, move |value, expired| {
-		if !expired { let _ = sent.send(value); }
-		true
-})?;
-runner.put(&hash, Value::new("hello"), |_| {}, false);
-let value = received.recv_timeout(std::time::Duration::from_secs(5))?;
-assert_eq!(value.as_slice(), b"hello");
-runner.cancel_listen(&hash, token);
-runner.join()?;
-# Ok::<(), Box<dyn std::error::Error>>(())
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let mut runner = DhtRunner::new();
+    runner.run(0)?;
+    runner.bootstrap("bootstrap.jami.net", 4222)?;
+
+    let key = InfoHash::get("my-app/hello");
+    let (sender, receiver) = mpsc::channel();
+    let listener = runner.listen(&key, move |value, expired| {
+        if !expired {
+            let _ = sender.send(value);
+        }
+        true
+    })?;
+
+    runner.put(&key, Value::new("Hello from Rust!"), |_| {}, false);
+    let value = receiver.recv_timeout(Duration::from_secs(5))?;
+    println!("{}", String::from_utf8_lossy(value.as_slice()));
+
+    runner.cancel_listen(&key, listener);
+    runner.join()?;
+    Ok(())
+}
 ```
 
-`join()` waits for native callbacks, releases registrations, and permits restart.
-Do not invoke it from a DHT callback. `shutdown(callback)` requests graceful
-shutdown; wait for its callback before `join()` when persistence is required.
-Dropping a listener token frees only the token; explicitly call `cancel_listen`
-to remove the registration, or call `join()` to stop all operations. Pending
-get/put/query completions are reported as failure when the runner stops.
+The bootstrap server introduces your node to other peers. You can replace it
+with a known peer on your own network.
+A DHT is not a durable database: values expire, and availability depends on the
+participating peers.
 
-For non-threaded operation set `config.threaded = false` and repeatedly call
-`loop_once()`. Priority operations can take an iteration before normal work.
-`run_bind` selects IPv4/IPv6 bind addresses; `bound_port` reports OS-assigned ports.
+## Optional Features
 
-## Async API
+| Feature | What you get |
+|---------|--------------|
+| Default | Callback-based `DhtRunner`, binary values, keys, certificates, and signed/encrypted operations. |
+| `async` | `aio::AsyncDhtRunner` with futures for publication and streams for reads and updates. |
+| `serde` | Typed MessagePack records with `put_typed`, `get_typed`, and `listen_typed`. Includes `async`. |
 
-The optional `async` feature adds `opendht::aio::AsyncDhtRunner`. It uses futures
-channels without depending on Tokio or any other executor. The callback API and
-default dependency set are unchanged.
+For async applications, enable the feature in your dependency:
 
 ```toml
 [dependencies]
@@ -94,162 +78,67 @@ opendht = { version = "0.6", features = ["async"] }
 futures = "0.3"
 ```
 
-Configure and start a normal `DhtRunner`, then transfer it into
-`AsyncDhtRunner::new(runner)`. Clones share the same runner. Run the complete
-two-node loopback example with:
+Start a `DhtRunner`, then wrap it with `AsyncDhtRunner::new(runner)`. The adapter
+does not require a particular runtime. Runners stay on the thread that owns them,
+so use a local executor or Tokio's `LocalSet`, rather than `tokio::spawn`.
+Dropping an async listener cancels its subscription. Streams use bounded buffers
+and report an error if the consumer cannot keep up.
 
-```sh
-cargo run --features async --example dhtnode_async
-cargo test --all-features --all-targets
-cargo test --all-features --doc
-```
+This example waits for a bootstrap peer, publishes a value with `.await`, and
+reads matching values as a stream:
 
-With an already running async adapter:
+```rust,no_run
+use futures::{executor::block_on, TryStreamExt};
+use opendht::{aio::AsyncDhtRunner, DhtRunner, InfoHash, Value};
+use std::{io, net::ToSocketAddrs};
 
-```rust,ignore
-use futures::{StreamExt, TryStreamExt};
-use opendht::{InfoHash, Value};
+fn main() -> io::Result<()> {
+    let mut runner = DhtRunner::new();
+    runner.run(0)?;
+    let runner = AsyncDhtRunner::new(runner);
+    let peers: Vec<_> = ("bootstrap.jami.net", 4222).to_socket_addrs()?.collect();
 
-let hash = InfoHash::get("example");
-let mut updates = runner.listen(&hash)?;
-runner.put(&hash, Value::new("hello"), false).await?;
-let update = updates.next().await.transpose()?;
-drop(updates);
-let values: Vec<_> = runner.get(&hash).try_collect().await?;
-runner.shutdown().await?;
-runner.join()?;
-```
+    block_on(async {
+        runner.bootstrap(&peers).await?;
+        let key = InfoHash::get("my-app/hello-async");
+        runner.put(&key, Value::new("Hello from async Rust!"), false).await?;
 
-- `put`, `put_signed`, `put_encrypted`, and `ping` return futures resolving to
-	`io::Result<()>`. `bootstrap(&[SocketAddr])` contacts pre-resolved peers
-	concurrently and succeeds when any peer responds. Resolve hostnames through
-	the application's runtime before calling it.
-- `get`, `get_filtered`, and `query` return fallible streams. Get/listen values
-	are the same owned `Box<Value>` objects delivered by the callback API,
-	with borrowed access to payload and metadata. Listener `ValueEvent`s also
-	preserve the expiration flag.
-- Streams buffer at most 64 items by default; `with_capacity` changes this
-	limit. A full buffer stops delivery and yields `WouldBlock` after buffered
-	items, then ends. Restart the operation to obtain a fresh snapshot. Native
-	failures and runner termination also yield errors rather
-	than successful EOF. Duplicate native deliveries are not suppressed.
-- Dropping a listener immediately queues native cancellation and releases its
-	token. Listeners retain the runner until dropped. Dropping get/query streams
-	stops delivery at the next native callback, or when the runner is joined.
-	Dropping a completion future abandons its result but does not cancel the
-	native operation or undo a permanent put.
-- Runner adapters and listeners remain thread-bound. Use `block_on`, a local
-	executor, or Tokio `LocalSet`, not `tokio::spawn`. Received values and query rows can
-	be sent to other threads. Non-threaded runners still require independent
-	`loop_once()` calls while waiting. `join()` remains blocking; await graceful
-	`shutdown()` first when persistence is required.
+        let mut values = runner.get(&key);
+        while let Some(value) = values.try_next().await? {
+            println!("{}", String::from_utf8_lossy(value.as_slice()));
+        }
 
-Received values are copied once by the native callback bridge to isolate them
-from mutable DHT storage. Async streams move those exact boxes through their
-channels without copying payloads or rebuilding metadata. Borrowed data remains
-valid for the value's lifetime, even after the callback returns or the runner
-stops. Put operations consume their box, so Rust cannot continue mutating a value
-after native code retains it. Malformed UTF-8 metadata is reported when its
-string accessor is called, rather than eagerly failing the entire stream.
-
-`value.owner()` returns the existing `PublicKey` type, not a second key class or
-DER bytes. Call `pack()` only when exported bytes are actually needed. Shared
-const owner-key fingerprint caches are initialized on the callback thread before
-transfer. Replacing a returned key through `unpack()` changes that handle, not
-the value's owner key.
-
-## Typed Records
-
-Enable `serde` for typed MessagePack operations on `AsyncDhtRunner`. This feature
-also enables `async`; neither Serde nor MessagePack is required by default.
-
-```toml
-[dependencies]
-opendht = { version = "0.6", features = ["serde"] }
-serde = { version = "1", features = ["derive"] }
-serde_bytes = "0.11"
-futures = "0.3"
-```
-
-With an already running async adapter:
-
-```rust,ignore
-use futures::TryStreamExt;
-use opendht::InfoHash;
-use serde::{Deserialize, Serialize};
-
-#[derive(Debug, Serialize, Deserialize)]
-struct Service {
-	version: u32,
-	name: String,
-	port: u16,
-	#[serde(with = "serde_bytes")]
-	payload: Vec<u8>,
+        runner.shutdown().await?;
+        runner.join()
+    })
 }
-
-let hash = InfoHash::get("services/chat");
-let mut updates = runner.listen_typed::<Service>(&hash)?;
-let record = Service {
-	version: 1, name: "chat".into(), port: 4222, payload: vec![0, 0x80, 0xff],
-};
-runner.put_typed(&hash, &record, false).await?;
-if let Some(event) = updates.try_next().await? {
-	println!("{}: {:?}", event.value.raw.id(), event.value.data);
-}
-drop(updates);
-let records: Vec<_> = runner.get_typed::<Service>(&hash).try_collect().await?;
 ```
 
-Typed puts accept `Serialize`, including unsized values. Typed reads require
-`DeserializeOwned`, without imposing `Clone`, `Send`, or `Unpin` on the record.
-Decoding happens when the consumer polls, not in native callbacks. Each
-`TypedValue<T>` exposes decoded `data` and the original owned `raw: Box<Value>`, retaining
-payload bytes and all metadata. Decoding borrows the raw payload directly, with
-no intermediate byte-buffer copy; allocations required by the decoded record
-still apply. `TypedEvent<T>` preserves the expiration flag.
+Prefer working with Rust structs? Enable `serde` instead of `async`, and derive
+`Serialize` and `Deserialize` on your records. Typed reads provide both the
+decoded record and its original value metadata. Records use compact MessagePack:
+struct field order is part of the wire format, so plan for schema changes.
+Use `serde_bytes` for fields that should be encoded as binary buffers.
 
-`TypedError` distinguishes `Serialize`, `Deserialize { id, source }`, and native
-`Operation` errors, preserving the underlying error through `Error::source()`.
-An invalid MessagePack payload or incompatible schema yields a per-value error; keep
-polling to read subsequent records. `try_collect()` short-circuits on any error.
-Buffer limits, terminal native failures, and listener cancellation on drop are
-unchanged from the async API.
+## Working With Values
 
-`put_typed` is an ordinary lazy async method: it serializes and starts publication
-only when polled. Serialization failure does not start a native put. Dropping
-the future after publication starts does not undo the put. Typed puts use the
-default native metadata; for custom IDs/types or signed/encrypted publication,
-serialize into a `Value` and use the existing untyped methods. Raw get/listen
-values can also be decoded with `TypedValue::<T>::try_from(value)` or
-`TypedEvent::<T>::try_from(event)`.
+Received values are yours to keep, send to another thread, edit, or publish
+again. Use `as_slice()` to borrow the payload or `as_bytes()` when you need a
+separate byte vector. Values also carry metadata such as IDs, types, sequence
+numbers, and owner keys. Filtered reads and queries help select the values your
+application needs.
 
-The wire payload is compact MessagePack, following OpenDHT's serialization
-convention. Structs are encoded as arrays in field order; field order is part
-of the wire schema. No schema version or envelope is inserted; applications
-control their record format and versioning. Use `#[serde(with = "serde_bytes")]`
-on byte buffers (or `serde_bytes::ByteBuf`) for native MessagePack `bin` values;
-plain `Vec<u8>` otherwise serializes as an integer array. Run the complete typed
-loopback example with:
+Callbacks use owned `move` closures; channels are a convenient way to deliver
+results to the rest of your application. With the callback API, explicitly call
+`cancel_listen` when finished: dropping its token alone does not unsubscribe.
+Call `join()` outside callbacks to stop the runner and wait for pending work.
+For graceful shutdown and persistence, wait for `shutdown` to complete before
+calling `join()`.
 
-```sh
-cargo run --features serde --example dhtnode_async
-```
+## Learn More
 
-## Extended APIs
-
-- Values expose explicit IDs, user types, value types, sequence numbers,
-	push priorities, and push types.
-- Keys and certificates support persistence; identities support RSA and EC
-	generation. Private keys support binary signing and RSA decryption.
-- `get_filtered`, `listen_filtered`, and `query` accept native SQL-like filters,
-	such as `WHERE value_type=17`, `WHERE seq=7`, and
-	`SELECT id,user_type WHERE value_type=17`.
-	Projected fields are optional owned values in `QueryResult`.
-- `register_type` installs native type policy and expiration settings.
-- Configuration accepts owned status and certificate-store callbacks.
-	Certificate lookup/registration and connectivity changes are exposed.
-- Push token/topic/platform setters forward native settings.
-	`push_notification_received` returns a `PushNotification`; call `poll()` for
-	the native result. In non-threaded mode continue driving `loop_once()`.
-	Disabled builds return `IgnoredDisabled`; stopped runners return the native
-	ignored outcome. Push tokens remain valid after the runner stops.
+- [API reference](https://docs.rs/opendht)
+- [Callback example](https://github.com/savoirfairelinux/opendht/blob/master/rust/examples/dhtnode.rs)
+- [Async and typed two-node example](https://github.com/savoirfairelinux/opendht/blob/master/rust/examples/dhtnode_async.rs)
+- [Build and test guide](https://github.com/savoirfairelinux/opendht/blob/master/rust/BUILD.md)
+- [OpenDHT project and issue tracker](https://github.com/savoirfairelinux/opendht)

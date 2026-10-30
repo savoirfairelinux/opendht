@@ -133,7 +133,7 @@ the assembled npm archive on Node 22, 24, and 26 before release attachment.
 Enable `OPENDHT_C=ON` to build the C ABI. With `BUILD_TESTING=ON`, CTest runs
 `test_c`; Meson registers the same test as `CBindings` when `c` and `tests` are
 enabled. Rust regression and callback-lifetime tests run with Cargo; see
-[the Rust binding guide](rust/README.md) for build and library-path settings.
+[the Rust build guide](rust/BUILD.md) for build and library-path settings.
 
 `dht_infohash` and `dht_pkid` have `uint32_t` alignment, matching the native hash
 types, while retaining their 20-byte and 32-byte sizes. Rebuild consumers against
