@@ -437,8 +437,10 @@ private:
     /**
      * Refresh a listen via a token
      * @param token
+     * @param fetchValues ask the server to send the values it stores, for a listener
+     * that may have missed some (its previous subscription failed).
      */
-    void resubscribe(const InfoHash& key, const size_t token, Listener& listener);
+    void resubscribe(const InfoHash& key, const size_t token, Listener& listener, bool fetchValues = false);
 
     /**
      * If we want to use push notifications by default.
