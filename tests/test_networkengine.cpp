@@ -782,6 +782,7 @@ NetworkEngineTester::testGetRequestReuse()
     for (auto state : {net::Request::State::PENDING, net::Request::State::COMPLETED}) {
         for (const auto& testCase : cases) {
             Config config {};
+            config.transport.enabled = false;
             config.max_req_per_sec = -1;
             config.max_peer_req_per_sec = -1;
             Dht localDht(std::make_unique<TestDatagramSocket>(), config, {}, std::make_unique<std::mt19937_64>(42));
@@ -831,6 +832,7 @@ void
 NetworkEngineTester::testFilteredProjectionDoesNotWaitForUnrelatedPeer()
 {
     Config config {};
+    config.transport.enabled = false;
     config.max_req_per_sec = -1;
     config.max_peer_req_per_sec = -1;
     auto socket = std::make_unique<TestDatagramSocket>();
