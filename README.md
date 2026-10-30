@@ -4,7 +4,10 @@
     <a id="user-content-opendht-" class="anchor" href="/savoirfairelinux/opendht/blob/master/README.md#opendht-" aria-hidden="true"></a>OpenDHT
 </h1>
 
-![PyPI - Version](https://img.shields.io/pypi/v/opendht?style=flat)
+[![PyPI - Version](https://img.shields.io/pypi/v/opendht?style=flat)](https://pypi.org/project/opendht/)
+[![crates.io - Version](https://img.shields.io/crates/v/opendht?style=flat)](https://crates.io/crates/opendht)
+[![npm - Version](https://img.shields.io/npm/v/opendht?style=flat)](https://www.npmjs.com/package/opendht)
+[![Docker Image](https://img.shields.io/badge/Docker-ghcr.io-2496ED?style=flat&logo=docker&logoColor=white)](https://github.com/savoirfairelinux/opendht/pkgs/container/opendht%2Fopendht)
 
 A lightweight C++17 Distributed Hash Table implementation.
 
