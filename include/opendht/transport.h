@@ -8,7 +8,6 @@
 #include "utils.h"
 
 #include <array>
-#include <chrono>
 #include <optional>
 #include <vector>
 
@@ -19,7 +18,6 @@ constexpr size_t KEY_SIZE {32};
 constexpr size_t SIGNATURE_SIZE {64};
 using Key = std::array<uint8_t, KEY_SIZE>;
 using Signature = std::array<uint8_t, SIGNATURE_SIZE>;
-using SystemTime = std::chrono::system_clock::time_point;
 
 /** Erases secret key material. */
 OPENDHT_PUBLIC void wipe(Key& key);
@@ -50,13 +48,12 @@ OPENDHT_PUBLIC KeyPair addressKey(const Key& epochSecret, const uint8_t* address
 /** Write token of the plaintext peer at `address` (IP and port), derived from an epoch secret. */
 OPENDHT_PUBLIC Key addressToken(const Key& epochSecret, const uint8_t* address, size_t size);
 
-/** Authority-signed binding of a transport public key to a private network. */
+/** Non-expiring authority-signed grant binding a transport public key to a private network. */
 struct OPENDHT_PUBLIC Credential
 {
-    static constexpr size_t PACKED_SIZE {1 + KEY_SIZE + 8 + SIGNATURE_SIZE};
+    static constexpr size_t PACKED_SIZE {1 + KEY_SIZE + SIGNATURE_SIZE};
 
     Key key {};
-    SystemTime expiration {};
     Signature signature {};
 
     Blob pack() const;
@@ -64,8 +61,8 @@ struct OPENDHT_PUBLIC Credential
     static Credential unpack(const uint8_t* data, size_t size);
     static Credential unpack(const Blob& b) { return unpack(b.data(), b.size()); }
 
-    /** True if signed by one of the authorities and not expired at `now`. */
-    bool verify(const std::vector<Key>& authorities, SystemTime now = std::chrono::system_clock::now()) const;
+    /** True if signed by one of the trusted authorities. */
+    bool verify(const std::vector<Key>& authorities) const;
     explicit operator bool() const { return key != Key {}; }
 };
 
@@ -77,7 +74,7 @@ struct OPENDHT_PUBLIC Authority
 
     static Authority generate();
     static Authority fromSecret(const Key& secret);
-    Credential issue(const Key& transportKey, SystemTime expiration) const;
+    Credential issue(const Key& transportKey) const;
 };
 
 /** Transport state of a remote node, attached to its Node. */
@@ -91,12 +88,11 @@ struct Peer
     std::optional<Key> ephemeral {};
     /** Address proven by the Session or Data envelope carrying the ephemeral key */
     SockAddr validatedAddress {};
-    /** Private networks: expiration of the verified peer credential */
-    SystemTime authorizedUntil {};
+    /** Private networks: the peer presented a grant from a trusted authority */
+    bool authorized {false};
     /** Our session was lost: requests other than pings wait for a new ephemeral key */
     bool recovering {false};
 
-    bool isAuthorized(SystemTime now) const { return now < authorizedUntil; }
     void setEphemeral(const Key& k, const SockAddr& address = {})
     {
         ephemeral = k;

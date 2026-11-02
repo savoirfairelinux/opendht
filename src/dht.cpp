@@ -2060,9 +2060,6 @@ Dht::Dht(std::unique_ptr<net::DatagramSocket>&& sock,
 
     if (logger_)
         logger_->debug("DHT node initialised with ID {:s}", myid);
-    if (config.transport.isPrivate() and logger_
-        and config.transport.credential.expiration < std::chrono::system_clock::now() + std::chrono::hours(24 * 7))
-        logger_->warn("Transport credential expires in less than a week");
 }
 
 bool

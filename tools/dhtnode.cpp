@@ -42,7 +42,7 @@ print_usage()
            "[--no-encryption] [--transport-key file] [--network-authority key] [--network-credential file]"
         << std::endl
         << "       dhtnode --gen-network-authority prefix" << std::endl
-        << "       dhtnode --issue-credential file --authority-key file --transport-key file [--validity days]"
+        << "       dhtnode --issue-credential file --authority-key file --transport-key file"
         << std::endl
         << std::endl;
     print_info();

@@ -12,6 +12,7 @@ Implementation: [include/opendht/transport.h](../include/opendht/transport.h), [
 - **Authenticated node IDs**: a node can only send encrypted messages under the node ID that derives from its own key.
 - **Backward compatibility**: nodes without this feature keep working with new nodes, in plaintext.
 - **Optional private networks**: when configured, a node only talks to nodes holding a credential signed by a trusted authority.
+- **Permanent membership**: grants do not expire. Without a compromise or an intentional membership change, no grant renewal, authority rotation, or operator maintenance is required.
 - **Forward secrecy**: recorded traffic stays confidential after a node's long-term key is compromised, once the ephemeral keys used for it are erased (at most one hour later). The first packet to a peer has weaker guarantees ([§5.2](#52-key-schedule)).
 - **Address validation**: a Session or Data envelope proves that its sender receives packets at its source address. It replaces the legacy write tokens between encrypted nodes ([§6.6](#66-write-authorization)).
 - **Low cost**: routing discovery also establishes the session, with a few X25519 operations per peer every 30 minutes. Once a session is established, 30 bytes of overhead per packet, minus the 40-byte token in messages that carried one.
@@ -28,7 +29,7 @@ Implementation: [include/opendht/transport.h](../include/opendht/transport.h), [
 |---|---|
 | `a ‖ b` | Concatenation of byte strings |
 | `"text"` | ASCII bytes, without terminator |
-| `u32be(x)`, `u64be(x)` | Unsigned integer, big-endian, 4 or 8 bytes |
+| `u32be(x)` | Unsigned integer, big-endian, 4 bytes |
 | `sk_A`, `pk_A` | Static transport secret and public key of node A |
 | `esk_A`, `epk_A` | Ephemeral secret and public key of node A for the address of its peer |
 | `DH(x, Y)` | `X25519(x, Y)` |
@@ -81,27 +82,28 @@ When encryption is disabled (`TransportConfig::enabled = false`), the node uses 
 
 An authority is an Ed25519 key pair. Its secret is the 32-byte Ed25519 seed. Its public key identifies the private network, and nodes are configured with a list of trusted authority public keys (`TransportConfig::authorities`). A network is private if and only if this list is non-empty.
 
+Any one trusted authority can grant membership. A node can trust multiple authorities simultaneously, allowing old and replacement grants to coexist during an explicit transition. There is no scheduled authority rotation.
+
 ### 4.4 Credential (private networks)
 
-A credential is an authority's signature binding a transport public key to an expiration time. It is 105 bytes:
+A membership grant, called a credential in the API and CLI, is an authority's signature over a transport public key. It never expires and contains no timestamp. It is 97 bytes:
 
 ```
 offset size field
-0      1    version = 0x01
+0      1    version = 0x02
 1      32   pk         transport public key of the node
-33     8    expiry     u64be, seconds since the Unix epoch
-41     64   signature  Ed25519 signature by the authority
+33     64   signature  Ed25519 signature by the authority
 ```
 
 The signature covers:
 
 ```
-"opendht-credential-v1" ‖ 0x01 ‖ pk ‖ u64be(expiry)
+"opendht-credential-v2" ‖ 0x02 ‖ pk
 ```
 
-A credential is **valid** at time `t` when both of these hold:
-- `t < expiry`, using the verifier's system clock;
-- the signature verifies under at least one trusted authority.
+A credential is **valid** when its signature verifies under at least one trusted authority. Admission does not depend on a system clock. The same grant can be reused across restarts and session-key rotations without an update.
+
+Version 1 expiring credentials are rejected, not reinterpreted as permanent grants. Migrating from that format requires issuing a version 2 grant once.
 
 Credentials are not bound to a network ID. An authority key therefore defines a network: use distinct authorities for distinct networks.
 
@@ -194,8 +196,8 @@ offset size        field
 
 - The ciphertext is `ChaCha20-Poly1305(K_sender→receiver, nonce, plaintext, aad = header)`.
 - The header is bytes `[0, 66)`, or `[0, 2)` for Data: marker, type, and the sender keys. Because it is the associated data, an attacker cannot change the type, the credential flag or the sender keys without the tag check failing.
-- The plaintext is the msgpack-encoded DHT message. With the credential flag, it is preceded by the sender's 105-byte credential.
-- The overhead is 30 bytes for Data, 94 bytes for Initial and Session, or 199 bytes with a credential.
+- The plaintext is the msgpack-encoded DHT message. With the credential flag, it is preceded by the sender's 97-byte credential.
+- The overhead is 30 bytes for Data, 94 bytes for Initial and Session, or 191 bytes with a credential.
 - Nonces are 96 bits from the system CSPRNG. For `n` packets under one key, the probability of a nonce collision is about $n^2 / 2^{97}$. Keys change at least every epoch, so this is negligible.
 
 `0xC1` is the one byte value that msgpack never uses. Every legacy OpenDHT message is a msgpack map, which starts with `0x80`–`0x8F` or `0xDE`–`0xDF`. This marker therefore unambiguously separates envelopes from plaintext messages:
@@ -207,7 +209,7 @@ offset size        field
 `Hello` introduces a node to a peer whose key is unknown. This happens when pinging a bare address, typically a bootstrap node. A Hello is **not encrypted**:
 
 ```
-0xC1 ‖ 0x03 ‖ pk_sender ‖ epk_sender ‖ credential (105 bytes) ‖ msgpack ping
+0xC1 ‖ 0x03 ‖ pk_sender ‖ epk_sender ‖ credential (97 bytes) ‖ msgpack ping
 ```
 
 The sender cannot encrypt to a key it doesn't know, and X25519 keys cannot sign, so **a Hello proves nothing about its sender**. Its credential travels in clear and can be copied. The receiver therefore:
@@ -262,7 +264,7 @@ The confirmation is lost when the session keys change: on epoch rotation, or whe
 
 **Value searches.** A cold peer first receives `find_node(search_target)`. Its reply supplies its ephemeral and closer candidates in the same exchange. The existing distance-ordered search dispatch contacts closer candidates immediately, within the existing four-active-peer limit; it does not wait for a SELECT reply from the farther responder. This routing probe has separate state: it cannot satisfy a GET, pagination, or an empty-result callback. Responders remain eligible for subsequent value retrieval. A cold holder typically needs three exchanges (`find_node`, SELECT IDs, GET by ID), while a session-ready holder retains its usual two. A routing probe's first timeout frees its active search slot while protocol retries continue, rather than waiting for final expiration.
 
-Value data is fragmented so that each packet fits in the 1280-byte IPv6 minimum MTU: `1280 − 40 − 8 = 1232` bytes of UDP payload, less 48 bytes reserved for the msgpack framing of a fragment, less the overhead of the envelope the fragments are sent in. Fragments carry `1184` bytes of value data in plaintext, `1154` in Data envelopes, `1090` in Initial or Session envelopes, and `985` with a credential.
+Value data is fragmented so that each packet fits in the 1280-byte IPv6 minimum MTU: `1280 − 40 − 8 = 1232` bytes of UDP payload, less 48 bytes reserved for the msgpack framing of a fragment, less the overhead of the envelope the fragments are sent in. Fragments carry `1184` bytes of value data in plaintext, `1154` in Data envelopes, `1090` in Initial or Session envelopes, and `993` with a credential.
 
 This sizes value fragments only. Complete replies and node lists are not yet subject to a whole-datagram MTU budget; node-list trimming and packet-size enforcement remain separate work.
 
@@ -283,11 +285,11 @@ For each received packet, a node applies the following checks in order:
   5. **Session:** first try the keys cached in each epoch for (source address, `pk_sender`, `epk_sender`). Otherwise, apply the public-key limit, then for our current epoch then the previous one: derive the keys with our ephemeral key for the source address, and decrypt. Keep newly derived keys pending until the packet passes authorization and message validation.
    6. **Data:** decrypt with the session cached for the source address in our current epoch, then in the previous one. Its `pk_sender` and `epk_sender` are those of the session. This needs no key derivation and no public-key limit.
    7. Drop the packet if it was not decrypted.
-   8. **Credential flag:** strip the 105-byte credential. In a private network, verify it as for Hello, unless the peer is already authorized; on success, the peer is authorized until the credential expires.
-      **No credential:** in a private network, drop the packet unless the peer is currently authorized.
+  8. **Credential flag:** strip the 97-byte credential. In a private network, verify it as for Hello, unless the peer is already authorized; on success, record the peer as authorized, without an expiry.
+    **No credential:** in a private network, drop the packet unless the peer is already authorized.
   9. Record `epk_sender` on a temporary peer record. It is **validated for the source address** if the envelope was a Session or Data envelope: opening it required our ephemeral key for that address, which was only ever sent there. Existing peer state is updated only after parsing, ID binding and the processing checks below.
 
-  **Session cache.** The epoch caches one session per source address, including the verified credential expiry in private networks. Authorization therefore survives the release of a client-mode peer's node record, but never its credential expiry. Newly derived Session keys enter the cache only after credential authorization, parsing, network and node ID checks, and basic fragment validation. Replies must match a pending request or listener. Admission is per packet, so subsequent Data fragments can decrypt before the whole message is assembled. Sending to the exact address for which the peer's ephemeral key is validated can also cache a session. Answers to Initial and Hello envelopes never use or change cached sessions: their source address may be spoofed.
+  **Session cache.** The epoch caches one session per source address, including its verified admission in private networks. Authorization therefore survives the release of a client-mode peer's node record. Newly derived Session keys enter the cache only after credential authorization, parsing, network and node ID checks, and basic fragment validation. Replies must match a pending request or listener. Admission is per packet, so subsequent Data fragments can decrypt before the whole message is assembled. Sending to the exact address for which the peer's ephemeral key is validated can also cache a session. Answers to Initial and Hello envelopes never use or change cached sessions: their source address may be spoofed. If both the peer record and cached admission are lost, the same permanent credential is verified again; no replacement grant is needed.
 
 3. **Plaintext in a private network.** Drop any packet that is not an envelope.
 
@@ -314,7 +316,7 @@ For each received packet, a node applies the following checks in order:
 - **Public-key work:** one unit per packet needing a key agreement or a signature verification, charged before that work. `Config::max_crypto_per_sec`, by default 512 per second, and 64 per address. A unit covers the packet and its answer, including credential verification:
   - each Initial envelope (two X25519 operations, and five more to answer a request);
   - each Session envelope from an uncached (address, `pk_sender`, `epk_sender`) triple (five X25519 operations per epoch tried);
-  - each cached Session envelope requiring credential verification after authorization expires (one charge, not an additional charge for packets already admitted for key agreement);
+  - each cached Session envelope whose peer has not yet been authorized and needs credential verification (one charge, not an additional charge for packets already admitted for key agreement);
   - each Hello (one Ed25519 verification, and the key derivation of its answer);
   - each plaintext request from a sender whose key is known or advertised, answered in an Initial envelope (three X25519 operations).
 
@@ -386,14 +388,14 @@ sequenceDiagram
 ```
 
 - **Credential exchange.** Each side attaches its credential to its Initial and Session envelopes. Data envelopes, sent once the peer has accepted us, never carry it.
-- **Authorization lifetime.** A peer stays authorized until its credential expires, according to the local clock. After that, its packets without a credential are dropped.
+- **Authorization lifetime.** Admission does not expire. Session keys still rotate for forward secrecy, independently of membership. A lost admission record is recovered using the same grant, without operator action.
 - **Node lists.** Listed nodes without a valid matching key are discarded.
 - **Startup checks.** The node refuses to start (`DhtException`) if:
   - encryption is disabled while authorities are configured;
   - the configured credential does not match the transport key;
   - the credential is not valid for the configured authorities.
 
-  A warning is logged if the credential expires within a week. The credential is read once on start, so renewing it requires a restart.
+  The credential and trusted authorities are read on start. Restart with the updated configuration when explicitly changing a grant or the trust set; this also discards cached admissions.
 
 ## 8. Key persistence
 
@@ -456,10 +458,10 @@ Each item states who it applies to, what that party can do, and what it cannot d
   - It can read every Initial envelope ever sent to B, including recorded ones. Initial keys depend only on `sk_B` and the sender's public keys.
   - It can send Initial envelopes to B under any other node's ID. B answers `ping` and `find_node` in them, under keys the attacker cannot derive, and changes no state ([§6.5](#65-receiving), step 7). GET and writes are refused with `401`.
   - It cannot read Session or Data envelopes between B and other nodes, recorded or live, nor impersonate another node to B in them. That requires B's ephemeral secret, or the other node's static secret.
-  - In a private network, it stays admitted until B's credential expires. The credential is not secret: Hellos carry it in clear.
+  - In a private network, it stays admitted for as long as B's granting authority is trusted. The credential is not secret: Hellos carry it in clear.
   - Compromise of a running node also exposes its epoch secrets, and with them all sessions of its current and previous epoch.
 
-  Recover by changing the key. This changes the node ID, and in a private network needs a new credential. The old key cannot be revoked in a public network.
+  Recover by changing the key. This changes the node ID, and in a private network needs a new credential. Changing B's key alone does not exclude the compromised key: its grant remains valid until its authority is distrusted, as described below. The old key cannot be revoked in a public network.
 
 - **Initial envelopes are not forward-secret against the receiver.** An Initial envelope stays confidential if the sender's static key is compromised later, but not if the receiver's is. Initial envelopes carry:
   - `ping` or `find_node` to a node whose ephemeral key is unknown, including their retransmissions;
@@ -489,15 +491,13 @@ Each item states who it applies to, what that party can do, and what it cannot d
   - A unit stands for three to ten X25519 operations, so the default allows about 5000 per second. `Config::max_crypto_per_sec` adapts it to the CPU available.
   - An attacker reachable at many addresses, for example an IPv6 prefix, can fill the session cache of an epoch: one slot costs it one round trip. Evicted peers have their Data envelopes dropped until their next retransmission, which starts a new session.
 
-- **No revocation.** Applies to private networks. A credential cannot be revoked before it expires. A peer that presented a valid credential stays authorized until that credential's expiry, so a compromised or excluded node keeps participating until then. To exclude it earlier, every other node must stop trusting the authority that signed its credential. That also excludes every other node that only holds credentials from that authority. Keep validity periods short.
-
-- **Clock dependence.** Applies to private networks. Credential expiry is checked against each verifier's system clock. A verifier whose clock is behind keeps accepting an expired credential for as long as it is behind; one whose clock is ahead rejects a valid credential early. A node checks its own credential the same way at startup.
+- **No per-grant revocation.** Applies to private networks. A grant is permanent: a compromised or excluded node can participate for as long as any authority that signed a grant for its key remains trusted. Compromise of an authority allows issuing arbitrary new grants. Exclusion requires every remaining node to remove the affected authority from its trust set and restart, discarding cached admissions. This also excludes every member relying only on that authority; retained members need grants from another trusted authority. Multiple accepted authorities provide a transition path, but do not neutralize a compromised authority while it is still trusted. There is no clock-based fallback, revocation list, or automatic expiry.
 
 - **Metadata.** Anyone observing the traffic sees:
   - in Initial and Session envelopes, the sender's static key, hence its node ID, and its ephemeral key: who talks to whom, at each first contact, retransmission and epoch rotation;
   - in Data envelopes, only the type; the sender is still identified by its address, from the Session envelopes that preceded;
   - in every envelope, the type, the credential flag, the size and the timing, which can reveal the kind of message, for example fragmented value data;
-  - Hello messages entirely, including the credential, which reveals the node's key and the credential's expiry. A copied credential is useless without the matching secret key;
+  - Hello messages entirely, including the credential, which reveals the node's key. A copied credential is useless without the matching secret key;
   - in public networks, plaintext messages entirely, including node lists.
 
   Node addresses are not hidden: they are in node lists, and on the packets themselves.
@@ -512,8 +512,8 @@ With `dhtnode`:
 # Once: create the authority (net.key = secret seed, net.pub = hex public key)
 dhtnode --gen-network-authority net
 
-# For each node: create its transport key, and a credential valid for 90 days
-dhtnode --transport-key node1.key --issue-credential node1.cred --authority-key net.key --validity 90
+# Once per node: create its transport key and permanent membership grant
+dhtnode --transport-key node1.key --issue-credential node1.cred --authority-key net.key
 
 # Run a node
 dhtnode --transport-key node1.key --network-credential node1.cred --network-authority $(cat net.pub)
@@ -521,7 +521,22 @@ dhtnode --transport-key node1.key --network-credential node1.cred --network-auth
 
 Authority generation refuses to run if either output path already exists, including a dangling symlink.
 
-`--network-authority` can be repeated to trust several authorities, for example during an authority rotation. Keep the authority secret offline. Distribute only `net.pub` and the per-node credentials.
+Keep the authority secret offline. Distribute only `net.pub` and the per-node credentials. Without a compromise or an intentional membership change, keep these keys, grants, and trust sets unchanged: there is no scheduled renewal or maintenance.
+
+`--network-authority` can be repeated to trust several authorities during an explicit transition:
+
+```sh
+dhtnode --transport-key node1.key --network-credential node1.cred \
+  --network-authority $(cat net.pub) --network-authority $(cat replacement.pub)
+```
+
+To move away from an authority:
+
+1. Create a replacement authority and configure retained members to trust both old and replacement public keys. Restart them with this overlapping trust set.
+2. Issue replacement grants only to retained, uncompromised transport keys and restart those nodes with their new grants. Old and replacement grants interoperate while both authorities are trusted. A compromised transport key must be replaced as well.
+3. Remove the old authority from every retained node's configuration and restart them, clearing prior admissions. Only grants from the remaining trusted authorities are then accepted.
+
+A compromised authority or a compromised key's old grant remains usable wherever the old authority is still trusted. The overlap is a transition mechanism, not immediate exclusion; it ends only when all retained nodes stop trusting the affected authority. Uncompromised grants from other authorities do not need updating.
 
 From the library, set `Config::transport` before starting:
 - `authorities`;
@@ -537,13 +552,13 @@ From the library, set `Config::transport` before starting:
 | Credential flag | `0x80` |
 | Key, nonce, tag sizes | 32, 12, 16 bytes |
 | Envelope header | 66 bytes, 2 for Data |
-| Envelope overhead | 30 bytes for Data, 94 for Initial and Session (199 with credential) |
+| Envelope overhead | 30 bytes for Data, 94 for Initial and Session (191 with credential) |
 | Epoch (ephemeral keys and tokens) | 30 minutes, previous epoch accepted for one more period |
 | Cached sessions per epoch | 16384, least recently used evicted |
-| Credential size, version | 105 bytes, `0x01` |
+| Credential size, version | 97 bytes, `0x02` |
 | Node ID context | `"opendht-node-id-v1"` |
 | HKDF salt | `"opendht-transport-v2"` |
-| Credential signature context | `"opendht-credential-v1"` |
+| Credential signature context | `"opendht-credential-v2"` |
 | Ephemeral key, token contexts | `"opendht-address-key-v1"`, `"opendht-address-token-v1"` |
 | Token size | 32 bytes |
-| Value fragment size | 1184 bytes, less the envelope overhead (1154 to 985) |
+| Value fragment size | 1184 bytes, less the envelope overhead (1154 to 993) |

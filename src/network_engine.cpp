@@ -678,7 +678,7 @@ NetworkEngine::processMessage(const uint8_t* buf, size_t buflen, SockAddr f)
         return;
     }
     if (envelope and envelope->cached)
-        envelope->cached->authorizedUntil = msg->peer->authorizedUntil;
+        envelope->cached->authorized = msg->peer->authorized;
     if (envelope and envelope->pending)
         envelope->pending->epoch->store(from, envelope->pending->session);
 
@@ -1192,14 +1192,14 @@ NetworkEngine::session(const transport::Peer& peer, const SockAddr& addr)
     const bool validated = peer.validatedAddress and peer.validatedAddress == addr;
     if (validated)
         if (auto s = epoch_.find(addr, peer.key, peerEphemeral)) {
-            s->authorizedUntil = std::max(s->authorizedUntil, peer.authorizedUntil);
+            s->authorized = s->authorized or peer.authorized;
             return *s;
         }
     auto ephemeral = epoch_.ephemeral(addr);
     std::optional<Session> s;
     if (auto keys = transport::sessionKeys(config.transport.key, ephemeral, peer.key, peerEphemeral, config.network)) {
         s = Session {ephemeral.pub, peer.key, peerEphemeral, *keys};
-        s->authorizedUntil = peer.authorizedUntil;
+        s->authorized = peer.authorized;
         if (validated)
             epoch_.store(addr, *s);
     }
@@ -1302,7 +1302,7 @@ NetworkEngine::attachPeer(Node& node, const Sp<transport::Peer>& peer)
         node.setTransport(peer);
     } else if (current != peer) {
         // Both keys match the node ID, so they are the same
-        current->authorizedUntil = std::max(current->authorizedUntil, peer->authorizedUntil);
+        current->authorized = current->authorized or peer->authorized;
         if (peer->ephemeral) {
             current->setEphemeral(*peer->ephemeral, peer->validatedAddress);
         }
@@ -1312,13 +1312,13 @@ NetworkEngine::attachPeer(Node& node, const Sp<transport::Peer>& peer)
 bool
 NetworkEngine::authorize(transport::Peer& peer, const uint8_t* data, size_t size) const
 {
-    if (peer.isAuthorized(std::chrono::system_clock::now()))
+    if (peer.authorized)
         return true;
     try {
         auto credential = transport::Credential::unpack(data, size);
         if (credential.key != peer.key or not credential.verify(config.transport.authorities))
             return false;
-        peer.authorizedUntil = credential.expiration;
+        peer.authorized = true;
         return true;
     } catch (const std::exception&) {
         return false;
@@ -1377,28 +1377,28 @@ NetworkEngine::openEnvelope(const uint8_t* buf, size_t buflen, const SockAddr& f
 
     auto peer = std::make_shared<transport::Peer>(header->sender);
     if (cached)
-        peer->authorizedUntil = cached->authorizedUntil;
+        peer->authorized = cached->authorized;
     if (auto node = cache.getNode(transport::nodeId(header->sender), from.getFamily()))
         if (const auto& current = node->getTransport())
-            peer->authorizedUntil = std::max(peer->authorizedUntil, current->authorizedUntil);
+            peer->authorized = peer->authorized or current->authorized;
     if (header->credential) {
         if (payload->size() < CREDENTIAL_SIZE)
             return std::nullopt;
-        if (isPrivate and not peer->isAuthorized(std::chrono::system_clock::now())) {
+        if (isPrivate and not peer->authorized) {
             if (header->type == EnvelopeType::Session and not pending and not limitCrypto(header->sender, from))
                 return std::nullopt;
             if (not authorize(*peer, payload->data(), CREDENTIAL_SIZE))
                 return std::nullopt;
         }
         payload->erase(payload->begin(), payload->begin() + CREDENTIAL_SIZE);
-    } else if (isPrivate and not peer->isAuthorized(std::chrono::system_clock::now())) {
+    } else if (isPrivate and not peer->authorized) {
         return std::nullopt;
     }
     // Session and Data envelopes were opened with our key for the source address: the sender receives there
     const bool session = header->type != EnvelopeType::Initial;
     peer->setEphemeral(header->ephemeral, session ? from : SockAddr {});
     if (pending)
-        pending->session.authorizedUntil = peer->authorizedUntil;
+        pending->session.authorized = peer->authorized;
     return OpenedEnvelope {std::move(peer), std::move(*payload), false, session, std::move(pending), cached};
 }
 

@@ -26,10 +26,10 @@ namespace {
 
 constexpr auto NODE_ID_CONTEXT = "opendht-node-id-v1"sv;
 constexpr auto KDF_SALT = "opendht-transport-v2"sv;
-constexpr auto CREDENTIAL_CONTEXT = "opendht-credential-v1"sv;
+constexpr auto CREDENTIAL_CONTEXT = "opendht-credential-v2"sv;
 constexpr auto ADDRESS_KEY_CONTEXT = "opendht-address-key-v1"sv;
 constexpr auto ADDRESS_TOKEN_CONTEXT = "opendht-address-token-v1"sv;
-constexpr uint8_t CREDENTIAL_VERSION {1};
+constexpr uint8_t CREDENTIAL_VERSION {2};
 
 void
 randomBytes(uint8_t* data, size_t size, gnutls_rnd_level_t level)
@@ -82,40 +82,16 @@ chachaDigest(struct chacha_poly1305_ctx* ctx, uint8_t* tag)
 #endif
 }
 
-void
-writeU64(uint8_t* p, uint64_t v)
-{
-    for (int i = 7; i >= 0; --i, v >>= 8)
-        p[i] = v & 0xFF;
-}
-
-uint64_t
-readU64(const uint8_t* p)
-{
-    uint64_t v {0};
-    for (int i = 0; i < 8; ++i)
-        v = (v << 8) | p[i];
-    return v;
-}
-
-constexpr size_t SIGNED_SIZE {CREDENTIAL_CONTEXT.size() + 1 + KEY_SIZE + 8};
+constexpr size_t SIGNED_SIZE {CREDENTIAL_CONTEXT.size() + 1 + KEY_SIZE};
 
 std::array<uint8_t, SIGNED_SIZE>
-signedData(const Key& key, uint64_t expiration)
+signedData(const Key& key)
 {
     std::array<uint8_t, SIGNED_SIZE> data;
-    auto p = std::copy(CREDENTIAL_CONTEXT.begin(), CREDENTIAL_CONTEXT.end(), data.begin());
-    *p++ = CREDENTIAL_VERSION;
-    p = std::copy(key.begin(), key.end(), p);
-    writeU64(&*p, expiration);
+    auto position = std::copy(CREDENTIAL_CONTEXT.begin(), CREDENTIAL_CONTEXT.end(), data.begin());
+    *position++ = CREDENTIAL_VERSION;
+    std::copy(key.begin(), key.end(), position);
     return data;
-}
-
-uint64_t
-toSeconds(SystemTime t)
-{
-    auto s = std::chrono::duration_cast<std::chrono::seconds>(t.time_since_epoch()).count();
-    return s > 0 ? static_cast<uint64_t>(s) : 0;
 }
 
 std::optional<Key>
@@ -242,8 +218,7 @@ Credential::pack() const
     Blob b(PACKED_SIZE);
     b[0] = CREDENTIAL_VERSION;
     std::copy(key.begin(), key.end(), b.begin() + 1);
-    writeU64(b.data() + 1 + KEY_SIZE, toSeconds(expiration));
-    std::copy(signature.begin(), signature.end(), b.begin() + 1 + KEY_SIZE + 8);
+    std::copy(signature.begin(), signature.end(), b.begin() + 1 + KEY_SIZE);
     return b;
 }
 
@@ -254,17 +229,14 @@ Credential::unpack(const uint8_t* data, size_t size)
         throw std::invalid_argument("Invalid transport credential");
     Credential c;
     std::copy_n(data + 1, KEY_SIZE, c.key.begin());
-    c.expiration = SystemTime(std::chrono::seconds(readU64(data + 1 + KEY_SIZE)));
-    std::copy_n(data + 1 + KEY_SIZE + 8, SIGNATURE_SIZE, c.signature.begin());
+    std::copy_n(data + 1 + KEY_SIZE, SIGNATURE_SIZE, c.signature.begin());
     return c;
 }
 
 bool
-Credential::verify(const std::vector<Key>& authorities, SystemTime now) const
+Credential::verify(const std::vector<Key>& authorities) const
 {
-    if (now >= expiration)
-        return false;
-    auto data = signedData(key, toSeconds(expiration));
+    auto data = signedData(key);
     return std::any_of(authorities.begin(), authorities.end(), [&](const Key& authority) {
         return ed25519_sha512_verify(authority.data(), data.size(), data.data(), signature.data()) == 1;
     });
@@ -290,12 +262,11 @@ Authority::fromSecret(const Key& secret)
 }
 
 Credential
-Authority::issue(const Key& transportKey, SystemTime expiration) const
+Authority::issue(const Key& transportKey) const
 {
     Credential c;
     c.key = transportKey;
-    c.expiration = SystemTime(std::chrono::seconds(toSeconds(expiration)));
-    auto data = signedData(c.key, toSeconds(c.expiration));
+    auto data = signedData(c.key);
     ed25519_sha512_sign(pub.data(), secret.data(), data.size(), data.data(), c.signature.data());
     return c;
 }

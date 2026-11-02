@@ -213,7 +213,6 @@ struct dht_params
     std::string gen_authority {};
     std::string issue_credential {};
     std::string authority_key {};
-    unsigned validity_days {365};
 };
 
 /* Runs private network management commands. Returns true if one was run. */
@@ -239,11 +238,10 @@ runNetworkAuthorityCommands(const dht_params& params)
             throw std::runtime_error("--issue-credential requires --authority-key and --transport-key");
         auto authority = dht::transport::Authority::fromSecret(loadTransportKey(params.authority_key));
         auto key = loadOrCreateTransportKey(params.transport_key);
-        auto expiration = std::chrono::system_clock::now() + std::chrono::hours(24) * params.validity_days;
-        auto credential = authority.issue(key.pub, expiration).pack();
+        auto credential = authority.issue(key.pub).pack();
         saveFile(params.issue_credential, credential.data(), credential.size(), false);
         std::cout << "Credential for node " << dht::transport::nodeId(key.pub) << " saved to "
-                  << params.issue_credential << ", valid for " << params.validity_days << " days" << std::endl;
+                  << params.issue_credential << ", does not expire" << std::endl;
         return true;
     }
     return false;
@@ -365,7 +363,6 @@ static const constexpr struct option long_options[] = {
     {"gen-network-authority",  required_argument, nullptr, 'G'},
     {"issue-credential",       required_argument, nullptr, 'Y'},
     {"authority-key",          required_argument, nullptr, 'X'},
-    {"validity",               required_argument, nullptr, 'W'},
     {nullptr,                  0,                 nullptr, 0  }
 };
 
@@ -508,9 +505,6 @@ parseArgs(int argc, char** argv)
             break;
         case 'X':
             params.authority_key = optarg;
-            break;
-        case 'W':
-            params.validity_days = std::stoul(optarg);
             break;
         default:
             break;

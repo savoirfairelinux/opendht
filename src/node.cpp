@@ -152,8 +152,8 @@ Node::toString() const
     auto authorization = '-';
     if (transport_) {
         state = transport_->ephemeral && transport_->validatedAddress == addr ? 'A' : 'K';
-        if (transport_->authorizedUntil != transport::SystemTime {})
-            authorization = transport_->isAuthorized(std::chrono::system_clock::now()) ? '+' : '!';
+        if (transport_->authorized)
+            authorization = '+';
     }
     return fmt::format("{} {:<21} [{}{}]", id, addr.toString(), state, authorization);
 }

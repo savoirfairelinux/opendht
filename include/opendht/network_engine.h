@@ -532,7 +532,7 @@ private:
         transport::SessionKeys keys;
         /* the peer has these keys and accepted us: send Data envelopes */
         bool confirmed {false};
-        transport::SystemTime authorizedUntil {};
+        bool authorized {false};
     };
     /* The secret from which ephemeral keys and tokens derive, and session keys, all erased together.
      * A session is cached for an address only once its peer proved to receive there: it opened an envelope
