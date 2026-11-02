@@ -1677,12 +1677,12 @@ putGet(dht::DhtRunner& from, dht::DhtRunner& to, const std::string& keyName)
 }
 
 dht::TransportConfig
-privateTransport(const dht::transport::Authority& authority, std::chrono::system_clock::duration validity = 1h)
+privateTransport(const dht::transport::Authority& authority)
 {
     dht::TransportConfig transport;
     transport.key = dht::transport::KeyPair::generate();
     transport.authorities = {authority.pub};
-    transport.credential = authority.issue(transport.key.pub, std::chrono::system_clock::now() + validity);
+    transport.credential = authority.issue(transport.key.pub);
     return transport;
 }
 
@@ -1810,9 +1810,13 @@ void
 DhtRunnerTransportTester::testPrivateNetwork()
 {
     auto authority = dht::transport::Authority::generate();
+    auto nextAuthority = dht::transport::Authority::generate();
     dht::DhtRunner member1, member2, outsider;
-    auto socket1 = runRecorded(member1, transportTestConfig(privateTransport(authority)));
-    auto config2 = transportTestConfig(privateTransport(authority));
+    auto transport1 = privateTransport(authority);
+    auto transport2 = privateTransport(nextAuthority);
+    transport1.authorities = transport2.authorities = {authority.pub, nextAuthority.pub};
+    auto socket1 = runRecorded(member1, transportTestConfig(transport1));
+    auto config2 = transportTestConfig(transport2);
     member2.run(0, config2);
     auto outsiderConfig = transportTestConfig(privateTransport(dht::transport::Authority::generate()));
     outsider.run(0, outsiderConfig);
@@ -1841,8 +1845,10 @@ DhtRunnerTransportTester::testInvalidPrivateConfig()
     auto config = transportTestConfig(otherKey);
     CPPUNIT_ASSERT_THROW(node1.run(0, config), dht::DhtException);
 
+    auto untrusted = privateTransport(authority);
+    untrusted.authorities = {dht::transport::Authority::generate().pub};
     dht::DhtRunner node2;
-    config = transportTestConfig(privateTransport(authority, -1s));
+    config = transportTestConfig(untrusted);
     CPPUNIT_ASSERT_THROW(node2.run(0, config), dht::DhtException);
 
     auto disabled = privateTransport(authority);

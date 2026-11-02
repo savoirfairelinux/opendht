@@ -288,7 +288,7 @@ void
 TransportTester::testHello()
 {
     auto a = KeyPair::generate(), ea = KeyPair::generate();
-    auto credential = Authority::generate().issue(a.pub, std::chrono::system_clock::now() + 1h).pack();
+    auto credential = Authority::generate().issue(a.pub).pack();
     auto msg = message();
     auto h = hello(a.pub, ea.pub, credential, msg.data(), msg.size());
     CPPUNIT_ASSERT_EQUAL(HEADER_SIZE + Credential::PACKED_SIZE + msg.size(), h.size());
@@ -307,19 +307,24 @@ TransportTester::testCredential()
     auto authority = Authority::generate();
     CPPUNIT_ASSERT(Authority::fromSecret(authority.secret).pub == authority.pub);
     auto key = KeyPair::generate();
-    auto expiration = std::chrono::system_clock::now() + 24h;
 
-    auto credential = authority.issue(key.pub, expiration);
+    auto credential = authority.issue(key.pub);
     CPPUNIT_ASSERT(credential);
     CPPUNIT_ASSERT(credential.key == key.pub);
     CPPUNIT_ASSERT(credential.verify({authority.pub}));
-    CPPUNIT_ASSERT(credential.verify({Authority::generate().pub, authority.pub}));
+    auto nextAuthority = Authority::generate();
+    auto nextCredential = nextAuthority.issue(key.pub);
+    CPPUNIT_ASSERT(credential.verify({authority.pub, nextAuthority.pub}));
+    CPPUNIT_ASSERT(nextCredential.verify({authority.pub, nextAuthority.pub}));
+    CPPUNIT_ASSERT(not credential.verify({nextAuthority.pub}));
+    CPPUNIT_ASSERT(nextCredential.verify({nextAuthority.pub}));
 
     auto packed = credential.pack();
+    CPPUNIT_ASSERT_EQUAL(size_t {97}, packed.size());
+    CPPUNIT_ASSERT_EQUAL(uint8_t {2}, packed[0]);
     CPPUNIT_ASSERT_EQUAL(size_t {Credential::PACKED_SIZE}, packed.size());
     auto unpacked = Credential::unpack(packed);
     CPPUNIT_ASSERT(unpacked.key == credential.key);
-    CPPUNIT_ASSERT(unpacked.expiration == credential.expiration);
     CPPUNIT_ASSERT(unpacked.signature == credential.signature);
     CPPUNIT_ASSERT(unpacked.verify({authority.pub}));
 }
@@ -329,25 +334,22 @@ TransportTester::testCredentialRejections()
 {
     auto authority = Authority::generate();
     auto key = KeyPair::generate();
-    auto now = std::chrono::system_clock::now();
-    auto credential = authority.issue(key.pub, now + 1h);
+    auto credential = authority.issue(key.pub);
 
     CPPUNIT_ASSERT(not credential.verify({}));
     CPPUNIT_ASSERT(not credential.verify({Authority::generate().pub}));
-    CPPUNIT_ASSERT(not credential.verify({authority.pub}, now + 2h));
-    CPPUNIT_ASSERT(not authority.issue(key.pub, now - 1s).verify({authority.pub}));
 
     auto otherKey = credential;
     otherKey.key = KeyPair::generate().pub;
     CPPUNIT_ASSERT(not otherKey.verify({authority.pub}));
 
-    auto extended = credential;
-    extended.expiration += 24h;
-    CPPUNIT_ASSERT(not extended.verify({authority.pub}));
+    auto tampered = credential;
+    tampered.signature[0] ^= 1;
+    CPPUNIT_ASSERT(not tampered.verify({authority.pub}));
 
     auto packed = credential.pack();
     CPPUNIT_ASSERT_THROW(Credential::unpack(packed.data(), packed.size() - 1), std::invalid_argument);
-    packed[0] = 2;
+    packed[0] = 1;
     CPPUNIT_ASSERT_THROW(Credential::unpack(packed), std::invalid_argument);
 }
 

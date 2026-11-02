@@ -321,12 +321,11 @@ NetworkEngineTester::testNodeTransportState()
     peer->setEphemeral(ephemeral, address);
     check("[A-]");
 
-    peer->authorizedUntil = std::chrono::system_clock::now() + std::chrono::hours(1);
+    peer->authorized = true;
     check("[A+]");
-    peer->authorizedUntil = std::chrono::system_clock::now() - std::chrono::hours(1);
-    check("[A!]");
+    peer->authorized = false;
+    check("[A-]");
 
-    peer->authorizedUntil = {};
     peer->resetEphemeral();
     check("[K-]");
     node.setTransport({});
@@ -1059,13 +1058,12 @@ legacyTransport()
 }
 
 static TransportConfig
-privateTransport(const transport::Authority& authority,
-                 std::chrono::system_clock::duration validity = std::chrono::hours(1))
+privateTransport(const transport::Authority& authority)
 {
     TransportConfig c;
     c.key = transport::KeyPair::generate();
     c.authorities = {authority.pub};
-    c.credential = authority.issue(c.key.pub, std::chrono::system_clock::now() + validity);
+    c.credential = authority.issue(c.key.pub);
     return c;
 }
 
@@ -1330,8 +1328,12 @@ void
 NetworkEngineTester::testTransportPrivateNetwork()
 {
     auto authority = transport::Authority::generate();
-    TransportTestNode a("127.0.0.2", privateTransport(authority), 1);
-    TransportTestNode b("127.0.0.3", privateTransport(authority), 2);
+    auto nextAuthority = transport::Authority::generate();
+    auto configA = privateTransport(authority);
+    auto configB = privateTransport(nextAuthority);
+    configA.authorities = configB.authorities = {authority.pub, nextAuthority.pub};
+    TransportTestNode a("127.0.0.2", configA, 1);
+    TransportTestNode b("127.0.0.3", configB, 2);
 
     // Ping to an address: plaintext hello with our credential, never a plaintext message
     bool done = false;
@@ -1343,7 +1345,7 @@ NetworkEngineTester::testTransportPrivateNetwork()
     b.deliverTo(a);
     CPPUNIT_ASSERT(done);
     auto peerB = a.node(b)->getTransport();
-    CPPUNIT_ASSERT(peerB and peerB->isAuthorized(std::chrono::system_clock::now()));
+    CPPUNIT_ASSERT(peerB and peerB->authorized);
 
     // b only saw our credential in the unauthenticated hello
     done = false;
@@ -1385,10 +1387,12 @@ NetworkEngineTester::testTransportPrivateNetworkRejectsOutsiders()
     CPPUNIT_ASSERT_EQUAL((size_t) 1, outsider.deliverTo(member));
     CPPUNIT_ASSERT(member.socket->sends.empty());
 
-    // expired credential
-    TransportTestNode expired("127.0.0.5", privateTransport(authority, -std::chrono::seconds(1)), 4);
-    expired.ping(member.addr, done);
-    CPPUNIT_ASSERT_EQUAL((size_t) 1, expired.deliverTo(member));
+    // invalid signature
+    auto invalid = privateTransport(authority);
+    invalid.credential.signature[0] ^= 1;
+    TransportTestNode tampered("127.0.0.5", invalid, 4);
+    tampered.ping(member.addr, done);
+    CPPUNIT_ASSERT_EQUAL((size_t) 1, tampered.deliverTo(member));
     CPPUNIT_ASSERT(member.socket->sends.empty());
 
     // encrypted, without credential
@@ -1881,7 +1885,8 @@ NetworkEngineTester::testTransportPrivateClientKeepsAuthorization()
     }
     auto cached = server.engine->epoch_.find(client.addr);
     CPPUNIT_ASSERT(cached);
-    cached->authorizedUntil = std::chrono::system_clock::now() - std::chrono::seconds(1);
+    CPPUNIT_ASSERT(cached->authorized);
+    cached->authorized = false;
     bool done = false;
     client.ping(client.node(server), done);
     CPPUNIT_ASSERT(isEnvelope(client.socket->sends.at(0), transport::EnvelopeType::Data));
@@ -2044,12 +2049,11 @@ NetworkEngineTester::testTransportRejectedSessionsKeepCache()
     auto ephemeral = transport::KeyPair::generate();
     auto receiver = b.engine->epoch_.ephemeral(a.addr);
     auto keys = *transport::sessionKeys(sender, ephemeral, b.key.pub, receiver.pub, 0);
-    auto expiration = std::chrono::system_clock::now() + std::chrono::hours(1);
-    auto credential = authority.issue(sender.pub, expiration).pack();
+    auto credential = authority.issue(sender.pub).pack();
     auto ping = makePingPacketBlob(transport::nodeId(sender.pub), 77);
     std::vector<std::pair<Blob, Blob>> rejected {
         {ping, {}},
-        {ping, transport::Authority::generate().issue(sender.pub, expiration).pack()},
+        {ping, transport::Authority::generate().issue(sender.pub).pack()},
         {Blob {0xC1}, credential},
         {makePingPacketBlob(a.id, 77), credential},
         {makeReplyHeaderPacketBlob(transport::nodeId(sender.pub), 77, {}), credential},
@@ -3099,27 +3103,26 @@ NetworkEngineTester::testRateLimitCachedSessionCredentials()
         send(sender.credential.pack());
         CPPUNIT_ASSERT_EQUAL(size_t {1}, receiver.takeSent().size());
 
-        auto past = std::chrono::system_clock::now() - std::chrono::seconds(1);
         auto node = receiver.engine->cache.getNode(transport::nodeId(sender.key.pub), AF_INET);
         CPPUNIT_ASSERT(node and node->getTransport());
-        node->getTransport()->authorizedUntil = past;
-        receiver.engine->epoch_.find(from)->authorizedUntil = past;
+        node->getTransport()->authorized = false;
+        receiver.engine->epoch_.find(from)->authorized = false;
         receiver.engine->processMessage(data.data(), data.size(), from);
         CPPUNIT_ASSERT(receiver.takeSent().empty());
         send(sender.credential.pack());
         CPPUNIT_ASSERT(receiver.takeSent().empty());
 
         advanceTime(receiver, std::chrono::seconds(2));
-        send(authority.issue(sender.key.pub, past).pack());
+        send(invalid.pack());
         CPPUNIT_ASSERT(receiver.takeSent().empty());
-        CPPUNIT_ASSERT(receiver.engine->epoch_.find(from)->authorizedUntil == past);
+        CPPUNIT_ASSERT(not receiver.engine->epoch_.find(from)->authorized);
         send(sender.credential.pack());
         CPPUNIT_ASSERT(receiver.takeSent().empty());
 
         advanceTime(receiver, std::chrono::seconds(2));
         send(sender.credential.pack());
         CPPUNIT_ASSERT_EQUAL(size_t {1}, receiver.takeSent().size());
-        CPPUNIT_ASSERT(receiver.engine->epoch_.find(from)->authorizedUntil == sender.credential.expiration);
+        CPPUNIT_ASSERT(receiver.engine->epoch_.find(from)->authorized);
     }
 }
 
