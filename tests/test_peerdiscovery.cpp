@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: MIT
 
 #include "test_peerdiscovery.h"
-#include "opendht/value.h"
 
 #include <mutex>
 #include <condition_variable>
@@ -11,24 +10,8 @@ namespace test {
 
 using namespace std::literals;
 
-constexpr unsigned MULTICAST_PORT = 2222;
-constexpr auto DHT_NODE_NAME {"dht"sv};
-constexpr auto JAMI_NODE_NAME {"jami"sv};
-
-struct DhtNode
-{
-    dht::InfoHash nodeid;
-    in_port_t node_port;
-    dht::NetId nid;
-    MSGPACK_DEFINE(nodeid, node_port, nid)
-};
-struct JamiNode
-{
-    int num;
-    char cha;
-    std::string str;
-    MSGPACK_DEFINE(num, cha, str)
-};
+constexpr dht::NetId NETWORK_ID = 10;
+constexpr in_port_t NODE_PORT = 50000;
 
 CPPUNIT_TEST_SUITE_REGISTRATION(PeerDiscoveryTester);
 
@@ -39,60 +22,40 @@ PeerDiscoveryTester::setUp()
 void
 PeerDiscoveryTester::testMulticastToTwoNodes()
 {
-    DhtNode dhtNode;
-    dhtNode.nid = 10;
-    dhtNode.node_port = 50000;
-    dhtNode.nodeid = dht::InfoHash::get("opendht01");
-
-    JamiNode jamiNode;
-    jamiNode.num = 100;
-    jamiNode.cha = 'a';
-    jamiNode.str = "jami01";
+    const auto nodeId = dht::InfoHash::get("opendht01");
 
     std::mutex lock;
     std::condition_variable cv;
-    unsigned countDht {0};
-    unsigned countJami {0};
+    unsigned discovered {0};
+    unsigned wrongNetwork {0};
     {
         std::unique_lock l(lock);
-        dht::PeerDiscovery testDht(MULTICAST_PORT);
-        dht::PeerDiscovery testJami(MULTICAST_PORT);
+        dht::PeerDiscovery publisher;
+        dht::PeerDiscovery browser;
+        dht::PeerDiscovery otherNetworkBrowser;
 
-        testJami.startDiscovery<DhtNode>(DHT_NODE_NAME, [&](DhtNode&& v, dht::SockAddr&&) {
-            CPPUNIT_ASSERT_EQUAL(dhtNode.node_port, v.node_port);
-            CPPUNIT_ASSERT_EQUAL(dhtNode.nodeid, v.nodeid);
-            CPPUNIT_ASSERT_EQUAL(dhtNode.nid, v.nid);
+        browser.startDiscovery(NETWORK_ID, [&](const dht::InfoHash& peerId, dht::SockAddr&& address) {
+            CPPUNIT_ASSERT_EQUAL(nodeId, peerId);
+            CPPUNIT_ASSERT_EQUAL(NODE_PORT, address.getPort());
             {
                 std::lock_guard l(lock);
-                countDht++;
+                discovered++;
             }
             cv.notify_all();
         });
-
-        testJami.startDiscovery(JAMI_NODE_NAME, [&](msgpack::object&& obj, dht::SockAddr&&) {
-            auto v = obj.as<JamiNode>();
-            CPPUNIT_ASSERT_EQUAL(jamiNode.num, v.num);
-            CPPUNIT_ASSERT_EQUAL(jamiNode.cha, v.cha);
-            CPPUNIT_ASSERT_EQUAL(jamiNode.str, v.str);
-            {
-                std::lock_guard l(lock);
-                countJami++;
-            }
-            cv.notify_all();
+        otherNetworkBrowser.startDiscovery(NETWORK_ID + 1, [&](const dht::InfoHash&, dht::SockAddr&&) {
+            std::lock_guard l(lock);
+            wrongNetwork++;
         });
 
-        testDht.startPublish(DHT_NODE_NAME, dhtNode);
-        CPPUNIT_ASSERT(cv.wait_for(l, std::chrono::seconds(5), [&] { return countDht > 0; }));
-
-        testDht.startPublish(JAMI_NODE_NAME, jamiNode);
-        CPPUNIT_ASSERT(cv.wait_for(l, std::chrono::seconds(5), [&] { return countDht > 1 and countJami > 0; }));
-        // we don't verify count values since its a continious multicasting
+        publisher.startPublish(nodeId, NETWORK_ID, NODE_PORT);
+        CPPUNIT_ASSERT(cv.wait_for(l, std::chrono::seconds(5), [&] { return discovered > 0; }));
+        CPPUNIT_ASSERT_EQUAL(0u, wrongNetwork);
 
         l.unlock();
-        testDht.stopPublish(DHT_NODE_NAME);
-        testDht.stopPublish(JAMI_NODE_NAME);
-        testJami.stopDiscovery(DHT_NODE_NAME);
-        testJami.stopDiscovery(JAMI_NODE_NAME);
+        publisher.stopPublish();
+        browser.stopDiscovery();
+        otherNetworkBrowser.stopDiscovery();
     }
 }
 
