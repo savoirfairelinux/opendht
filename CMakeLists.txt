@@ -10,10 +10,10 @@ if(POLICY CMP0167)
 endif()
 
 set (opendht_VERSION_MAJOR 4)
-set (opendht_VERSION_MINOR 4.99)
+set (opendht_VERSION_MINOR 5.0)
 set (opendht_VERSION ${opendht_VERSION_MAJOR}.${opendht_VERSION_MINOR})
-set (PACKAGE_VERSION ${opendht_VERSION})
-set (VERSION "${opendht_VERSION}")
+set (PACKAGE_VERSION "${opendht_VERSION}-rc.1")
+set (VERSION "${PACKAGE_VERSION}")
 project (opendht
     VERSION ${opendht_VERSION}
     DESCRIPTION "OpenDHT: A lightweight C++17 Distributed Hash Table library."
@@ -421,7 +421,7 @@ else ()
 endif ()
 set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DMSGPACK_NO_BOOST -DMSGPACK_DISABLE_LEGACY_NIL -DMSGPACK_DISABLE_LEGACY_CONVERT")
 
-add_definitions(-DPACKAGE_VERSION="${opendht_VERSION}")
+add_definitions(-DPACKAGE_VERSION="${PACKAGE_VERSION}")
 
 if (ASIO_INCLUDE_DIR)
     include_directories (SYSTEM "${ASIO_INCLUDE_DIR}")

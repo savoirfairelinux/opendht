@@ -5,7 +5,7 @@ project(
     'cython',
     license: 'MIT',
     license_files: 'LICENSE',
-    version: '4.4.99',
+    version: '4.5.0-rc.1',
     meson_version: '>=1.1.0',
     default_options: ['cpp_std=c++20', 'warning_level=3'],
 )
@@ -55,7 +55,12 @@ if host_machine.system() == 'linux' and io_uring.found()
 endif
 conf_data = configuration_data()
 
-add_project_arguments('-DMSGPACK_NO_BOOST', '-DASIO_STANDALONE', language: 'cpp')
+add_project_arguments(
+    '-DMSGPACK_NO_BOOST',
+    '-DASIO_STANDALONE',
+    '-DPACKAGE_VERSION="' + meson.project_version() + '"',
+    language: 'cpp',
+)
 if io_uring.found()
     add_project_arguments('-DASIO_HAS_IO_URING', '-DASIO_DISABLE_EPOLL', language: 'cpp')
     conf_data.set('iouring_lib', ', liburing')

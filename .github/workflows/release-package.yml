@@ -599,6 +599,7 @@ jobs:
         uses: softprops/action-gh-release@v3
         with:
           draft: true
+          prerelease: ${{ contains(github.ref_name, '-') }}
           files: |
             downloaded_artifacts/windows_msi/*.msi
             downloaded_artifacts/static_dhtnode/**/*dhtnode.exe
