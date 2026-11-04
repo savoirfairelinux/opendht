@@ -1213,7 +1213,9 @@ DhtProxyClient::restartListeners(const asio::error_code& ec)
         for (auto& search : searches_)
             for (auto& listener : search.second.listeners)
                 if (!listener.second.opstate->ok)
-                    resubscribe(search.first, listener.first, listener.second);
+                    // The subscription failed: values stored on the key since then were never
+                    // received (e.g. a connection request sent while the device had no network).
+                    resubscribe(search.first, listener.first, listener.second, true);
         return;
     }
     if (logger_)
@@ -1376,7 +1378,8 @@ DhtProxyClient::pushNotificationReceived([[maybe_unused]] const std::map<std::st
 void
 DhtProxyClient::resubscribe([[maybe_unused]] const InfoHash& key,
                             [[maybe_unused]] const size_t token,
-                            [[maybe_unused]] Listener& listener)
+                            [[maybe_unused]] Listener& listener,
+                            [[maybe_unused]] bool fetchValues)
 {
 #ifdef OPENDHT_PUSH_NOTIFICATIONS
     if (deviceKey_.empty())
@@ -1398,7 +1401,7 @@ DhtProxyClient::resubscribe([[maybe_unused]] const InfoHash& key,
     listener.refreshSubscriberTimer->async_wait(
         std::bind(&DhtProxyClient::handleResubscribe, this, std::placeholders::_1, key, token, opstate));
     auto vcb = listener.cb;
-    sendListen(header, vcb, opstate, listener, ListenMethod::RESUBSCRIBE);
+    sendListen(header, vcb, opstate, listener, fetchValues ? ListenMethod::SUBSCRIBE : ListenMethod::RESUBSCRIBE);
 #endif
 }
 
@@ -1423,7 +1426,7 @@ DhtProxyClient::fillBody(bool resubscribe)
     Json::Value body;
     getPushRequest(body);
     if (resubscribe) {
-        // This is the first listen, we want to retrieve previous values.
+        // Refreshing a subscription: the server does not send the values it stores again.
         body["refresh"] = true;
     }
     auto content = Json::writeString(jsonBuilder_, body) + "\n";
