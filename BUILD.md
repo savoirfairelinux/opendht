@@ -130,36 +130,8 @@ the assembled npm archive on Node 22, 24, and 26 before release attachment.
 
 ## C and Rust Bindings
 
-Enable `OPENDHT_C=ON` to build the C ABI. With `BUILD_TESTING=ON`, CTest runs
-`test_c`; Meson registers the same test as `CBindings` when `c` and `tests` are
-enabled. Rust regression and callback-lifetime tests run with Cargo; see
-[the Rust build guide](rust/BUILD.md) for build and library-path settings.
-
-`dht_infohash` and `dht_pkid` have `uint32_t` alignment, matching the native hash
-types, while retaining their 20-byte and 32-byte sizes. Rebuild consumers against
-the updated header; foreign-language declarations must match this alignment.
-
-C handles returned by constructors, imports, and reference functions are owned
-and require their matching delete/unref function. Data views, string getters,
-query fields, and callback arguments are borrowed: copy them or take a reference
-before returning from the callback. `dht_sockaddr_array_delete` releases both the
-public-address array and its elements.
-
-Operation completion callbacks run once, including failure when pending work is
-discarded on runner teardown. Listener release callbacks run after the native
-registration is destroyed; deleting an operation token alone does not cancel its
-listener. Cancel first, then delete the consumed token. Startup-context release
-callbacks run after all native status/store callback captures are released, also
-on startup failure. Certificate-store callbacks must invoke the supplied emitter
-synchronously with borrowed certificates. Query-result views are callback-scoped.
-
-`dht_runner_loop` drives non-threaded nodes. `dht_runner_join` waits for callbacks
-and allows restart; never call it from a DHT callback. For persisted shutdown,
-wait for the shutdown callback before joining. Push tokens can be polled without
-blocking and must be deleted separately. `dht_push_token_poll` returns `EAGAIN`
-while pending, 0 with the native outcome when ready, and an error code otherwise;
-consume a successful result only once. Native push outcomes are 0 through 3 for
-refresh/value events, 128 through 131 for ignored events, and 132 for errors.
+Enable `OPENDHT_C=ON` to build the C ABI. 
+See [the Rust build guide](rust/BUILD.md) for build instructions.
 
 ## Windows/MSVC
 
@@ -181,19 +153,3 @@ cd opendht
 cmake --preset=vcpkg_manifest .
 cmake --build .
 ```
-
-### CI
-
-Windows CI uses [lukka/run-vcpkg](https://github.com/lukka/run-vcpkg) to acquire
-and bootstrap the revision pinned by `default-registry.baseline` in
-`vcpkg-configuration.json`. CMake uses the action's `VCPKG_ROOT` and installs
-manifest dependencies on every run. Dependency-preparation jobs warm the binary
-cache before the Windows build matrix starts.
-
-Only ABI-keyed binary package archives are cached, not installed trees. The
-supported [files provider](https://learn.microsoft.com/en-us/vcpkg/reference/binarycaching#files-provider)
-is persisted with `actions/cache`; it does not use the removed `x-gha` provider
-or require package-feed credentials. Cache keys include the target triplet,
-manifests, overlay ports, run ID, and attempt, with restore prefixes for reuse.
-Each run can save newly built archives without overwriting an immutable cache;
-vcpkg validates package ABIs before reuse.

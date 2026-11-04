@@ -4,6 +4,7 @@
 
 #include "infohash.h"
 #include "value.h"
+#include "transport.h"
 
 #include <vector>
 #include <memory>
@@ -97,7 +98,7 @@ struct OPENDHT_PUBLIC NodeInfo
  */
 struct OPENDHT_PUBLIC Config
 {
-    /** DHT node ID */
+    /** DHT node ID. Ignored if transport encryption is enabled: the node ID derives from the transport key. */
     InfoHash node_id {};
 
     /**
@@ -122,6 +123,20 @@ struct OPENDHT_PUBLIC Config
     /** If non-0, overrides the default per-IP address rate-limit. -1 means no limit. */
     ssize_t max_peer_req_per_sec {0};
 
+    /**
+     * If non-0, override the rate-limits of requests from senders without an encrypted session
+     * (default: same as above). -1 means no limit.
+     */
+    ssize_t max_unauth_req_per_sec {0};
+    ssize_t max_peer_unauth_req_per_sec {0};
+
+    /**
+     * If non-0, override the rate-limits of packets needing a transport key agreement
+     * or credential check. -1 means no limit.
+     */
+    ssize_t max_crypto_per_sec {0};
+    ssize_t max_peer_crypto_per_sec {0};
+
     /* If non-0, overrides the default maximum number of searches. -1 means no limit.  */
     ssize_t max_searches {0};
 
@@ -143,6 +158,9 @@ struct OPENDHT_PUBLIC Config
 
     /* Client mode, node will not be used by other nodes to store data. */
     bool client_mode {false};
+
+    /** Encryption of the DHT protocol, and optional private network */
+    TransportConfig transport {};
 };
 
 /**

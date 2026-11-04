@@ -3,6 +3,7 @@
 #pragma once
 
 #include "net.h"
+#include "scheduler.h"
 #include "value.h"
 
 namespace dht {
@@ -133,6 +134,9 @@ private:
 
     void clear()
     {
+        if (retryJob)
+            retryJob->cancel();
+        retryJob.reset();
         on_done = {};
         on_error = {};
         on_expired = {};
@@ -155,6 +159,13 @@ private:
 
     Blob msg {}; /* the serialized message. */
     std::vector<Blob> parts;
+    /* the last attempt was an Initial envelope, answered without caching our session */
+    bool initial {false};
+    /* waiting for session establishment or recovery, without an application retry timer */
+    bool withheld {false};
+    bool sessionProbe {false};
+    bool timeoutNotified {false};
+    Sp<Scheduler::Job> retryJob;
 };
 
 } /* namespace net  */

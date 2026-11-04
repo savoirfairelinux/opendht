@@ -277,9 +277,6 @@ public:
     std::vector<ValuesExport> exportValues() const override;
     void importValues(const std::vector<ValuesExport>&) override;
 
-    void saveState(const std::string& path) const;
-    void loadState(const std::string& path);
-
     NodeStats getNodesStats(sa_family_t af) const override;
 
     std::string getStorageLog() const override;
@@ -367,8 +364,6 @@ private:
 
     static constexpr std::chrono::seconds BOOTSTRAP_PERIOD {10};
 
-    static constexpr size_t TOKEN_SIZE {32};
-
     // internal structures
     struct SearchNode;
     struct Get;
@@ -379,12 +374,13 @@ private:
     Dht(const Dht&) = delete;
     Dht& operator=(const Dht&) = delete;
 
+    void saveState(const std::string& path) const;
+    /* Only called on construction: may replace the transport key */
+    void loadState(const std::string& path);
+
     std::mt19937_64 rd;
 
     InfoHash myid {};
-
-    uint64_t secret {};
-    uint64_t oldsecret {};
 
     // registred types
     TypeStore types;
@@ -438,6 +434,8 @@ private:
     net::NetworkEngine network_engine;
 
     std::string persistPath;
+    /* The transport key was generated: keep it in the persisted state */
+    bool persistTransportKey {false};
 
     // are we a bootstrap node ?
     // note: Any running node can be used as a bootstrap node.
@@ -451,11 +449,6 @@ private:
     {
         return public_stable ? LISTEN_EXPIRE_TIME_PUBLIC : LISTEN_EXPIRE_TIME;
     }
-
-    void rotateSecrets();
-
-    Blob makeToken(const SockAddr&, bool old) const;
-    bool tokenMatch(const Blob& token, const SockAddr&) const;
 
     void reportedAddr(const SockAddr&);
 
@@ -576,6 +569,8 @@ private:
      * @param query   The query sent to the node.
      */
     void searchNodeGetExpired(const net::Request& status, bool over, std::weak_ptr<Search> ws, Sp<Query> query);
+    void searchNodeRoutingDone(const net::Request& req, net::RequestAnswer&& answer, std::weak_ptr<Search> ws);
+    void searchNodeRoutingExpired(const net::Request& req, bool over, std::weak_ptr<Search> ws);
 
     /**
      * This method recovers sends individual request for values per id.
@@ -627,15 +622,14 @@ private:
     void onGetValuesDone(const Sp<Node>& status, net::RequestAnswer& a, Sp<Search>& sr, const Sp<Query>& orig_query);
     /* when we receive a listen request */
     net::RequestAnswer onListen(
-        Sp<Node> node, const InfoHash& hash, const Blob& token, size_t socket_id, const Query& query, int version = 0);
+        Sp<Node> node, const InfoHash& hash, size_t socket_id, const Query& query, int version = 0);
     void onListenDone(const Sp<Node>& node, net::RequestAnswer& a, Sp<Search>& sr);
     /* when we receive an announce request */
     net::RequestAnswer onAnnounce(Sp<Node> node,
                                   const InfoHash& hash,
-                                  const Blob& token,
                                   const std::vector<Sp<Value>>& v,
                                   const time_point& created);
-    net::RequestAnswer onRefresh(Sp<Node> node, const InfoHash& hash, const Blob& token, const Value::Id& vid);
+    net::RequestAnswer onRefresh(Sp<Node> node, const InfoHash& hash, const Value::Id& vid);
     void onAnnounceDone(const Sp<Node>& status, net::RequestAnswer& a, Sp<Search>& sr);
 };
 
